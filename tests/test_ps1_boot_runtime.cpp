@@ -264,6 +264,29 @@ static void test_mega_probe_continues_through_unknown_mmio_and_records_events() 
     CHECK(runtime.cpu_state().gpr[10] == 0x00001234u);
 }
 
+static void test_boot_report_captures_segment_gpu_activity() {
+    const std::vector<std::uint32_t> words{
+        test_mips::i(0x0Fu, 0u, 8u, 0x1F80u),
+        test_mips::i(0x2Bu, 8u, 0u, 0x1810u),
+        test_mips::i(0x0Fu, 0u, 9u, 0x0300u),
+        test_mips::i(0x2Bu, 8u, 9u, 0x1814u),
+        test_mips::j(0x02u, 0x80010010u >> 2),
+        0x00000000u,
+    };
+    auto runtime = make_runtime(words);
+    const auto report = runtime.run({8u});
+
+    CHECK(report.stop_reason == jojo::Ps1BootStopReason::execution_budget_exhausted);
+    CHECK(report.gpu_gp0_command_count == 1u);
+    CHECK(report.gpu_gp1_command_count == 1u);
+    CHECK(report.vram_write_count == 0u);
+
+    const auto second = runtime.run({4u});
+    CHECK(second.gpu_gp0_command_count == 0u);
+    CHECK(second.gpu_gp1_command_count == 0u);
+    CHECK(second.vram_write_count == 0u);
+}
+
 static void test_runtime_exposes_host_neutral_gpu_display_frame() {
     const std::vector<std::uint32_t> words{
         test_mips::j(0x02u, 0x80010000u >> 2),
@@ -354,6 +377,7 @@ int main() {
     test_a0_33_remains_unimplemented();
     test_mmio_access_stops_with_structured_evidence();
     test_mega_probe_continues_through_unknown_mmio_and_records_events();
+    test_boot_report_captures_segment_gpu_activity();
     test_runtime_exposes_host_neutral_gpu_display_frame();
     test_deterministic_replay_matches_full_m3a_state();
     return failures ? 1 : 0;
