@@ -26,6 +26,13 @@ struct R3000aCop0 {
     std::uint32_t epc{};
 };
 
+struct R3000aGte {
+    std::array<std::uint32_t, 32> data{};
+    std::array<std::uint32_t, 32> control{};
+    std::uint32_t last_command{};
+    std::uint32_t flag{};
+};
+
 struct R3000aState {
     std::array<std::uint32_t, 32> gpr{};
     std::uint32_t hi{};
@@ -35,6 +42,7 @@ struct R3000aState {
     R3000aDelayedLoad pending_load{};
     R3000aDelaySlot delay_slot{};
     R3000aCop0 cop0{};
+    R3000aGte gte{};
     std::uint8_t external_interrupt_pending{};
 };
 
