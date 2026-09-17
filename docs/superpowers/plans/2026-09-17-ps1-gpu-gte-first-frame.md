@@ -40,6 +40,8 @@
 - [ ] Step 4: Run the COP2 target and the existing R3000A exception/boundary targets; verify GREEN.
 - [ ] Step 5: Commit `feat: add PS1 COP2 GTE register transfers`.
 
+**RED evidence:** GitHub Actions job `105245153983` failed at compile time because `R3000aState` had no member `gte`, exactly matching the intended missing feature.
+
 ### Task 2: 4B — Frontier-driven GTE command execution
 
 **Files:**
