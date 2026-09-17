@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/disc_media.h"
+#include "core/game_source_binding.h"
 #include "core/iso9660.h"
 #include "core/ps1_exe.h"
 #include "core/ps1_system_cnf.h"
@@ -14,14 +15,6 @@
 #include <vector>
 
 namespace jojo {
-
-struct GameSourceBinding {
-    std::filesystem::path source_path;
-    std::string source_format;
-    std::uint64_t source_size{};
-    std::string source_hash_fnv1a64;
-    std::string revision_id;
-};
 
 struct Ps1DiscOpenOptions {
     std::vector<GameRevisionProfile> revision_profiles;
