@@ -1,4 +1,5 @@
 #include "core/ps1_commercial_evidence.h"
+#include "mips_test_encode.h"
 #include "ps1_fixture.h"
 
 #include <filesystem>
@@ -16,17 +17,10 @@ std::vector<std::uint8_t> read_all(const fs::path& path) {
     std::ifstream in(path, std::ios::binary);
     return {std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>()};
 }
-}
 
-int main() {
-    const auto temp = fs::temp_directory_path() / "jojo_phase2_commercial_evidence";
-    std::error_code ec;
-    fs::remove_all(temp, ec);
-    fs::create_directories(temp, ec);
-    CHECK(!ec);
-
+void test_normal_mode_retains_disc_and_never_mutates_source(const fs::path& temp) {
     auto fixture = test_ps1::make_disc_fixture();
-    const auto source = test_ps1::write_cooked_iso(temp / "jojo.iso", fixture);
+    const auto source = test_ps1::write_cooked_iso(temp / "normal.iso", fixture);
     const auto before = read_all(source);
 
     jojo::Ps1DiscOpenOptions open_options{};
@@ -58,8 +52,65 @@ int main() {
         CHECK(report.boot.recent_mmio.size() <= 2u);
     }
 
-    const auto after = read_all(source);
-    CHECK(before == after);
+    CHECK(before == read_all(source));
+}
+
+void test_bios_fallback_is_opt_in_and_recorded(const fs::path& temp) {
+    auto fixture = test_ps1::make_disc_fixture();
+    fixture.executable = test_ps1::make_psx_exe_from_words({
+        test_mips::i(0x09u, 0u, 2u, 0x1234u),
+        test_mips::i(0x09u, 0u, 9u, 0x0033u),
+        test_mips::i(0x09u, 0u, 10u, 0x00A0u),
+        test_mips::r(10u, 0u, 31u, 0u, 0x09u),
+        0x00000000u,
+        test_mips::i(0x09u, 0u, 16u, 0x5678u),
+        test_mips::j(0x02u, 0x80010018u >> 2),
+        0x00000000u,
+    });
+    const auto source = test_ps1::write_cooked_iso(temp / "bios.iso", fixture);
+
+    jojo::Ps1DiscOpenOptions open_options{};
+    open_options.revision_profiles.push_back(test_ps1::make_revision_profile(fixture, "synthetic-bios-frontier"));
+
+    jojo::Ps1CommercialEvidenceOptions normal{};
+    normal.boot.instruction_budget = 16u;
+
+    auto normal_runner = jojo::Ps1CommercialEvidenceRunner::open(source, open_options);
+    CHECK(normal_runner);
+    if (normal_runner) {
+        const auto report = normal_runner.value.run(normal);
+        CHECK(report.frontier == jojo::Ps1CommercialFrontierClass::bios_call);
+        CHECK(report.boot.stop_reason == jojo::Ps1BootStopReason::bios_call_unimplemented);
+        CHECK(report.diagnostic_decisions.empty());
+    }
+
+    auto diagnostic_runner = jojo::Ps1CommercialEvidenceRunner::open(source, open_options);
+    CHECK(diagnostic_runner);
+    if (diagnostic_runner) {
+        jojo::Ps1CommercialEvidenceOptions diagnostic = normal;
+        diagnostic.diagnostic_bios_fallbacks.push_back(jojo::Ps1BiosFallback::return_zero);
+        const auto report = diagnostic_runner.value.run(diagnostic);
+        CHECK(report.diagnostic_decisions.size() == 1u);
+        if (!report.diagnostic_decisions.empty()) {
+            CHECK(report.diagnostic_decisions[0].bios_table == 0x000000A0u);
+            CHECK(report.diagnostic_decisions[0].bios_selector == 0x00000033u);
+            CHECK(report.diagnostic_decisions[0].fallback == jojo::Ps1BiosFallback::return_zero);
+        }
+        CHECK(report.total_instructions_retired > report.boot.instructions_retired);
+        CHECK(report.frontier != jojo::Ps1CommercialFrontierClass::bios_call);
+    }
+}
+}
+
+int main() {
+    const auto temp = fs::temp_directory_path() / "jojo_phase2_commercial_evidence";
+    std::error_code ec;
+    fs::remove_all(temp, ec);
+    fs::create_directories(temp, ec);
+    CHECK(!ec);
+
+    test_normal_mode_retains_disc_and_never_mutates_source(temp);
+    test_bios_fallback_is_opt_in_and_recorded(temp);
 
     fs::remove_all(temp, ec);
     if (failures != 0) {
