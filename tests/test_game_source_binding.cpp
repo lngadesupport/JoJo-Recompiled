@@ -1,4 +1,5 @@
 #include "core/game_source_binding.h"
+#include "core/ps1_disc_session.h"
 #include "core/settings.h"
 #include "ps1_fixture.h"
 

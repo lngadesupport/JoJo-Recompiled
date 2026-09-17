@@ -26,6 +26,7 @@ add_library(jojo_core STATIC
   src/core/ps1_system_cnf.cpp
   src/core/ps1_exe.cpp
   src/core/ps1_disc_session.cpp
+  src/core/game_source_binding.cpp
   src/core/ps1_installation.cpp
   src/core/ps1_memory_bus.cpp
   src/core/ps1_executable_loader.cpp
@@ -93,6 +94,7 @@ add_jojo_test(jojo_media_tests tests/test_disc_media.cpp)
 add_jojo_test(jojo_ps1_system_cnf_tests tests/test_ps1_system_cnf.cpp)
 add_jojo_test(jojo_ps1_exe_tests tests/test_ps1_exe.cpp)
 add_jojo_test(jojo_ps1_disc_session_tests tests/test_ps1_disc_session.cpp)
+add_jojo_test(jojo_game_source_binding_tests tests/test_game_source_binding.cpp)
 add_jojo_test(jojo_ps1_manifest_tests tests/test_ps1_manifest.cpp)
 add_jojo_test(jojo_ps1_installation_tests tests/test_ps1_installation.cpp)
 add_jojo_test(jojo_ps1_conversion_tests tests/test_ps1_conversion.cpp)
