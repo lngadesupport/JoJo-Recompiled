@@ -463,6 +463,236 @@ float4 main(PSInput input) : SV_Target {
     return Result<void>::success();
 }
 
+Result<D3d11Ps1Presenter> D3d11Ps1Presenter::create(HWND window) {
+    if (!window || !IsWindow(window)) {
+        return Result<D3d11Ps1Presenter>::failure(
+            ErrorCode::invalid_argument,
+            "D3D11 presenter requires a valid Win32 window");
+    }
+
+    RECT client{};
+    if (!GetClientRect(window, &client) ||
+        client.right <= client.left ||
+        client.bottom <= client.top) {
+        return Result<D3d11Ps1Presenter>::failure(
+            ErrorCode::invalid_argument,
+            "D3D11 presenter requires a non-empty Win32 client area");
+    }
+
+    DXGI_SWAP_CHAIN_DESC desc{};
+    desc.BufferDesc.Width = static_cast<UINT>(client.right - client.left);
+    desc.BufferDesc.Height = static_cast<UINT>(client.bottom - client.top);
+    desc.BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    desc.SampleDesc.Count = 1u;
+    desc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+    desc.BufferCount = 2u;
+    desc.OutputWindow = window;
+    desc.Windowed = TRUE;
+    desc.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
+
+    constexpr std::array<D3D_FEATURE_LEVEL, 4> levels{
+        D3D_FEATURE_LEVEL_11_1,
+        D3D_FEATURE_LEVEL_11_0,
+        D3D_FEATURE_LEVEL_10_1,
+        D3D_FEATURE_LEVEL_10_0,
+    };
+
+    auto create_device = [&](D3D_DRIVER_TYPE driver,
+                             const D3D_FEATURE_LEVEL* feature_levels,
+                             UINT feature_level_count,
+                             IDXGISwapChain** swap_chain,
+                             ID3D11Device** device,
+                             ID3D11DeviceContext** context) {
+        D3D_FEATURE_LEVEL selected{};
+        return D3D11CreateDeviceAndSwapChain(
+            nullptr,
+            driver,
+            nullptr,
+            D3D11_CREATE_DEVICE_BGRA_SUPPORT,
+            feature_levels,
+            feature_level_count,
+            D3D11_SDK_VERSION,
+            &desc,
+            swap_chain,
+            device,
+            &selected,
+            context);
+    };
+
+    Microsoft::WRL::ComPtr<IDXGISwapChain> swap_chain;
+    Microsoft::WRL::ComPtr<ID3D11Device> device;
+    Microsoft::WRL::ComPtr<ID3D11DeviceContext> context;
+
+    HRESULT hr = create_device(
+        D3D_DRIVER_TYPE_HARDWARE,
+        levels.data(),
+        static_cast<UINT>(levels.size()),
+        swap_chain.GetAddressOf(),
+        device.GetAddressOf(),
+        context.GetAddressOf());
+    if (hr == E_INVALIDARG) {
+        swap_chain.Reset();
+        device.Reset();
+        context.Reset();
+        hr = create_device(
+            D3D_DRIVER_TYPE_HARDWARE,
+            levels.data() + 1,
+            static_cast<UINT>(levels.size() - 1u),
+            swap_chain.GetAddressOf(),
+            device.GetAddressOf(),
+            context.GetAddressOf());
+    }
+
+    if (FAILED(hr)) {
+        swap_chain.Reset();
+        device.Reset();
+        context.Reset();
+        hr = create_device(
+            D3D_DRIVER_TYPE_WARP,
+            levels.data(),
+            static_cast<UINT>(levels.size()),
+            swap_chain.GetAddressOf(),
+            device.GetAddressOf(),
+            context.GetAddressOf());
+        if (hr == E_INVALIDARG) {
+            swap_chain.Reset();
+            device.Reset();
+            context.Reset();
+            hr = create_device(
+                D3D_DRIVER_TYPE_WARP,
+                levels.data() + 1,
+                static_cast<UINT>(levels.size() - 1u),
+                swap_chain.GetAddressOf(),
+                device.GetAddressOf(),
+                context.GetAddressOf());
+        }
+    }
+
+    if (FAILED(hr) || !swap_chain || !device || !context) {
+        return Result<D3d11Ps1Presenter>::failure(
+            ErrorCode::backend_unavailable,
+            "unable to create a D3D11 hardware or WARP swap-chain presenter");
+    }
+
+    D3d11Ps1Presenter presenter{};
+    presenter.window_ = window;
+    presenter.device_ = std::move(device);
+    presenter.context_ = std::move(context);
+    presenter.swap_chain_ = std::move(swap_chain);
+    presenter.back_buffer_width_ = desc.BufferDesc.Width;
+    presenter.back_buffer_height_ = desc.BufferDesc.Height;
+
+    const auto target = presenter.recreate_render_target();
+    if (!target) {
+        return Result<D3d11Ps1Presenter>::failure(target.error, target.detail);
+    }
+    return Result<D3d11Ps1Presenter>::success(std::move(presenter));
+}
+
+Result<void> D3d11Ps1Presenter::recreate_render_target() {
+    if (!device_ || !swap_chain_) {
+        return Result<void>::failure(
+            ErrorCode::backend_unavailable,
+            "D3D11 presenter has no active device or swap chain");
+    }
+
+    Microsoft::WRL::ComPtr<ID3D11Texture2D> back_buffer;
+    const HRESULT buffer_hr = swap_chain_->GetBuffer(
+        0u,
+        __uuidof(ID3D11Texture2D),
+        reinterpret_cast<void**>(back_buffer.GetAddressOf()));
+    if (FAILED(buffer_hr) || !back_buffer) {
+        return Result<void>::failure(
+            ErrorCode::backend_unavailable,
+            "D3D11 presenter failed to acquire the swap-chain back buffer");
+    }
+
+    Microsoft::WRL::ComPtr<ID3D11RenderTargetView> target;
+    const HRESULT target_hr =
+        device_->CreateRenderTargetView(back_buffer.Get(), nullptr, target.GetAddressOf());
+    if (FAILED(target_hr) || !target) {
+        return Result<void>::failure(
+            ErrorCode::backend_unavailable,
+            "D3D11 presenter failed to create the swap-chain render target");
+    }
+
+    render_target_ = std::move(target);
+    return Result<void>::success();
+}
+
+Result<void> D3d11Ps1Presenter::resize_to_client() {
+    if (!window_ || !IsWindow(window_) || !swap_chain_ || !context_) {
+        return Result<void>::failure(
+            ErrorCode::backend_unavailable,
+            "D3D11 presenter is not attached to a valid window");
+    }
+
+    RECT client{};
+    if (!GetClientRect(window_, &client)) {
+        return Result<void>::failure(
+            ErrorCode::invalid_argument,
+            "D3D11 presenter could not query the Win32 client area");
+    }
+    const LONG client_width = client.right - client.left;
+    const LONG client_height = client.bottom - client.top;
+    if (client_width <= 0 || client_height <= 0) {
+        return Result<void>::failure(
+            ErrorCode::invalid_argument,
+            "D3D11 presenter cannot render to a zero-sized client area");
+    }
+
+    const auto width = static_cast<std::uint32_t>(client_width);
+    const auto height = static_cast<std::uint32_t>(client_height);
+    if (width == back_buffer_width_ && height == back_buffer_height_ && render_target_) {
+        return Result<void>::success();
+    }
+
+    context_->OMSetRenderTargets(0u, nullptr, nullptr);
+    render_target_.Reset();
+
+    const HRESULT resize_hr =
+        swap_chain_->ResizeBuffers(0u, width, height, DXGI_FORMAT_UNKNOWN, 0u);
+    if (FAILED(resize_hr)) {
+        return Result<void>::failure(
+            ErrorCode::backend_unavailable,
+            "D3D11 presenter failed to resize the swap-chain buffers");
+    }
+
+    back_buffer_width_ = width;
+    back_buffer_height_ = height;
+    return recreate_render_target();
+}
+
+Result<void> D3d11Ps1Presenter::present(const Ps1DisplayFrame& frame) {
+    const auto resized = resize_to_client();
+    if (!resized) return resized;
+
+    const auto blitted = blit_d3d11_ps1_frame(
+        device_.Get(),
+        context_.Get(),
+        frame,
+        render_target_.Get(),
+        back_buffer_width_,
+        back_buffer_height_);
+    if (!blitted) return blitted;
+
+    const HRESULT hr = swap_chain_->Present(0u, 0u);
+    if (FAILED(hr)) {
+        return Result<void>::failure(
+            ErrorCode::backend_unavailable,
+            "D3D11 swap-chain presentation failed");
+    }
+    return Result<void>::success();
+}
+
+std::uint32_t D3d11Ps1Presenter::back_buffer_width() const noexcept {
+    return back_buffer_width_;
+}
+
+std::uint32_t D3d11Ps1Presenter::back_buffer_height() const noexcept {
+    return back_buffer_height_;
+}
+
 Result<RendererCapabilities> probe_d3d11_renderer_capabilities() {
     ID3D11Device* device = nullptr;
     ID3D11DeviceContext* context = nullptr;
