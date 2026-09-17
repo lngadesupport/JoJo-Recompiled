@@ -1,0 +1,32 @@
+name: Phase 3C CD-ROM RED
+
+on:
+  push:
+    branches:
+      - feature/ps1-hardware-services-phase3
+
+permissions:
+  contents: read
+
+jobs:
+  red-contract:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Register CD-ROM test target
+        shell: python
+        run: |
+          from pathlib import Path
+          p = Path('CMakeLists.txt')
+          text = p.read_text()
+          line = 'add_jojo_test(jojo_ps1_cdrom_tests tests/test_ps1_cdrom.cpp)\n'
+          anchor = 'add_jojo_test(jojo_ps1_hardware_dma_tests tests/test_ps1_hardware_dma.cpp)\n'
+          if line not in text:
+              if anchor not in text:
+                  raise SystemExit('missing DMA test anchor')
+              text = text.replace(anchor, anchor + line, 1)
+          p.write_text(text)
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
+      - name: Build CD-ROM contract (expected RED until production exists)
+        run: cmake --build build --target jojo_ps1_cdrom_tests -j2
