@@ -4,6 +4,7 @@
 
 #include <array>
 #include <cstdint>
+#include <optional>
 
 namespace jojo {
 
@@ -12,6 +13,19 @@ struct Ps1RootCounterState {
     std::uint16_t mode{};
     std::uint16_t target{};
     std::uint32_t cycle_accumulator{};
+};
+
+struct Ps1DmaChannelState {
+    std::uint32_t madr{};
+    std::uint32_t bcr{};
+    std::uint32_t chcr{};
+};
+
+struct Ps1DmaTransferRequest {
+    std::uint8_t channel{};
+    std::uint32_t madr{};
+    std::uint32_t words{};
+    bool from_ram{};
 };
 
 class Ps1HardwareServices {
@@ -33,6 +47,15 @@ public:
     [[nodiscard]] std::uint16_t timer_mode(std::uint32_t channel) const noexcept;
     [[nodiscard]] std::uint16_t timer_target(std::uint32_t channel) const noexcept;
     [[nodiscard]] bool interrupt_pending() const noexcept;
+
+    [[nodiscard]] std::uint32_t dma_control() const noexcept;
+    [[nodiscard]] std::uint32_t dma_interrupt() const noexcept;
+    [[nodiscard]] const Ps1DmaChannelState& dma_channel(std::uint32_t channel) const noexcept;
+    [[nodiscard]] const std::optional<Ps1DmaTransferRequest>& pending_dma_transfer() const noexcept;
+    [[nodiscard]] bool complete_dma_transfer(std::uint32_t channel) noexcept;
+    void cancel_pending_dma_transfer() noexcept;
+    [[nodiscard]] std::uint64_t completed_dma_transfer_count() const noexcept;
+
     [[nodiscard]] std::uint64_t diagnostic_state_hash() const noexcept;
 
 private:
@@ -42,6 +65,11 @@ private:
     std::uint16_t interrupt_status_{};
     std::uint16_t interrupt_mask_{};
     std::array<Ps1RootCounterState, 3> timers_{};
+    std::array<Ps1DmaChannelState, 7> dma_channels_{};
+    std::uint32_t dma_control_{0x07654321u};
+    std::uint32_t dma_interrupt_{};
+    std::optional<Ps1DmaTransferRequest> pending_dma_transfer_{};
+    std::uint64_t completed_dma_transfer_count_{};
 };
 
 } // namespace jojo
