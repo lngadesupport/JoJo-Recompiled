@@ -1,4 +1,4 @@
-name: Verify PS1 sector streaming M5
+name: Verify PS1 install-runtime retirement M6
 
 on:
   push:
@@ -11,47 +11,14 @@ permissions:
   contents: read
 
 jobs:
-  linux-regression:
+  architecture-red:
     runs-on: ubuntu-24.04
     steps:
-      - name: Checkout M5 branch
+      - name: Checkout M6 branch
         uses: actions/checkout@v4
         with:
-          ref: feature/ps1-cd-streaming-m5
+          ref: feature/ps1-retire-install-runtime-m6
 
-      - name: Guard streaming contract registration
+      - name: Run active PS1 architecture gate
         shell: bash
-        run: |
-          set -euo pipefail
-          grep -q 'jojo_ps1_disc_streaming_tests tests/test_ps1_disc_streaming.cpp' CMakeLists.txt
-          grep -q 'read_sectors' src/core/ps1_disc_session.h
-          ! grep -q 'ofstream' src/core/ps1_disc_session.cpp
-
-      - name: Configure Release
-        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-
-      - name: Build all
-        run: cmake --build build -j2
-
-      - name: Run complete CTest suite
-        run: ctest --test-dir build --output-on-failure
-
-  windows-regression:
-    runs-on: windows-2022
-    steps:
-      - name: Checkout M5 branch
-        uses: actions/checkout@v4
-        with:
-          ref: feature/ps1-cd-streaming-m5
-
-      - name: Configure Windows x64
-        shell: pwsh
-        run: cmake -S . -B build -A x64
-
-      - name: Build all Release targets
-        shell: pwsh
-        run: cmake --build build --config Release
-
-      - name: Run complete CTest suite
-        shell: pwsh
-        run: ctest --test-dir build -C Release --output-on-failure
+        run: cmake -DJOJO_SOURCE_DIR="$PWD" -P cmake/CheckPs1ActiveArchitecture.cmake
