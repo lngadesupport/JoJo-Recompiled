@@ -223,6 +223,50 @@ Result<D3d11FrameUploadPlan> make_d3d11_frame_upload_plan(
     return Result<D3d11FrameUploadPlan>::success(plan);
 }
 
+Result<void> upload_d3d11_ps1_frame(
+    ID3D11Device* device,
+    ID3D11DeviceContext* context,
+    const Ps1DisplayFrame& frame,
+    ID3D11Texture2D** texture_out) {
+    if (!device || !context || !texture_out) {
+        return Result<void>::failure(
+            ErrorCode::invalid_argument,
+            "D3D11 frame upload requires device, context, and output texture");
+    }
+    *texture_out = nullptr;
+
+    const auto plan = make_d3d11_frame_upload_plan(frame);
+    if (!plan) {
+        return Result<void>::failure(plan.error, plan.detail);
+    }
+
+    D3D11_TEXTURE2D_DESC desc{};
+    desc.Width = plan.value.width;
+    desc.Height = plan.value.height;
+    desc.MipLevels = 1u;
+    desc.ArraySize = 1u;
+    desc.Format = plan.value.format;
+    desc.SampleDesc.Count = 1u;
+    desc.Usage = D3D11_USAGE_DEFAULT;
+    desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+
+    D3D11_SUBRESOURCE_DATA initial{};
+    initial.pSysMem = plan.value.pixels;
+    initial.SysMemPitch = plan.value.row_pitch;
+
+    ID3D11Texture2D* texture = nullptr;
+    const HRESULT hr = device->CreateTexture2D(&desc, &initial, &texture);
+    if (FAILED(hr) || !texture) {
+        if (texture) texture->Release();
+        return Result<void>::failure(
+            ErrorCode::backend_unavailable,
+            "D3D11 failed to create the PS1 display texture");
+    }
+
+    *texture_out = texture;
+    return Result<void>::success();
+}
+
 Result<RendererCapabilities> probe_d3d11_renderer_capabilities() {
     ID3D11Device* device = nullptr;
     ID3D11DeviceContext* context = nullptr;
