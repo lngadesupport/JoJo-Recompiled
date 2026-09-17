@@ -2,7 +2,6 @@
 
 #include "core/r3000a_bus.h"
 #include "core/ps1_hardware_services.h"
-#include "core/ps1_hardware_services.h"
 #include "core/result.h"
 
 #include <array>
@@ -63,8 +62,6 @@ private:
     std::vector<std::uint8_t> main_ram_;
     std::array<std::uint8_t, scratchpad_size> scratchpad_{};
     Ps1HardwareServices hardware_{};
-    std::uint32_t dma_control_{0x07654321u};
-    std::uint32_t dma_interrupt_{};
     bool diagnostic_mmio_probe_enabled_{};
     std::array<std::uint8_t, diagnostic_mmio_shadow_size> diagnostic_mmio_shadow_{};
     std::optional<Ps1UnsupportedAccess> last_diagnostic_mmio_probe_{};

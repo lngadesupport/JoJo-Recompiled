@@ -227,7 +227,7 @@ static void test_mmio_access_stops_with_structured_evidence() {
 static void test_mega_probe_continues_through_unknown_mmio_and_records_events() {
     const std::vector<std::uint32_t> words{
         test_mips::i(0x0Fu, 0u, 8u, 0x1F80u),
-        test_mips::i(0x0Du, 8u, 8u, 0x1080u),
+        test_mips::i(0x0Du, 8u, 8u, 0x1500u),
         test_mips::i(0x09u, 0u, 9u, 0x1234u),
         test_mips::i(0x2Bu, 8u, 9u, 0u),
         test_mips::i(0x23u, 8u, 10u, 0u),
@@ -250,12 +250,12 @@ static void test_mega_probe_continues_through_unknown_mmio_and_records_events() 
     CHECK(report.speculative_mmio_count == 2u);
     CHECK(report.recent_mmio.size() == 2u);
     if (report.recent_mmio.size() == 2u) {
-        CHECK(report.recent_mmio[0].address == 0x1F801080u);
+        CHECK(report.recent_mmio[0].address == 0x1F801500u);
         CHECK(report.recent_mmio[0].width == 4u);
         CHECK(report.recent_mmio[0].write);
         CHECK(report.recent_mmio[0].value == 0x00001234u);
         CHECK(report.recent_mmio[0].speculative);
-        CHECK(report.recent_mmio[1].address == 0x1F801080u);
+        CHECK(report.recent_mmio[1].address == 0x1F801500u);
         CHECK(!report.recent_mmio[1].write);
         CHECK(report.recent_mmio[1].value == 0x00001234u);
         CHECK(report.recent_mmio[1].speculative);

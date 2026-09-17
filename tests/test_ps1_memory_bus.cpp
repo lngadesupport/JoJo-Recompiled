@@ -67,31 +67,31 @@ int main() {
 
     bus.clear_last_unsupported_access();
     bus.set_diagnostic_mmio_probe_enabled(true);
-    const auto probe_zero = bus.read32(0x1F801080u);
+    const auto probe_zero = bus.read32(0x1F801500u);
     CHECK(probe_zero.status == jojo::R3000aBusStatus::ok);
     CHECK(probe_zero.value == 0u);
     CHECK(bus.last_diagnostic_mmio_probe().has_value());
     if (bus.last_diagnostic_mmio_probe()) {
-        CHECK(bus.last_diagnostic_mmio_probe()->guest_address == 0x1F801080u);
+        CHECK(bus.last_diagnostic_mmio_probe()->guest_address == 0x1F801500u);
         CHECK(bus.last_diagnostic_mmio_probe()->width == 4u);
         CHECK(!bus.last_diagnostic_mmio_probe()->write);
         CHECK(bus.last_diagnostic_mmio_probe()->value == 0u);
     }
 
     bus.clear_last_diagnostic_mmio_probe();
-    CHECK(bus.write32(0x1F801080u, 0x12345678u).status == jojo::R3000aBusStatus::ok);
+    CHECK(bus.write32(0x1F801500u, 0x12345678u).status == jojo::R3000aBusStatus::ok);
     CHECK(bus.last_diagnostic_mmio_probe().has_value());
     if (bus.last_diagnostic_mmio_probe()) {
         CHECK(bus.last_diagnostic_mmio_probe()->write);
         CHECK(bus.last_diagnostic_mmio_probe()->value == 0x12345678u);
     }
     bus.clear_last_diagnostic_mmio_probe();
-    const auto probe_shadow = bus.read32(0x1F801080u);
+    const auto probe_shadow = bus.read32(0x1F801500u);
     CHECK(probe_shadow.status == jojo::R3000aBusStatus::ok);
     CHECK(probe_shadow.value == 0x12345678u);
 
     bus.set_diagnostic_mmio_probe_enabled(false);
-    CHECK(bus.read32(0x1F801080u).status == jojo::R3000aBusStatus::unsupported);
+    CHECK(bus.read32(0x1F801500u).status == jojo::R3000aBusStatus::unsupported);
 
     const auto unsupported = bus.read32(0x1F801070u);
     CHECK(unsupported.status == jojo::R3000aBusStatus::unsupported);
