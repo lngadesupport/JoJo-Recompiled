@@ -62,14 +62,15 @@ jobs:
           rsync -a --delete --exclude='.git/' /tmp/jojo-canonical/ ./
           cp -a /tmp/jojo-migration-preserve/. ./
 
-      - name: Wire M1 and M2 into CMake
+      - name: Wire M1 and M2 into canonical baseline
         shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
-          path = Path('CMakeLists.txt')
-          text = path.read_text(encoding='utf-8')
+
+          cmake = Path('CMakeLists.txt')
+          text = cmake.read_text(encoding='utf-8')
           if 'src/core/ps1_disc_session.cpp' not in text:
               anchor = '  src/core/ps1_exe.cpp\n'
               if anchor not in text: raise SystemExit('missing ps1_exe source anchor')
@@ -88,7 +89,26 @@ jobs:
               anchor = 'add_jojo_test(jojo_ps1_runtime_installation_tests tests/test_ps1_runtime_installation.cpp)\n'
               if anchor not in text: raise SystemExit('missing runtime-installation test anchor')
               text = text.replace(anchor, anchor + direct_test, 1)
-          path.write_text(text, encoding='utf-8')
+          cmake.write_text(text, encoding='utf-8')
+
+          # M1 moved observed whole-disc revision ownership out of conversion.cpp
+          # into revision.cpp so direct media code can use it without depending on
+          # the legacy installation/conversion subsystem.
+          conversion = Path('src/core/conversion.cpp')
+          ctext = conversion.read_text(encoding='utf-8')
+          struct_start = ctext.find('struct ObservedDiscRevision {')
+          next_table = ctext.find('constexpr std::array<std::string_view, 28>', struct_start)
+          if struct_start != -1:
+              if next_table == -1:
+                  raise SystemExit('could not locate conversion table after ObservedDiscRevision')
+              ctext = ctext[:struct_start] + ctext[next_table:]
+          fn_start = ctext.find('Result<GameRevisionMatch> identify_observed_disc_revision(')
+          fn_end = ctext.find('Result<void> save_conversion_manifest_atomic(', fn_start)
+          if fn_start != -1:
+              if fn_end == -1:
+                  raise SystemExit('could not locate end of identify_observed_disc_revision')
+              ctext = ctext[:fn_start] + ctext[fn_end:]
+          conversion.write_text(ctext, encoding='utf-8')
           PY
 
       - name: Verify imported baseline with M1 and M2
