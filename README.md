@@ -14,7 +14,7 @@ The end-user application remains one Windows executable:
 JOJO-Recompiled.exe
 ```
 
-The shipping flow now uses the user's original PS1 image directly. There is no user-facing "prepare game" conversion step and no extracted-game installation root.
+The shipping flow uses the user's original PS1 image directly. There is no user-facing "prepare game" conversion step and no extracted-game installation root.
 
 Source resolution order is:
 
@@ -24,11 +24,11 @@ Source resolution order is:
 
 A `.cue` plus its companion `.bin` track files is treated as one logical source. Unsupported Dreamcast `.gdi` files are not accepted by the PS1 source flow.
 
-After validation, the application stores only source metadata needed to reopen the user's image — absolute path, format, size, fingerprint, and revision id. The original image remains the data source and is opened read-only.
+After validation, the application stores only source metadata needed to reopen the user's image — absolute path, format, size, fingerprint, and revision id. The original image remains the authoritative data source and is opened read-only.
 
-## Current state — direct-source M4
+## Current state — direct-source M6
 
-The active PS1 path currently includes:
+The completed direct-source foundation includes:
 
 - PS1 ISO/BIN/CUE media access;
 - observed USA whole-image fingerprint recognition;
@@ -39,11 +39,15 @@ The active PS1 path currently includes:
 - startup priority of saved binding → `Data/ROM` → manual selection;
 - Win32 `VALIDAR JOGO` flow replacing the old `PREPARAR JOGO` flow;
 - direct R3000A checkpoint execution from the original disc image;
-- synthetic regression fixtures for source validation, binding, startup selection, and Win32 UX contracts.
+- bounded logical-sector streaming from ISO and raw BIN/CUE media;
+- removal of the legacy conversion/installation sources from the shipping `jojo_core` target;
+- removal of legacy installation/conversion tests from the default CTest graph;
+- removal of `install_root` from active application settings;
+- an architecture gate that prevents the shipping entry point/runtime from regaining dependencies on `convert_image`, `active_install.ini`, `boot.psxexe`, `generations/`, or the old installation API.
 
-The repository still contains legacy installation/conversion implementation for compatibility with older tests and migration work, but the Windows M4 entry point no longer uses that path. Removing the remaining legacy subsystem is a later cleanup milestone.
+Historical conversion/installation source files may remain in the repository as development history, but they are no longer part of the shipping runtime graph or default test graph.
 
-The project already contains an R3000A reference execution core and HLE-oriented PS1 infrastructure. That does **not** mean the commercial game is fully playable yet. Full original-game execution, GPU rendering, SPU audio, controller integration with game logic, timing fidelity, and gameplay remain later milestones and require validation against the user's legal game image.
+The project already contains an R3000A reference execution core and HLE-oriented PS1 infrastructure. That does **not** mean the commercial game is fully playable yet. Full original-game execution, GPU/GTE behavior, SPU audio, CD-ROM controller semantics, controller integration with game logic, timing fidelity, and gameplay remain later milestones and require validation against the user's legal game image.
 
 Synthetic fixtures prove technical contracts; they do not by themselves prove the commercial game is playable.
 
@@ -71,4 +75,4 @@ Historical design and plan files under `docs/superpowers/` remain in Git as proj
 
 ## Verification
 
-Milestone changes are gated by CMake/CTest. M4 specifically has a Windows x64 contract test that launches the shipping entry point and verifies the direct-source UX, startup source priority, supported image selection, and removal of the legacy installation controls.
+Milestone changes are gated by CMake/CTest. M5 adds a sector-streaming contract covering cooked ISO and raw MODE2/2352 media. M6 adds an architecture gate that rejects legacy installation dependencies in the shipping graph. The final M6 gate is validated on both Linux and Windows x64 with a full build and complete CTest suite.
