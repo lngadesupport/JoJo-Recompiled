@@ -59,7 +59,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          rsync -a --delete --exclude='.git/' /tmp/jojo-canonical/ ./
+          rsync -a --delete --exclude='.git/' --exclude='.github/workflows/' /tmp/jojo-canonical/ ./
           cp -a /tmp/jojo-migration-preserve/. ./
 
       - name: Wire M1 and M2 into canonical baseline
@@ -91,9 +91,6 @@ jobs:
               text = text.replace(anchor, anchor + direct_test, 1)
           cmake.write_text(text, encoding='utf-8')
 
-          # M1 moved observed whole-disc revision ownership out of conversion.cpp
-          # into revision.cpp so direct media code can use it without depending on
-          # the legacy installation/conversion subsystem.
           conversion = Path('src/core/conversion.cpp')
           ctext = conversion.read_text(encoding='utf-8')
           struct_start = ctext.find('struct ObservedDiscRevision {')
