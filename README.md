@@ -14,7 +14,7 @@ The end-user application remains one Windows executable:
 JOJO-Recompiled.exe
 ```
 
-The shipping flow uses the user's original PS1 image directly. There is no user-facing "prepare game" conversion step and no extracted-game installation root.
+The shipping flow uses the user's original PS1 image directly. There is no user-facing prepare/convert step and no extracted-game installation root.
 
 Source resolution order is:
 
@@ -22,45 +22,58 @@ Source resolution order is:
 2. otherwise autodetect one logical PS1 source under `Data/ROM` beside the executable;
 3. otherwise wait for the user to select or drag-and-drop a supported `.iso`, `.bin`, or `.cue` image.
 
-A `.cue` plus its companion `.bin` track files is treated as one logical source. Unsupported Dreamcast `.gdi` files are not accepted by the PS1 source flow.
+A `.cue` plus its companion `.bin` track files is one logical source. `.gdi` is rejected. The original image remains authoritative and read-only.
 
-After validation, the application stores only source metadata needed to reopen the user's image — absolute path, format, size, fingerprint, and revision id. The original image remains the authoritative data source and is opened read-only.
+## Phase status
 
-## Current state — commercial frontier M7 / Phase 2
+### Phase 1 — Direct-source foundation ✅
 
-The completed direct-source foundation includes:
+Completed capabilities include ISO/BIN/CUE access, ISO9660, `SYSTEM.CNF`, PS-X EXE parsing, source binding, `Data/ROM` discovery, direct R3000A startup, sector streaming, Windows direct-source UX, and removal of the legacy conversion/installation runtime from the shipping graph.
 
-- PS1 ISO/BIN/CUE media access;
-- observed USA whole-image fingerprint recognition;
-- `SYSTEM.CNF` boot-path discovery;
-- `PS-X EXE` parsing and validation;
-- direct `Ps1DiscSession` access without creating an extracted installation;
-- persistent game-source binding with change detection;
-- startup priority of saved binding → `Data/ROM` → manual selection;
-- Win32 `VALIDAR JOGO` flow replacing the old `PREPARAR JOGO` flow;
-- direct R3000A execution from the original disc image;
-- bounded logical-sector streaming from ISO and raw BIN/CUE media;
-- removal of the legacy conversion/installation sources from the shipping `jojo_core` target;
-- removal of legacy installation/conversion tests from the default CTest graph;
-- removal of `install_root` from active application settings;
-- an architecture gate that prevents the shipping entry point/runtime from regaining dependencies on `convert_image`, `active_install.ini`, `boot.psxexe`, `generations/`, or the old installation API.
+### Phase 2 — Commercial boot frontier/evidence ✅
 
-Phase 2 adds a deterministic commercial-boot evidence path:
+Phase 2 added:
 
-- stable frontier classes for BIOS, generic MMIO, DMA, GPU GP0/GP1, CD-ROM, CPU boundary, stalls, execution budget, frame presentation, and fatal runtime errors;
-- `Ps1CommercialEvidenceRunner`, which owns both the direct disc session and R3000A boot runtime so media remains available throughout the run;
-- normal mode that **stops at the first unsupported behavior instead of guessing**;
-- optional diagnostic BIOS fallbacks that are explicit, bounded, and recorded in the report;
-- bounded BIOS/MMIO/CD-ROM/trace evidence buffers;
-- compact atomic report serialization that contains engineering metadata and summaries but no RAM/VRAM dump, sector dump, PS-X EXE payload, or copied commercial asset;
-- Win32 shipping diagnostics redirected from the old direct checkpoint helper to the commercial evidence runner;
-- `%LOCALAPPDATA%\JOJO Recompiled\diagnostics\commercial-frontier.txt` as the current user-facing frontier report.
+- stable commercial frontier classification;
+- `Ps1CommercialEvidenceRunner` retaining a live direct-disc session;
+- normal mode that stops at unsupported behavior instead of guessing;
+- explicit and recorded diagnostic-only BIOS fallbacks;
+- bounded BIOS/MMIO/CD-ROM/trace evidence;
+- compact `commercial-frontier.txt` diagnostics without commercial payload dumps;
+- Windows shipping diagnostics using the same direct-disc runtime.
 
-Historical conversion/installation source files may remain in the repository as development history, but they are no longer part of the shipping runtime graph or default test graph.
+### Phase 3 — PS1 hardware services ✅
 
-The project already contains an R3000A reference execution core and HLE-oriented PS1 infrastructure. That does **not** mean the commercial game is fully playable yet. Full original-game execution, GPU/GTE behavior, SPU audio, CD-ROM controller semantics, controller integration with game logic, timing fidelity, and gameplay remain later milestones and require validation against the user's legal game image.
+Phase 3 adds a focused `Ps1HardwareServices` layer behind CPU-visible MMIO:
 
-Synthetic fixtures prove technical contracts and CI portability; they do **not** by themselves prove that the commercial JoJo image boots to gameplay. The next commercial implementation frontier must be selected from evidence produced by a user-supplied legal JoJo image, not from speculative emulation work.
+- deterministic `I_STAT` / `I_MASK` routing;
+- three bounded root counters with explicit cycle stepping and target IRQ behavior;
+- seven DMA register banks plus DPCR/DICR state;
+- bounded supported DMA for CD-ROM → RAM and RAM → GPU;
+- a direct-disc CD-ROM controller backed by the live `Ps1DiscSession`;
+- indexed CD register/FIFO behavior and bounded sector reads from the user's image;
+- GP0/GP1 GPU command ingress with deterministic control/status state;
+- CPU GP0 writes and DMA2 words sharing the same GPU ingress path;
+- explicit unsupported frontiers for device behavior not yet implemented;
+- an end-to-end synthetic contract covering timer IRQ → CD-ROM read → DMA3 to RAM → DMA2 to GP0 while proving the source image is unchanged.
+
+The final Phase 3 gate performs full Release builds and the complete CTest graph on Linux and Windows x64.
+
+## What Phase 3 does not claim
+
+Synthetic fixtures prove deterministic hardware contracts and portability. They do **not** prove that the commercial JoJo image is fully playable.
+
+Still deferred:
+
+- full GPU rasterization and VRAM presentation;
+- GTE geometry execution required by the commercial rendering path;
+- first real rendered commercial frame;
+- SPU/audio fidelity;
+- original-game controller/save integration;
+- complete gameplay validation;
+- native x64 recompiler/backend promotion and release optimization.
+
+These are addressed by later phases, beginning with **Phase 4 — GPU/GTE + first rendered frame**.
 
 ## User data
 
@@ -72,18 +85,14 @@ Per-user configuration and diagnostics are stored under:
 
 The persistent source binding is metadata only. No original game assets are copied into the repository or release package.
 
-## Retained host-side infrastructure
-
-Console-neutral components retained from earlier work include presentation/settings/input models, mods, training tools, rollback/networking utilities, revision/fingerprint infrastructure, ISO9660/media handling, Windows application plumbing, and diagnostics. Their existence does not imply that every subsystem is already connected to the original PS1 game logic.
-
 ## Build on Windows
 
 See [`docs/BUILD-WINDOWS.md`](docs/BUILD-WINDOWS.md).
 
 ## Architecture / roadmap
 
-Historical design and plan files under `docs/superpowers/` remain in Git as project history. The active product direction is the PS1 direct-source runtime and commercial-frontier workflow described above.
+Historical design and plan files under `docs/superpowers/` remain in Git as project history. The active product direction is the PS1 direct-source runtime, deterministic commercial evidence workflow, and title-scoped PS1 hardware services described above.
 
 ## Verification
 
-Milestone changes are gated by CMake/CTest. The direct-source foundation includes sector-streaming and active-architecture contracts. Phase 2 adds dedicated commercial-frontier, commercial-evidence, compact-report, shipping-integration, and Windows x64 gates. A synthetic green suite establishes deterministic contracts and portability; commercial-game progress still requires frontier evidence from the user's own legal image.
+All phase changes are gated by CMake/CTest. Phase 3 adds a read-only final gate that verifies the active PS1 architecture, the integrated hardware-services contract, a complete Release build, and the full test graph on both Linux and Windows x64.
