@@ -1,0 +1,21 @@
+name: Phase 4 D3D11 Bridge
+
+on:
+  push:
+    branches:
+      - feature/ps1-gpu-gte-first-frame-phase4
+
+permissions:
+  contents: read
+
+jobs:
+  d3d11-bridge-windows:
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        run: cmake -S . -B build -A x64
+      - name: Build Win32 presentation contract
+        run: cmake --build build --config Release --target jojo_win32_presentation_tests
+      - name: Run Win32 presentation contract
+        run: ctest --test-dir build -C Release --output-on-failure -R jojo_win32_presentation_tests
