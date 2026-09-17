@@ -1,0 +1,21 @@
+name: Phase 2 Commercial Frontier
+
+on:
+  push:
+    branches:
+      - feature/ps1-commercial-boot-phase2
+
+permissions:
+  contents: read
+
+jobs:
+  linux-contract:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
+      - name: Build frontier contract
+        run: cmake --build build --target jojo_ps1_commercial_frontier_tests -j2
+      - name: Run frontier contract
+        run: ctest --test-dir build -R jojo_ps1_commercial_frontier_tests --output-on-failure
