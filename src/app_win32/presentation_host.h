@@ -53,6 +53,14 @@ struct D3d11FrameUploadPlan {
     const Ps1DisplayFrame& frame,
     ID3D11Texture2D** texture_out);
 
+[[nodiscard]] Result<void> blit_d3d11_ps1_frame(
+    ID3D11Device* device,
+    ID3D11DeviceContext* context,
+    const Ps1DisplayFrame& frame,
+    ID3D11RenderTargetView* render_target,
+    std::uint32_t target_width,
+    std::uint32_t target_height);
+
 [[nodiscard]] Result<RendererCapabilities> probe_d3d11_renderer_capabilities();
 
 }
