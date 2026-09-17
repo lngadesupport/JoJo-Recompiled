@@ -17,3 +17,12 @@ jobs:
         run: g++ -std=c++20 -Wall -Wextra -Wpedantic -Isrc tests/test_ps1_gpu_vram.cpp src/core/ps1_gpu_ingress.cpp -o /tmp/jojo_gpu_vram_test
       - name: Run VRAM contract
         run: /tmp/jojo_gpu_vram_test
+      - name: Compile display-frame contract directly
+        run: >-
+          g++ -std=c++20 -Wall -Wextra -Wpedantic -Isrc
+          tests/test_ps1_display_frame.cpp
+          src/core/ps1_gpu_ingress.cpp
+          src/core/ps1_display_frame.cpp
+          -o /tmp/jojo_display_frame_test
+      - name: Run display-frame contract
+        run: /tmp/jojo_display_frame_test
