@@ -7,12 +7,8 @@ namespace jojo {
 namespace {
 
 constexpr std::uint32_t kDiagnosticMmioBase = 0x1F801000u;
-constexpr std::uint32_t kInterruptStatusAddress = 0x1F801070u;
-constexpr std::uint32_t kInterruptMaskAddress = 0x1F801074u;
 constexpr std::uint32_t kDmaControlAddress = 0x1F8010F0u;
 constexpr std::uint32_t kDmaInterruptAddress = 0x1F8010F4u;
-constexpr std::uint32_t kTimer1ModeAddress = 0x1F801114u;
-constexpr std::uint16_t kInterruptValidBits = 0x07FFu;
 constexpr std::uint32_t kDmaInterruptControlMask = 0x00FF807Fu;
 constexpr std::uint32_t kDmaInterruptFlagMask = 0x7F000000u;
 constexpr std::uint32_t kDmaInterruptMasterFlag = 0x80000000u;
@@ -136,12 +132,11 @@ R3000aBusResult Ps1MemoryBus::read8(std::uint32_t address) noexcept {
 R3000aBusResult Ps1MemoryBus::read16(std::uint32_t address) noexcept {
     const auto physical = guest_to_physical(address);
     if (physical) {
-        if (*physical == kInterruptMaskAddress) {
-            return {R3000aBusStatus::ok, interrupt_mask_};
-        }
         if (auto* p = mapped_bytes(*physical, 2u, main_ram_, scratchpad_)) {
             return {R3000aBusStatus::ok, read_little_endian(p, 2u)};
         }
+        const auto hardware = hardware_.read16(*physical);
+        if (hardware.status == R3000aBusStatus::ok) return hardware;
         if (diagnostic_mmio_probe_enabled_) {
             if (auto* p = diagnostic_mmio_bytes(*physical, 2u, diagnostic_mmio_shadow_)) {
                 const auto value = read_little_endian(p, 2u);
@@ -168,6 +163,8 @@ R3000aBusResult Ps1MemoryBus::read32(std::uint32_t address) noexcept {
         if (auto* p = mapped_bytes(*physical, 4u, main_ram_, scratchpad_)) {
             return {R3000aBusStatus::ok, read_little_endian(p, 4u)};
         }
+        const auto hardware = hardware_.read32(*physical);
+        if (hardware.status == R3000aBusStatus::ok) return hardware;
         if (diagnostic_mmio_probe_enabled_) {
             if (auto* p = diagnostic_mmio_bytes(*physical, 4u, diagnostic_mmio_shadow_)) {
                 const auto value = read_little_endian(p, 4u);
@@ -189,6 +186,8 @@ R3000aBusResult Ps1MemoryBus::write8(std::uint32_t address, std::uint8_t value) 
             write_little_endian(p, 1u, value);
             return {R3000aBusStatus::ok, 0u};
         }
+        const auto hardware = hardware_.write8(*physical, value);
+        if (hardware.status == R3000aBusStatus::ok) return hardware;
         if (diagnostic_mmio_probe_enabled_) {
             if (auto* p = diagnostic_mmio_bytes(*physical, 1u, diagnostic_mmio_shadow_)) {
                 write_little_endian(p, 1u, value);
@@ -206,18 +205,12 @@ R3000aBusResult Ps1MemoryBus::write8(std::uint32_t address, std::uint8_t value) 
 R3000aBusResult Ps1MemoryBus::write16(std::uint32_t address, std::uint16_t value) noexcept {
     const auto physical = guest_to_physical(address);
     if (physical) {
-        if (*physical == kInterruptStatusAddress) {
-            interrupt_status_ = static_cast<std::uint16_t>(interrupt_status_ & value & kInterruptValidBits);
-            return {R3000aBusStatus::ok, 0u};
-        }
-        if (*physical == kInterruptMaskAddress) {
-            interrupt_mask_ = static_cast<std::uint16_t>(value & kInterruptValidBits);
-            return {R3000aBusStatus::ok, 0u};
-        }
         if (auto* p = mapped_bytes(*physical, 2u, main_ram_, scratchpad_)) {
             write_little_endian(p, 2u, value);
             return {R3000aBusStatus::ok, 0u};
         }
+        const auto hardware = hardware_.write16(*physical, value);
+        if (hardware.status == R3000aBusStatus::ok) return hardware;
         if (diagnostic_mmio_probe_enabled_) {
             if (auto* p = diagnostic_mmio_bytes(*physical, 2u, diagnostic_mmio_shadow_)) {
                 write_little_endian(p, 2u, value);
@@ -245,15 +238,12 @@ R3000aBusResult Ps1MemoryBus::write32(std::uint32_t address, std::uint32_t value
             dma_interrupt_ = (value & kDmaInterruptControlMask) | flags;
             return {R3000aBusStatus::ok, 0u};
         }
-        if (*physical == kTimer1ModeAddress) {
-            timer1_mode_ = static_cast<std::uint16_t>(value & 0xFFFFu);
-            timer1_counter_ = 0u;
-            return {R3000aBusStatus::ok, 0u};
-        }
         if (auto* p = mapped_bytes(*physical, 4u, main_ram_, scratchpad_)) {
             write_little_endian(p, 4u, value);
             return {R3000aBusStatus::ok, 0u};
         }
+        const auto hardware = hardware_.write32(*physical, value);
+        if (hardware.status == R3000aBusStatus::ok) return hardware;
         if (diagnostic_mmio_probe_enabled_) {
             if (auto* p = diagnostic_mmio_bytes(*physical, 4u, diagnostic_mmio_shadow_)) {
                 write_little_endian(p, 4u, value);
@@ -283,7 +273,7 @@ Result<void> Ps1MemoryBus::load_main_ram(
 }
 
 std::uint16_t Ps1MemoryBus::interrupt_mask() const noexcept {
-    return interrupt_mask_;
+    return hardware_.interrupt_mask();
 }
 
 std::uint32_t Ps1MemoryBus::dma_interrupt() const noexcept {
@@ -291,23 +281,30 @@ std::uint32_t Ps1MemoryBus::dma_interrupt() const noexcept {
 }
 
 std::uint16_t Ps1MemoryBus::timer1_counter() const noexcept {
-    return timer1_counter_;
+    return hardware_.timer_counter(1u);
 }
 
 std::uint16_t Ps1MemoryBus::timer1_mode() const noexcept {
-    return timer1_mode_;
+    return hardware_.timer_mode(1u);
+}
+
+Ps1HardwareServices& Ps1MemoryBus::hardware_services() noexcept {
+    return hardware_;
+}
+
+const Ps1HardwareServices& Ps1MemoryBus::hardware_services() const noexcept {
+    return hardware_;
 }
 
 std::uint64_t Ps1MemoryBus::diagnostic_state_hash() const noexcept {
     std::uint64_t hash = kFnvOffset;
     hash_bytes(hash, std::span<const std::uint8_t>{main_ram_.data(), main_ram_.size()});
     hash_bytes(hash, std::span<const std::uint8_t>{scratchpad_.data(), scratchpad_.size()});
-    hash_u16(hash, interrupt_status_);
-    hash_u16(hash, interrupt_mask_);
+    const auto hardware_hash = hardware_.diagnostic_state_hash();
+    hash_u32(hash, static_cast<std::uint32_t>(hardware_hash));
+    hash_u32(hash, static_cast<std::uint32_t>(hardware_hash >> 32u));
     hash_u32(hash, dma_control_);
     hash_u32(hash, dma_interrupt_);
-    hash_u16(hash, timer1_counter_);
-    hash_u16(hash, timer1_mode_);
     hash_bytes(hash, std::span<const std::uint8_t>{
         diagnostic_mmio_shadow_.data(), diagnostic_mmio_shadow_.size()});
     return hash;

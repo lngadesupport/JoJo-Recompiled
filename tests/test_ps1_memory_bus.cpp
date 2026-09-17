@@ -32,7 +32,7 @@ int main() {
 
     CHECK(bus.read32(0x1F801074u).status == jojo::R3000aBusStatus::unsupported);
     CHECK(bus.write16(0x1F801070u, 0x0000u).status == jojo::R3000aBusStatus::ok);
-    CHECK(bus.read16(0x1F801070u).status == jojo::R3000aBusStatus::unsupported);
+    CHECK(bus.read16(0x1F801070u).status == jojo::R3000aBusStatus::ok);
 
     const auto dpcr_reset = bus.read32(0x1F8010F0u);
     CHECK(dpcr_reset.status == jojo::R3000aBusStatus::ok);
