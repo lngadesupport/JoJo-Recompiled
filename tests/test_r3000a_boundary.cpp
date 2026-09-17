@@ -57,13 +57,16 @@ int main() {
         CHECK(s.pc == 0x80000080u && s.next_pc == 0x80000084u);
     }
 
-    // CU2 set: GTE/COP2 is deliberately not implemented in M2 and must stop explicitly.
-    for (const auto raw : operations) {
+    // CU2 set: register transfers are now implemented by the Phase 4A contract.
+    // A real GTE command remains the explicit frontier until Phase 4B implements
+    // only commands demonstrated by commercial evidence.
+    {
         TestR3000aBus bus;
         auto s = base_state();
         s.cop0.status |= kCu2;
         const auto status_before = s.cop0.status;
         const auto cause_before = s.cop0.cause;
+        const auto raw = cop2(0x10u);
         bus.store32(0x1000u, raw);
 
         const auto r = jojo::step_r3000a(s, bus);
@@ -72,11 +75,13 @@ int main() {
         CHECK(r.diagnostic.stage == jojo::R3000aStage::cop2);
         CHECK(r.diagnostic.pc == 0x1000u);
         CHECK(r.diagnostic.opcode && *r.diagnostic.opcode == raw);
+        CHECK(r.diagnostic.coprocessor && *r.diagnostic.coprocessor == 2u);
         CHECK(s.pc == 0x1000u && s.next_pc == 0x1004u);
         CHECK(s.cop0.status == status_before);
         CHECK(s.cop0.cause == cause_before);
         CHECK(s.gpr[8] == 0xAABBCCDDu);
         CHECK(!s.pending_load.valid);
+        CHECK(s.gte.last_command == raw);
     }
 
     return failures ? 1 : 0;
