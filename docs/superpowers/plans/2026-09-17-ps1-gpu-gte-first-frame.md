@@ -34,8 +34,8 @@
 - Produces: `R3000aGte` with 32 data and 32 control registers, plus architectural transfer semantics for `MFC2`, `CFC2`, `MTC2`, and `CTC2`.
 - Preserves: CU2-disabled instructions raise Coprocessor Unusable with CE=2.
 
-- [ ] Step 1: Add focused tests proving CU2-disabled exception behavior still holds and CU2-enabled transfer instructions mutate/read the intended GTE register.
-- [ ] Step 2: Run only the new COP2 target and verify RED because `R3000aState` has no GTE state and transfers still return `cop2_unimplemented`.
+- [x] Step 1: Add focused tests proving CU2-disabled exception behavior still holds and CU2-enabled transfer instructions mutate/read the intended GTE register.
+- [x] Step 2: Run only the new COP2 target and verify RED because `R3000aState` has no GTE state and transfers still return `cop2_unimplemented`.
 - [ ] Step 3: Add `R3000aGte` state and minimal transfer semantics. `MFC2/CFC2` use the existing delayed-load model; `MTC2/CTC2` write immediately.
 - [ ] Step 4: Run the COP2 target and the existing R3000A exception/boundary targets; verify GREEN.
 - [ ] Step 5: Commit `feat: add PS1 COP2 GTE register transfers`.
