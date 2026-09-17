@@ -1,0 +1,21 @@
+name: Phase 4 COP2 Green Gate
+
+on:
+  push:
+    branches:
+      - feature/ps1-gpu-gte-first-frame-phase4
+
+permissions:
+  contents: read
+
+jobs:
+  cop2-green-linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+      - name: Build focused R3000A regression
+        run: cmake --build build --target jojo_r3000a_cop2_tests jojo_r3000a_cop0_tests jojo_r3000a_exception_tests jojo_r3000a_boundary_tests -j2
+      - name: Run focused R3000A regression
+        run: ctest --test-dir build -R 'jojo_r3000a_(cop2|cop0|exception|boundary)_tests' --output-on-failure
