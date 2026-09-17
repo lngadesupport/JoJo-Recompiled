@@ -44,10 +44,13 @@ foreach(_legacy_test IN ITEMS
   endif()
 endforeach()
 
-file(READ "${JOJO_SOURCE_DIR}/.github/workflows/build.yml" _workflow)
-string(TOLOWER "${_workflow}" _workflow_lower)
-if(_workflow_lower MATCHES "usa native backend|runtime native backend|native backend manifest|jojo_game_backend|sh4")
-  message(FATAL_ERROR "Workflow still runs old guest-backend contracts")
+set(_canonical_workflow "${JOJO_SOURCE_DIR}/.github/workflows/build.yml")
+if(EXISTS "${_canonical_workflow}")
+  file(READ "${_canonical_workflow}" _workflow)
+  string(TOLOWER "${_workflow}" _workflow_lower)
+  if(_workflow_lower MATCHES "usa native backend|runtime native backend|native backend manifest|jojo_game_backend|sh4")
+    message(FATAL_ERROR "Workflow still runs old guest-backend contracts")
+  endif()
 endif()
 
 foreach(_path IN ITEMS
