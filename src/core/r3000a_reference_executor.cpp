@@ -522,6 +522,28 @@ R3000aStepResult step_r3000a(R3000aState& state, R3000aBus& bus) noexcept {
         case MipsOp::cfc2:
         case MipsOp::mtc2:
         case MipsOp::ctc2:
+            if ((state.cop0.status & kStatusCu2) == 0u) {
+                return enter_exception(state, R3000aExceptionCode::coprocessor_unusable,
+                                       R3000aStage::cop2, instruction_pc, current_delay,
+                                       instruction.raw, std::nullopt, 2u);
+            }
+            switch (instruction.op) {
+                case MipsOp::mfc2:
+                    queue_load(instruction.rt, state.gte.data[instruction.rd]);
+                    break;
+                case MipsOp::cfc2:
+                    queue_load(instruction.rt, state.gte.control[instruction.rd]);
+                    break;
+                case MipsOp::mtc2:
+                    state.gte.data[instruction.rd] = rt;
+                    break;
+                case MipsOp::ctc2:
+                    state.gte.control[instruction.rd] = rt;
+                    break;
+                default:
+                    break;
+            }
+            break;
         case MipsOp::cop2_command:
             if ((state.cop0.status & kStatusCu2) == 0u) {
                 return enter_exception(state, R3000aExceptionCode::coprocessor_unusable,
