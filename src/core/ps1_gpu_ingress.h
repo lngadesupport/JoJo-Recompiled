@@ -29,6 +29,8 @@ private:
 
     enum class Gp0Mode : std::uint8_t {
         command,
+        fill_rectangle_position,
+        fill_rectangle_size,
         cpu_to_vram_destination,
         cpu_to_vram_size,
         cpu_to_vram_payload,
@@ -36,6 +38,7 @@ private:
 
     void reset_command_buffer() noexcept;
     void write_transfer_pixel(std::uint16_t pixel) noexcept;
+    void fill_rectangle(std::uint32_t width, std::uint32_t height) noexcept;
 
     std::uint32_t status_{reset_status};
     std::uint64_t gp0_word_count_{};
@@ -44,6 +47,9 @@ private:
     std::uint64_t vram_write_count_{};
 
     Gp0Mode gp0_mode_{Gp0Mode::command};
+    std::uint16_t fill_color_{};
+    std::uint32_t fill_x_{};
+    std::uint32_t fill_y_{};
     std::uint32_t transfer_x_{};
     std::uint32_t transfer_y_{};
     std::uint32_t transfer_width_{};
