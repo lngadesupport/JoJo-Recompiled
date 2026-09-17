@@ -320,6 +320,70 @@ void test_d3d11_ps1_frame_blit_scales_with_point_sampling() {
     context->Release();
     device->Release();
 }
+
+void test_d3d11_presenter_creates_swap_chain_and_tracks_hidden_window_resize() {
+    HWND window = CreateWindowExW(
+        0,
+        L"STATIC",
+        L"JOJO D3D11 presenter contract",
+        WS_OVERLAPPEDWINDOW,
+        0,
+        0,
+        96,
+        64,
+        nullptr,
+        nullptr,
+        GetModuleHandleW(nullptr),
+        nullptr);
+    CHECK(window != nullptr);
+    if (!window) return;
+
+    auto presenter = jojo::D3d11Ps1Presenter::create(window);
+    CHECK(presenter);
+    if (!presenter) {
+        DestroyWindow(window);
+        return;
+    }
+
+    jojo::Ps1DisplayFrame frame{};
+    frame.width = 2u;
+    frame.height = 1u;
+    frame.rgba8 = {0xFF0000FFu, 0xFF00FF00u};
+
+    auto presented = presenter.value.present(frame);
+    CHECK(presented);
+
+    RECT first_client{};
+    CHECK(GetClientRect(window, &first_client) != FALSE);
+    if (presented) {
+        CHECK(presenter.value.back_buffer_width() ==
+              static_cast<std::uint32_t>(first_client.right - first_client.left));
+        CHECK(presenter.value.back_buffer_height() ==
+              static_cast<std::uint32_t>(first_client.bottom - first_client.top));
+    }
+
+    CHECK(SetWindowPos(
+        window,
+        nullptr,
+        0,
+        0,
+        160,
+        120,
+        SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE) != FALSE);
+
+    RECT second_client{};
+    CHECK(GetClientRect(window, &second_client) != FALSE);
+    presented = presenter.value.present(frame);
+    CHECK(presented);
+    if (presented) {
+        CHECK(presenter.value.back_buffer_width() ==
+              static_cast<std::uint32_t>(second_client.right - second_client.left));
+        CHECK(presenter.value.back_buffer_height() ==
+              static_cast<std::uint32_t>(second_client.bottom - second_client.top));
+    }
+
+    DestroyWindow(window);
+}
 }
 
 int main() {
@@ -332,6 +396,7 @@ int main() {
     test_d3d11_ps1_frame_upload_plan_rejects_malformed_storage();
     test_d3d11_ps1_frame_upload_round_trips_pixels();
     test_d3d11_ps1_frame_blit_scales_with_point_sampling();
+    test_d3d11_presenter_creates_swap_chain_and_tracks_hidden_window_resize();
     if (failures != 0) {
         std::cerr << failures << " Win32 presentation test(s) failed\n";
         return 1;
