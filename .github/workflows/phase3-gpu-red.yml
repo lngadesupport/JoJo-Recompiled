@@ -13,20 +13,167 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - name: Integrate GPU test target only
+      - name: Integrate GPU source and test target
         shell: python
         run: |
           from pathlib import Path
           p = Path('CMakeLists.txt')
           text = p.read_text()
-          line = 'add_jojo_test(jojo_ps1_gpu_ingress_tests tests/test_ps1_gpu_ingress.cpp)\n'
+          source = '  src/core/ps1_gpu_ingress.cpp\n'
+          source_anchor = '  src/core/ps1_cdrom.cpp\n'
+          if source not in text:
+              if source_anchor not in text:
+                  raise SystemExit('missing CD-ROM source anchor')
+              text = text.replace(source_anchor, source_anchor + source, 1)
+          test = 'add_jojo_test(jojo_ps1_gpu_ingress_tests tests/test_ps1_gpu_ingress.cpp)\n'
           anchor = 'add_jojo_test(jojo_ps1_cdrom_dma_tests tests/test_ps1_cdrom_dma.cpp)\n'
-          if line not in text:
+          if test not in text:
               if anchor not in text:
                   raise SystemExit('missing CD-ROM DMA test anchor')
-              text = text.replace(anchor, anchor + line, 1)
+              text = text.replace(anchor, anchor + test, 1)
+          p.write_text(text)
+      - name: Wire GP0 GP1 and DMA2 through hardware services
+        shell: python
+        run: |
+          from pathlib import Path
+          p = Path('src/core/ps1_hardware_services.cpp')
+          text = p.read_text()
+
+          old = '''R3000aBusResult Ps1HardwareServices::read32(std::uint32_t physical) noexcept {
+              if (physical == kDmaControlAddress) {
+          '''
+          new = '''R3000aBusResult Ps1HardwareServices::read32(std::uint32_t physical) noexcept {
+              if (physical == 0x1F801814u) {
+                  return {R3000aBusStatus::ok, gpu_.status()};
+              }
+              if (physical == kDmaControlAddress) {
+          '''
+          if old in text:
+              text = text.replace(old, new, 1)
+
+          old = '''R3000aBusResult Ps1HardwareServices::write32(std::uint32_t physical,
+                                                       std::uint32_t value) noexcept {
+              if (physical == kDmaControlAddress) {
+          '''
+          new = '''R3000aBusResult Ps1HardwareServices::write32(std::uint32_t physical,
+                                                       std::uint32_t value) noexcept {
+              if (physical == 0x1F801810u) return gpu_.write_gp0(value);
+              if (physical == 0x1F801814u) return gpu_.write_gp1(value);
+              if (physical == kDmaControlAddress) {
+          '''
+          if old in text:
+              text = text.replace(old, new, 1)
+
+          old = '''bool Ps1HardwareServices::execute_pending_dma(
+              std::span<std::uint8_t> main_ram) noexcept {
+              if (!pending_dma_transfer_) return false;
+              const auto request = *pending_dma_transfer_;
+              if (request.channel != 3u || request.from_ram) return false;
+
+              const auto start = static_cast<std::size_t>(request.madr);
+              const auto byte_count = static_cast<std::size_t>(request.words) * 4u;
+              if (start >= main_ram.size() || byte_count > main_ram.size() - start) {
+                  return false;
+              }
+              if (cdrom_.data_bytes_available() < byte_count) return false;
+
+              std::vector<std::uint32_t> words(request.words, 0u);
+              if (cdrom_.read_data_words(words) != words.size()) return false;
+
+              for (std::size_t i = 0; i < words.size(); ++i) {
+                  const auto value = words[i];
+                  const auto offset = start + i * 4u;
+                  main_ram[offset + 0u] = static_cast<std::uint8_t>(value);
+                  main_ram[offset + 1u] = static_cast<std::uint8_t>(value >> 8u);
+                  main_ram[offset + 2u] = static_cast<std::uint8_t>(value >> 16u);
+                  main_ram[offset + 3u] = static_cast<std::uint8_t>(value >> 24u);
+              }
+              return complete_dma_transfer(3u);
+          }
+          '''
+          new = '''bool Ps1HardwareServices::execute_pending_dma(
+              std::span<std::uint8_t> main_ram) noexcept {
+              if (!pending_dma_transfer_) return false;
+              const auto request = *pending_dma_transfer_;
+              const auto start = static_cast<std::size_t>(request.madr);
+              const auto byte_count = static_cast<std::size_t>(request.words) * 4u;
+              if (start >= main_ram.size() || byte_count > main_ram.size() - start) {
+                  return false;
+              }
+
+              if (request.channel == 2u && request.from_ram) {
+                  auto candidate = gpu_;
+                  for (std::size_t i = 0; i < request.words; ++i) {
+                      const auto offset = start + i * 4u;
+                      const std::uint32_t value =
+                          static_cast<std::uint32_t>(main_ram[offset + 0u]) |
+                          (static_cast<std::uint32_t>(main_ram[offset + 1u]) << 8u) |
+                          (static_cast<std::uint32_t>(main_ram[offset + 2u]) << 16u) |
+                          (static_cast<std::uint32_t>(main_ram[offset + 3u]) << 24u);
+                      if (candidate.write_gp0(value).status != R3000aBusStatus::ok) {
+                          return false;
+                      }
+                  }
+                  gpu_ = candidate;
+                  return complete_dma_transfer(2u);
+              }
+
+              if (request.channel != 3u || request.from_ram) return false;
+              if (cdrom_.data_bytes_available() < byte_count) return false;
+
+              std::vector<std::uint32_t> words(request.words, 0u);
+              if (cdrom_.read_data_words(words) != words.size()) return false;
+
+              for (std::size_t i = 0; i < words.size(); ++i) {
+                  const auto value = words[i];
+                  const auto offset = start + i * 4u;
+                  main_ram[offset + 0u] = static_cast<std::uint8_t>(value);
+                  main_ram[offset + 1u] = static_cast<std::uint8_t>(value >> 8u);
+                  main_ram[offset + 2u] = static_cast<std::uint8_t>(value >> 16u);
+                  main_ram[offset + 3u] = static_cast<std::uint8_t>(value >> 24u);
+              }
+              return complete_dma_transfer(3u);
+          }
+          '''
+          if old not in text:
+              if 'request.channel == 2u && request.from_ram' not in text:
+                  raise SystemExit('execute_pending_dma anchor not found')
+          else:
+              text = text.replace(old, new, 1)
+
+          anchor = '''std::uint64_t Ps1HardwareServices::diagnostic_state_hash() const noexcept {
+          '''
+          delegates = '''std::uint32_t Ps1HardwareServices::gpu_status() const noexcept {
+              return gpu_.status();
+          }
+
+          std::uint64_t Ps1HardwareServices::gpu_gp0_word_count() const noexcept {
+              return gpu_.gp0_word_count();
+          }
+
+          std::uint64_t Ps1HardwareServices::gpu_gp1_command_count() const noexcept {
+              return gpu_.gp1_command_count();
+          }
+
+          '''
+          if 'Ps1HardwareServices::gpu_status()' not in text:
+              if anchor not in text:
+                  raise SystemExit('diagnostic hash anchor not found')
+              text = text.replace(anchor, delegates + anchor, 1)
           p.write_text(text)
       - name: Configure
         run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
-      - name: Build GPU RED contract
-        run: cmake --build build --target jojo_ps1_gpu_ingress_tests -j2
+      - name: Build GPU and adjacent contracts
+        run: cmake --build build --target jojo_ps1_gpu_ingress_tests jojo_ps1_hardware_dma_tests jojo_ps1_cdrom_dma_tests jojo_ps1_commercial_frontier_tests -j2
+      - name: Run GPU and adjacent contracts
+        run: ctest --test-dir build -R 'jojo_ps1_(gpu_ingress|hardware_dma|cdrom_dma|commercial_frontier)_tests' --output-on-failure
+      - name: Commit verified GPU integration
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet; then exit 0; fi
+          git config user.name "TheTeu"
+          git config user.email "kingmath3us@gmail.com"
+          git add CMakeLists.txt src/core/ps1_hardware_services.cpp
+          git commit -m "feat: route PS1 GPU DMA through GP0 ingress"
+          git push origin HEAD:feature/ps1-hardware-services-phase3
