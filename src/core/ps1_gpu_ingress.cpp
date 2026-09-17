@@ -18,6 +18,16 @@ std::uint16_t color24_to_bgr555(std::uint32_t value) noexcept {
     return static_cast<std::uint16_t>(red | (green << 5u) | (blue << 10u));
 }
 
+std::uint32_t display_width_from_mode(std::uint32_t parameter) noexcept {
+    if ((parameter & (1u << 6u)) != 0u) return 368u;
+    switch (parameter & 3u) {
+        case 0u: return 256u;
+        case 1u: return 320u;
+        case 2u: return 512u;
+        default: return 640u;
+    }
+}
+
 } // namespace
 
 void Ps1GpuIngress::reset_command_buffer() noexcept {
@@ -31,6 +41,18 @@ void Ps1GpuIngress::reset_command_buffer() noexcept {
     transfer_height_ = 0u;
     transfer_pixel_index_ = 0u;
     transfer_pixels_remaining_ = 0u;
+}
+
+void Ps1GpuIngress::reset_display_state() noexcept {
+    display_ = {};
+}
+
+void Ps1GpuIngress::apply_display_mode(std::uint32_t parameter) noexcept {
+    display_.width = display_width_from_mode(parameter);
+    const bool vertical_480 = (parameter & (1u << 2u)) != 0u;
+    const bool interlaced = (parameter & (1u << 5u)) != 0u;
+    display_.height = vertical_480 && interlaced ? 480u : 240u;
+    display_.rgb24 = (parameter & (1u << 4u)) != 0u;
 }
 
 void Ps1GpuIngress::write_transfer_pixel(std::uint16_t pixel) noexcept {
@@ -140,6 +162,7 @@ R3000aBusResult Ps1GpuIngress::write_gp1(std::uint32_t value) noexcept {
         case 0x00u: // Reset GPU
             status_ = reset_status;
             reset_command_buffer();
+            reset_display_state();
             ++gp1_command_count_;
             return {R3000aBusStatus::ok, 0u};
         case 0x01u: // Reset command buffer
@@ -151,7 +174,8 @@ R3000aBusResult Ps1GpuIngress::write_gp1(std::uint32_t value) noexcept {
             ++gp1_command_count_;
             return {R3000aBusStatus::ok, 0u};
         case 0x03u: // Display enable (1 = disabled)
-            if ((parameter & 1u) != 0u) status_ |= 1u << 23u;
+            display_.enabled = (parameter & 1u) == 0u;
+            if (!display_.enabled) status_ |= 1u << 23u;
             else status_ &= ~(1u << 23u);
             ++gp1_command_count_;
             return {R3000aBusStatus::ok, 0u};
@@ -160,8 +184,16 @@ R3000aBusResult Ps1GpuIngress::write_gp1(std::uint32_t value) noexcept {
             ++gp1_command_count_;
             return {R3000aBusStatus::ok, 0u};
         case 0x05u: // Display VRAM start
+            display_.start_x = parameter & 0x3FFu;
+            display_.start_y = (parameter >> 10u) & 0x1FFu;
+            ++gp1_command_count_;
+            return {R3000aBusStatus::ok, 0u};
         case 0x06u: // Horizontal display range
         case 0x07u: // Vertical display range
+            ++gp1_command_count_;
+            return {R3000aBusStatus::ok, 0u};
+        case 0x08u: // Display mode
+            apply_display_mode(parameter);
             ++gp1_command_count_;
             return {R3000aBusStatus::ok, 0u};
         default:
@@ -189,6 +221,10 @@ std::uint16_t Ps1GpuIngress::vram_pixel(std::uint32_t x, std::uint32_t y) const 
 
 std::uint64_t Ps1GpuIngress::vram_write_count() const noexcept {
     return vram_write_count_;
+}
+
+Ps1GpuDisplayState Ps1GpuIngress::display_state() const noexcept {
+    return display_;
 }
 
 const std::optional<std::uint8_t>& Ps1GpuIngress::last_unsupported_gp0_command() const noexcept {
