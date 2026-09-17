@@ -33,6 +33,7 @@ add_library(jojo_core STATIC
   src/core/ps1_boot_runtime.cpp
   src/core/ps1_boot_report_io.cpp
   src/core/ps1_commercial_frontier.cpp
+  src/core/ps1_commercial_evidence.cpp
   src/core/ps1_max3_explorer.cpp
   src/core/ps1_max3_report_io.cpp
   src/core/mips_decoder.cpp
