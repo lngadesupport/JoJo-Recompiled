@@ -1,0 +1,36 @@
+name: Phase 4 Development Gate
+
+on:
+  push:
+    branches:
+      - feature/ps1-gpu-gte-phase4
+
+permissions:
+  contents: read
+
+jobs:
+  linux-release:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure Release
+        run: cmake -S . -B build-linux -DCMAKE_BUILD_TYPE=Release
+      - name: Build full graph
+        run: cmake --build build-linux -j2
+      - name: Run COP2 GTE foundation first
+        run: ctest --test-dir build-linux -R jojo_r3000a_cop2_tests --output-on-failure
+      - name: Run full CTest graph
+        run: ctest --test-dir build-linux --output-on-failure
+
+  windows-x64-release:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure Release x64
+        run: cmake -S . -B build-win -A x64
+      - name: Build full graph
+        run: cmake --build build-win --config Release
+      - name: Run COP2 GTE foundation first
+        run: ctest --test-dir build-win -C Release -R "jojo_r3000a_cop2_tests" --output-on-failure
+      - name: Run full CTest graph
+        run: ctest --test-dir build-win -C Release --output-on-failure
