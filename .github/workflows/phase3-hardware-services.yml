@@ -55,10 +55,15 @@ jobs:
           text = text.replace('    hash_u32(hash, dma_control_);\n    hash_u32(hash, dma_interrupt_);\n', '')
           cpp.write_text(text)
 
-          for filename in ['tests/test_ps1_memory_bus.cpp', 'tests/test_ps1_boot_runtime.cpp']:
-              p = Path(filename)
-              text = p.read_text().replace('0x1F801080u', '0x1F801500u')
-              p.write_text(text)
+          # Keep diagnostic-probe fixtures away from the now-real DMA register window.
+          p = Path('tests/test_ps1_memory_bus.cpp')
+          p.write_text(p.read_text().replace('0x1F801080u', '0x1F801500u'))
+
+          p = Path('tests/test_ps1_boot_runtime.cpp')
+          text = p.read_text()
+          text = text.replace('0x0Du, 8u, 8u, 0x1080u', '0x0Du, 8u, 8u, 0x1500u')
+          text = text.replace('0x1F801080u', '0x1F801500u')
+          p.write_text(text)
       - name: Configure
         run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
       - name: Build Phase 3B and adjacent contracts
