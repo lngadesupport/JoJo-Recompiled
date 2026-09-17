@@ -37,19 +37,98 @@ jobs:
                   raise SystemExit('missing CD-ROM test anchor')
               text = text.replace(test, test + dma_test, 1)
           p.write_text(text)
+      - name: Implement direct-disc CD DMA bridge
+        shell: python
+        run: |
+          from pathlib import Path
+          p = Path('src/core/ps1_hardware_services.cpp')
+          text = p.read_text()
+          if '#include <vector>\n' not in text:
+              text = text.replace('#include <cstddef>\n', '#include <cstddef>\n#include <vector>\n', 1)
+
+          old = '''R3000aBusResult Ps1HardwareServices::read8(std::uint32_t) noexcept {
+              return {R3000aBusStatus::unsupported, 0u};
+          }
+          '''
+          new = '''void Ps1HardwareServices::attach_disc(const Ps1DiscSession* disc) noexcept {
+              cdrom_.attach_disc(disc);
+          }
+
+          R3000aBusResult Ps1HardwareServices::read8(std::uint32_t physical) noexcept {
+              if (physical >= 0x1F801800u && physical <= 0x1F801803u) {
+                  return cdrom_.read8(physical);
+              }
+              return {R3000aBusStatus::unsupported, 0u};
+          }
+          '''
+          if 'void Ps1HardwareServices::attach_disc' not in text:
+              if old not in text:
+                  raise SystemExit('read8 anchor not found')
+              text = text.replace(old, new, 1)
+
+          old = '''R3000aBusResult Ps1HardwareServices::write8(std::uint32_t, std::uint8_t) noexcept {
+              return {R3000aBusStatus::unsupported, 0u};
+          }
+          '''
+          new = '''R3000aBusResult Ps1HardwareServices::write8(std::uint32_t physical,
+                                                    std::uint8_t value) noexcept {
+              if (physical >= 0x1F801800u && physical <= 0x1F801803u) {
+                  return cdrom_.write8(physical, value);
+              }
+              return {R3000aBusStatus::unsupported, 0u};
+          }
+          '''
+          if old in text:
+              text = text.replace(old, new, 1)
+
+          anchor = '''bool Ps1HardwareServices::complete_dma_transfer(std::uint32_t channel) noexcept {
+          '''
+          impl = '''bool Ps1HardwareServices::execute_pending_dma(
+              std::span<std::uint8_t> main_ram) noexcept {
+              if (!pending_dma_transfer_) return false;
+              const auto request = *pending_dma_transfer_;
+              if (request.channel != 3u || request.from_ram) return false;
+
+              const auto start = static_cast<std::size_t>(request.madr);
+              const auto byte_count = static_cast<std::size_t>(request.words) * 4u;
+              if (start >= main_ram.size() || byte_count > main_ram.size() - start) {
+                  return false;
+              }
+              if (cdrom_.data_bytes_available() < byte_count) return false;
+
+              std::vector<std::uint32_t> words(request.words, 0u);
+              if (cdrom_.read_data_words(words) != words.size()) return false;
+
+              for (std::size_t i = 0; i < words.size(); ++i) {
+                  const auto value = words[i];
+                  const auto offset = start + i * 4u;
+                  main_ram[offset + 0u] = static_cast<std::uint8_t>(value);
+                  main_ram[offset + 1u] = static_cast<std::uint8_t>(value >> 8u);
+                  main_ram[offset + 2u] = static_cast<std::uint8_t>(value >> 16u);
+                  main_ram[offset + 3u] = static_cast<std::uint8_t>(value >> 24u);
+              }
+              return complete_dma_transfer(3u);
+          }
+
+          '''
+          if 'Ps1HardwareServices::execute_pending_dma' not in text:
+              if anchor not in text:
+                  raise SystemExit('DMA completion anchor not found')
+              text = text.replace(anchor, impl + anchor, 1)
+          p.write_text(text)
       - name: Configure
         run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
       - name: Build CD-ROM and adjacent contracts
         run: cmake --build build --target jojo_ps1_cdrom_tests jojo_ps1_cdrom_dma_tests jojo_ps1_hardware_dma_tests jojo_ps1_disc_session_tests jojo_ps1_disc_streaming_tests -j2
       - name: Run CD-ROM and adjacent contracts
         run: ctest --test-dir build -R 'jojo_ps1_(cdrom|cdrom_dma|hardware_dma|disc_session|disc_streaming)_tests' --output-on-failure
-      - name: Commit verified CD-ROM CMake integration
+      - name: Commit verified CD-ROM integration
         shell: bash
         run: |
           set -euo pipefail
           if git diff --quiet; then exit 0; fi
           git config user.name "TheTeu"
           git config user.email "kingmath3us@gmail.com"
-          git add CMakeLists.txt
-          git commit -m "build: register Phase 3C CD-ROM runtime"
+          git add CMakeLists.txt src/core/ps1_hardware_services.cpp
+          git commit -m "feat: connect direct-disc CD-ROM DMA"
           git push origin HEAD:feature/ps1-hardware-services-phase3
