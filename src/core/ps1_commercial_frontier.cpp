@@ -8,6 +8,15 @@ constexpr std::uint32_t kDmaEnd = 0x1F8010FFu;
 constexpr std::uint32_t kGpuGp0 = 0x1F801810u;
 constexpr std::uint32_t kGpuGp1 = 0x1F801814u;
 
+bool is_gte_frontier(const Ps1BootReport& report) noexcept {
+    if (!report.cpu_diagnostic) return false;
+    const auto& diagnostic = *report.cpu_diagnostic;
+    return diagnostic.stage == R3000aStage::cop2 &&
+           diagnostic.boundary == R3000aBoundaryCode::cop2_unimplemented &&
+           diagnostic.coprocessor && *diagnostic.coprocessor == 2u &&
+           diagnostic.opcode.has_value();
+}
+
 } // namespace
 
 Ps1CommercialFrontierClass classify_ps1_commercial_frontier(
@@ -42,6 +51,9 @@ Ps1CommercialFrontierClass classify_ps1_commercial_frontier(
         case Ps1BootStopReason::gpu_command_unimplemented:
             return Ps1CommercialFrontierClass::mmio_access;
         case Ps1BootStopReason::cpu_boundary:
+            if (is_gte_frontier(report)) {
+                return Ps1CommercialFrontierClass::gte_command;
+            }
             return Ps1CommercialFrontierClass::cpu_boundary;
         case Ps1BootStopReason::diagnostic_stall:
             return Ps1CommercialFrontierClass::diagnostic_stall;
@@ -65,6 +77,7 @@ std::string_view ps1_commercial_frontier_class_name(
         case Ps1CommercialFrontierClass::dma_operation: return "dma_operation";
         case Ps1CommercialFrontierClass::gpu_gp0_command: return "gpu_gp0_command";
         case Ps1CommercialFrontierClass::gpu_gp1_command: return "gpu_gp1_command";
+        case Ps1CommercialFrontierClass::gte_command: return "gte_command";
         case Ps1CommercialFrontierClass::cpu_boundary: return "cpu_boundary";
         case Ps1CommercialFrontierClass::diagnostic_stall: return "diagnostic_stall";
         case Ps1CommercialFrontierClass::commercial_frame_presented: return "commercial_frame_presented";
