@@ -13,34 +13,65 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - name: Integrate current Phase 3 test targets
+      - name: Integrate Phase 3B DMA ownership
         shell: python
         run: |
           from pathlib import Path
-          path = Path('CMakeLists.txt')
-          text = path.read_text()
+
+          def replace_once(text, old, new, label):
+              if old not in text:
+                  if new in text:
+                      return text
+                  raise SystemExit(f'missing integration anchor: {label}')
+              return text.replace(old, new, 1)
+
+          cmake = Path('CMakeLists.txt')
+          text = cmake.read_text()
           line = 'add_jojo_test(jojo_ps1_hardware_dma_tests tests/test_ps1_hardware_dma.cpp)\n'
           anchor = 'add_jojo_test(jojo_ps1_hardware_irq_timer_tests tests/test_ps1_hardware_irq_timers.cpp)\n'
           if line not in text:
-              if anchor not in text:
-                  raise SystemExit('missing Phase 3A CMake anchor')
-              text = text.replace(anchor, anchor + line, 1)
-              path.write_text(text)
+              text = replace_once(text, anchor, anchor + line, 'DMA test target')
+          cmake.write_text(text)
+
+          header = Path('src/core/ps1_memory_bus.h')
+          text = header.read_text()
+          text = text.replace('#include "core/ps1_hardware_services.h"\n#include "core/ps1_hardware_services.h"\n', '#include "core/ps1_hardware_services.h"\n')
+          text = text.replace('    std::uint32_t dma_control_{0x07654321u};\n    std::uint32_t dma_interrupt_{};\n', '')
+          header.write_text(text)
+
+          cpp = Path('src/core/ps1_memory_bus.cpp')
+          text = cpp.read_text()
+          for block in [
+              'constexpr std::uint32_t kDmaControlAddress = 0x1F8010F0u;\nconstexpr std::uint32_t kDmaInterruptAddress = 0x1F8010F4u;\nconstexpr std::uint32_t kDmaInterruptControlMask = 0x00FF807Fu;\nconstexpr std::uint32_t kDmaInterruptFlagMask = 0x7F000000u;\nconstexpr std::uint32_t kDmaInterruptMasterFlag = 0x80000000u;\nconstexpr std::uint32_t kDmaInterruptMasterEnable = 0x00800000u;\nconstexpr std::uint32_t kDmaInterruptBusError = 0x00008000u;\n',
+              'std::uint32_t visible_dma_interrupt(std::uint32_t state) noexcept {\n    std::uint32_t value = state & (kDmaInterruptControlMask | kDmaInterruptFlagMask);\n    if ((value & kDmaInterruptBusError) != 0u ||\n        ((value & kDmaInterruptMasterEnable) != 0u &&\n         (value & kDmaInterruptFlagMask) != 0u)) {\n        value |= kDmaInterruptMasterFlag;\n    }\n    return value;\n}\n\n',
+              'void hash_u16(std::uint64_t& hash, std::uint16_t value) noexcept {\n    hash_byte(hash, static_cast<std::uint8_t>(value));\n    hash_byte(hash, static_cast<std::uint8_t>(value >> 8u));\n}\n\n',
+              '        if (*physical == kDmaControlAddress) {\n            return {R3000aBusStatus::ok, dma_control_};\n        }\n        if (*physical == kDmaInterruptAddress) {\n            return {R3000aBusStatus::ok, visible_dma_interrupt(dma_interrupt_)};\n        }\n',
+              '        if (*physical == kDmaControlAddress) {\n            dma_control_ = value;\n            return {R3000aBusStatus::ok, 0u};\n        }\n        if (*physical == kDmaInterruptAddress) {\n            const auto flags = (dma_interrupt_ & kDmaInterruptFlagMask) &\n                               ~(value & kDmaInterruptFlagMask);\n            dma_interrupt_ = (value & kDmaInterruptControlMask) | flags;\n            return {R3000aBusStatus::ok, 0u};\n        }\n',
+          ]:
+              text = text.replace(block, '')
+          text = replace_once(text,
+              'std::uint32_t Ps1MemoryBus::dma_interrupt() const noexcept {\n    return visible_dma_interrupt(dma_interrupt_);\n}\n',
+              'std::uint32_t Ps1MemoryBus::dma_interrupt() const noexcept {\n    return hardware_.dma_interrupt();\n}\n', 'delegate DICR')
+          text = text.replace('    hash_u32(hash, dma_control_);\n    hash_u32(hash, dma_interrupt_);\n', '')
+          cpp.write_text(text)
+
+          for filename in ['tests/test_ps1_memory_bus.cpp', 'tests/test_ps1_boot_runtime.cpp']:
+              p = Path(filename)
+              text = p.read_text().replace('0x1F801080u', '0x1F801500u')
+              p.write_text(text)
       - name: Configure
         run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
-      - name: Build Phase 3A/3B and adjacent contracts
+      - name: Build Phase 3B and adjacent contracts
         run: cmake --build build --target jojo_ps1_hardware_irq_timer_tests jojo_ps1_hardware_dma_tests jojo_ps1_memory_bus_tests jojo_ps1_boot_runtime_tests jojo_ps1_diagnostic_frontier_tests jojo_ps1_commercial_evidence_tests -j2
-      - name: Run Phase 3A/3B and adjacent contracts
+      - name: Run Phase 3B and adjacent contracts
         run: ctest --test-dir build -R 'jojo_ps1_(hardware_irq_timer|hardware_dma|memory_bus|boot_runtime|diagnostic_frontier|commercial_evidence)_tests' --output-on-failure
-      - name: Commit verified CMake integration
+      - name: Commit verified Phase 3B integration
         shell: bash
         run: |
           set -euo pipefail
-          if git diff --quiet; then
-            exit 0
-          fi
+          if git diff --quiet; then exit 0; fi
           git config user.name "TheTeu"
           git config user.email "kingmath3us@gmail.com"
-          git add CMakeLists.txt
-          git commit -m "test: register Phase 3B DMA contract"
+          git add CMakeLists.txt src/core/ps1_memory_bus.h src/core/ps1_memory_bus.cpp tests/test_ps1_memory_bus.cpp tests/test_ps1_boot_runtime.cpp
+          git commit -m "feat: move PS1 DMA ownership into hardware services"
           git push origin HEAD:feature/ps1-hardware-services-phase3
