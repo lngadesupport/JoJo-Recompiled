@@ -6,6 +6,7 @@
 #include "ps1_fixture.h"
 #include <windows.h>
 #include <shellapi.h>
+#include <shlobj_core.h>
 #include <atomic>
 #include <chrono>
 #include <cstring>
