@@ -3,13 +3,16 @@
 #include "app_win32/presentation_host.h"
 
 #include <d3d11.h>
+#include <d3dcompiler.h>
 #include <dxgi.h>
 
 #include <algorithm>
 #include <array>
+#include <cstring>
 #include <limits>
 
 #pragma comment(lib, "d3d11.lib")
+#pragma comment(lib, "d3dcompiler.lib")
 #pragma comment(lib, "dxgi.lib")
 
 namespace jojo {
@@ -38,6 +41,43 @@ Result<void> make_windowed_rect(Win32WindowPlan& plan, RECT monitor_bounds) {
     const LONG y = monitor_bounds.top + std::max<LONG>(0, (monitor_height - height) / 2);
     plan.window_rect = {x, y, x + width, y + height};
     return Result<void>::success();
+}
+
+Result<ID3DBlob*> compile_d3d11_shader(const char* source, const char* target) {
+    if (!source || !target) {
+        return Result<ID3DBlob*>::failure(
+            ErrorCode::invalid_argument,
+            "D3D11 shader compilation requires source and target");
+    }
+
+    ID3DBlob* bytecode = nullptr;
+    ID3DBlob* diagnostics = nullptr;
+    const HRESULT hr = D3DCompile(
+        source,
+        std::strlen(source),
+        nullptr,
+        nullptr,
+        nullptr,
+        "main",
+        target,
+        D3DCOMPILE_OPTIMIZATION_LEVEL3,
+        0u,
+        &bytecode,
+        &diagnostics);
+    if (FAILED(hr) || !bytecode) {
+        std::string detail = "D3D11 presentation shader compilation failed";
+        if (diagnostics && diagnostics->GetBufferPointer() && diagnostics->GetBufferSize() != 0u) {
+            detail += ": ";
+            detail.append(
+                static_cast<const char*>(diagnostics->GetBufferPointer()),
+                diagnostics->GetBufferSize());
+        }
+        if (diagnostics) diagnostics->Release();
+        if (bytecode) bytecode->Release();
+        return Result<ID3DBlob*>::failure(ErrorCode::backend_unavailable, std::move(detail));
+    }
+    if (diagnostics) diagnostics->Release();
+    return Result<ID3DBlob*>::success(bytecode);
 }
 
 HRESULT create_probe_device(ID3D11Device** device, ID3D11DeviceContext** context) noexcept {
@@ -264,6 +304,162 @@ Result<void> upload_d3d11_ps1_frame(
     }
 
     *texture_out = texture;
+    return Result<void>::success();
+}
+
+Result<void> blit_d3d11_ps1_frame(
+    ID3D11Device* device,
+    ID3D11DeviceContext* context,
+    const Ps1DisplayFrame& frame,
+    ID3D11RenderTargetView* render_target,
+    std::uint32_t target_width,
+    std::uint32_t target_height) {
+    if (!device || !context || !render_target || target_width == 0u || target_height == 0u) {
+        return Result<void>::failure(
+            ErrorCode::invalid_argument,
+            "D3D11 frame blit requires device, context, render target, and non-zero target dimensions");
+    }
+
+    ID3D11Texture2D* texture = nullptr;
+    const auto uploaded = upload_d3d11_ps1_frame(device, context, frame, &texture);
+    if (!uploaded) {
+        return uploaded;
+    }
+
+    ID3D11ShaderResourceView* srv = nullptr;
+    HRESULT hr = device->CreateShaderResourceView(texture, nullptr, &srv);
+    if (FAILED(hr) || !srv) {
+        if (srv) srv->Release();
+        texture->Release();
+        return Result<void>::failure(
+            ErrorCode::backend_unavailable,
+            "D3D11 failed to create the PS1 display shader resource view");
+    }
+
+    constexpr const char* kVertexShader = R"(
+struct VSOutput {
+    float4 position : SV_Position;
+    float2 uv : TEXCOORD0;
+};
+
+VSOutput main(uint vertex_id : SV_VertexID) {
+    float2 uv = float2((vertex_id << 1) & 2, vertex_id & 2);
+    VSOutput output;
+    output.position = float4(uv.x * 2.0f - 1.0f, 1.0f - uv.y * 2.0f, 0.0f, 1.0f);
+    output.uv = uv;
+    return output;
+}
+)";
+
+    constexpr const char* kPixelShader = R"(
+Texture2D frame_texture : register(t0);
+SamplerState frame_sampler : register(s0);
+
+struct PSInput {
+    float4 position : SV_Position;
+    float2 uv : TEXCOORD0;
+};
+
+float4 main(PSInput input) : SV_Target {
+    return frame_texture.Sample(frame_sampler, input.uv);
+}
+)";
+
+    const auto vertex_bytecode = compile_d3d11_shader(kVertexShader, "vs_4_0");
+    if (!vertex_bytecode) {
+        srv->Release();
+        texture->Release();
+        return Result<void>::failure(vertex_bytecode.error, vertex_bytecode.detail);
+    }
+    const auto pixel_bytecode = compile_d3d11_shader(kPixelShader, "ps_4_0");
+    if (!pixel_bytecode) {
+        vertex_bytecode.value->Release();
+        srv->Release();
+        texture->Release();
+        return Result<void>::failure(pixel_bytecode.error, pixel_bytecode.detail);
+    }
+
+    ID3D11VertexShader* vertex_shader = nullptr;
+    hr = device->CreateVertexShader(
+        vertex_bytecode.value->GetBufferPointer(),
+        vertex_bytecode.value->GetBufferSize(),
+        nullptr,
+        &vertex_shader);
+    if (FAILED(hr) || !vertex_shader) {
+        if (vertex_shader) vertex_shader->Release();
+        pixel_bytecode.value->Release();
+        vertex_bytecode.value->Release();
+        srv->Release();
+        texture->Release();
+        return Result<void>::failure(
+            ErrorCode::backend_unavailable,
+            "D3D11 failed to create the PS1 presentation vertex shader");
+    }
+
+    ID3D11PixelShader* pixel_shader = nullptr;
+    hr = device->CreatePixelShader(
+        pixel_bytecode.value->GetBufferPointer(),
+        pixel_bytecode.value->GetBufferSize(),
+        nullptr,
+        &pixel_shader);
+    pixel_bytecode.value->Release();
+    vertex_bytecode.value->Release();
+    if (FAILED(hr) || !pixel_shader) {
+        if (pixel_shader) pixel_shader->Release();
+        vertex_shader->Release();
+        srv->Release();
+        texture->Release();
+        return Result<void>::failure(
+            ErrorCode::backend_unavailable,
+            "D3D11 failed to create the PS1 presentation pixel shader");
+    }
+
+    D3D11_SAMPLER_DESC sampler_desc{};
+    sampler_desc.Filter = D3D11_FILTER_MIN_MAG_MIP_POINT;
+    sampler_desc.AddressU = D3D11_TEXTURE_ADDRESS_CLAMP;
+    sampler_desc.AddressV = D3D11_TEXTURE_ADDRESS_CLAMP;
+    sampler_desc.AddressW = D3D11_TEXTURE_ADDRESS_CLAMP;
+    sampler_desc.MaxLOD = D3D11_FLOAT32_MAX;
+
+    ID3D11SamplerState* sampler = nullptr;
+    hr = device->CreateSamplerState(&sampler_desc, &sampler);
+    if (FAILED(hr) || !sampler) {
+        if (sampler) sampler->Release();
+        pixel_shader->Release();
+        vertex_shader->Release();
+        srv->Release();
+        texture->Release();
+        return Result<void>::failure(
+            ErrorCode::backend_unavailable,
+            "D3D11 failed to create the PS1 presentation point sampler");
+    }
+
+    const D3D11_VIEWPORT viewport{
+        0.0f,
+        0.0f,
+        static_cast<float>(target_width),
+        static_cast<float>(target_height),
+        0.0f,
+        1.0f,
+    };
+    context->OMSetRenderTargets(1u, &render_target, nullptr);
+    context->RSSetViewports(1u, &viewport);
+    context->IASetInputLayout(nullptr);
+    context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    context->VSSetShader(vertex_shader, nullptr, 0u);
+    context->PSSetShader(pixel_shader, nullptr, 0u);
+    context->PSSetShaderResources(0u, 1u, &srv);
+    context->PSSetSamplers(0u, 1u, &sampler);
+    context->Draw(3u, 0u);
+
+    ID3D11ShaderResourceView* null_srv = nullptr;
+    context->PSSetShaderResources(0u, 1u, &null_srv);
+
+    sampler->Release();
+    pixel_shader->Release();
+    vertex_shader->Release();
+    srv->Release();
+    texture->Release();
     return Result<void>::success();
 }
 
