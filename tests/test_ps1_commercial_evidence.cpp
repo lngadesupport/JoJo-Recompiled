@@ -55,6 +55,47 @@ void test_normal_mode_retains_disc_and_never_mutates_source(const fs::path& temp
     CHECK(before == read_all(source));
 }
 
+void test_runner_attaches_direct_disc_to_runtime_cdrom(const fs::path& temp) {
+    auto fixture = test_ps1::make_disc_fixture();
+    fixture.executable = test_ps1::make_psx_exe_from_words({
+        test_mips::i(0x0Fu, 0u, 8u, 0x1F80u),       // lui   r8, 0x1F80
+        test_mips::i(0x09u, 0u, 9u, 0x0000u),       // addiu r9, r0, 0
+        test_mips::i(0x28u, 8u, 9u, 0x1800u),       // sb    r9, CD index
+        test_mips::i(0x28u, 8u, 9u, 0x1802u),       // param minute 00
+        test_mips::i(0x09u, 0u, 9u, 0x0002u),
+        test_mips::i(0x28u, 8u, 9u, 0x1802u),       // param second 02
+        test_mips::i(0x09u, 0u, 9u, 0x0025u),
+        test_mips::i(0x28u, 8u, 9u, 0x1802u),       // param frame 25
+        test_mips::i(0x09u, 0u, 9u, 0x0002u),
+        test_mips::i(0x28u, 8u, 9u, 0x1801u),       // Setloc
+        test_mips::i(0x09u, 0u, 9u, 0x0006u),
+        test_mips::i(0x28u, 8u, 9u, 0x1801u),       // ReadN
+        test_mips::j(0x02u, 0x80010030u >> 2),
+        0x00000000u,
+    });
+    const auto source = test_ps1::write_cooked_iso(temp / "cdrom-attached.iso", fixture);
+
+    jojo::Ps1DiscOpenOptions open_options{};
+    open_options.revision_profiles.push_back(
+        test_ps1::make_revision_profile(fixture, "synthetic-cdrom-attached"));
+
+    auto runner = jojo::Ps1CommercialEvidenceRunner::open(source, open_options);
+    CHECK(runner);
+    if (!runner) return;
+
+    jojo::Ps1CommercialEvidenceOptions options{};
+    options.boot.instruction_budget = 20u;
+    options.boot.trace_capacity = 8u;
+    options.boot.mmio_event_capacity = 8u;
+    options.boot.bios_event_capacity = 4u;
+
+    const auto report = runner.value.run(options);
+    CHECK(report.frontier == jojo::Ps1CommercialFrontierClass::execution_budget);
+    CHECK(report.boot.stop_reason == jojo::Ps1BootStopReason::execution_budget_exhausted);
+    CHECK(report.boot.instructions_retired == 20u);
+    CHECK(!report.boot.unsupported_access.has_value());
+}
+
 void test_bios_fallback_is_opt_in_and_recorded(const fs::path& temp) {
     auto fixture = test_ps1::make_disc_fixture();
     fixture.executable = test_ps1::make_psx_exe_from_words({
@@ -110,6 +151,7 @@ int main() {
     CHECK(!ec);
 
     test_normal_mode_retains_disc_and_never_mutates_source(temp);
+    test_runner_attaches_direct_disc_to_runtime_cdrom(temp);
     test_bios_fallback_is_opt_in_and_recorded(temp);
 
     fs::remove_all(temp, ec);
