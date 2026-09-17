@@ -24,6 +24,25 @@ jojo::Ps1BootReport mmio_at(std::uint32_t physical) {
     };
     return report;
 }
+
+jojo::Ps1BootReport gte_boundary(std::uint32_t opcode) {
+    auto report = report_with(jojo::Ps1BootStopReason::cpu_boundary);
+    report.last_pc = 0x80012340u;
+    report.last_opcode = opcode;
+    report.cpu_diagnostic = jojo::R3000aDiagnostic{
+        jojo::R3000aBoundaryCode::cop2_unimplemented,
+        jojo::R3000aStage::cop2,
+        report.last_pc,
+        opcode,
+        std::nullopt,
+        std::nullopt,
+        std::nullopt,
+        2u,
+        std::nullopt,
+        std::nullopt,
+    };
+    return report;
+}
 }
 
 int main() {
@@ -55,6 +74,8 @@ int main() {
     CHECK(classify_ps1_commercial_frontier(cdrom) ==
           Ps1CommercialFrontierClass::cdrom_command);
 
+    CHECK(classify_ps1_commercial_frontier(gte_boundary(0x4A000001u)) ==
+          Ps1CommercialFrontierClass::gte_command);
     CHECK(classify_ps1_commercial_frontier(report_with(Ps1BootStopReason::cpu_boundary)) ==
           Ps1CommercialFrontierClass::cpu_boundary);
     CHECK(classify_ps1_commercial_frontier(report_with(Ps1BootStopReason::diagnostic_stall)) ==
@@ -65,6 +86,7 @@ int main() {
           Ps1CommercialFrontierClass::fatal_runtime_error);
 
     CHECK(jojo::ps1_commercial_frontier_class_name(Ps1CommercialFrontierClass::gpu_gp0_command) == "gpu_gp0_command");
+    CHECK(jojo::ps1_commercial_frontier_class_name(Ps1CommercialFrontierClass::gte_command) == "gte_command");
     CHECK(jojo::ps1_commercial_frontier_class_name(Ps1CommercialFrontierClass::bios_call) == "bios_call");
 
     if (failures != 0) {
