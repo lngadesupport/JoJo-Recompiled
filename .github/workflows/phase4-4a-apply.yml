@@ -1,0 +1,90 @@
+name: Phase 4A Apply Executor Patch
+
+on:
+  push:
+    branches:
+      - feature/ps1-gpu-gte-phase4
+    paths:
+      - .github/phase4-4a-apply.trigger
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/ps1-gpu-gte-phase4
+          fetch-depth: 0
+      - name: Patch COP2 transfer block
+        shell: python
+        run: |
+          from pathlib import Path
+          path = Path('src/core/r3000a_reference_executor.cpp')
+          text = path.read_text()
+          old = '''        case MipsOp::mfc2:
+          case MipsOp::cfc2:
+          case MipsOp::mtc2:
+          case MipsOp::ctc2:
+          case MipsOp::cop2_command:
+              if ((state.cop0.status & kStatusCu2) == 0u) {
+                  return enter_exception(state, R3000aExceptionCode::coprocessor_unusable,
+                                         R3000aStage::cop2, instruction_pc, current_delay,
+                                         instruction.raw, std::nullopt, 2u);
+              } else {
+                  auto result = boundary(state, R3000aBoundaryCode::cop2_unimplemented,
+                                         R3000aStage::cop2, instruction_pc, instruction.raw);
+                  result.diagnostic.coprocessor = 2u;
+                  return result;
+              }
+          '''
+          new = '''        case MipsOp::mfc2:
+          case MipsOp::cfc2:
+          case MipsOp::mtc2:
+          case MipsOp::ctc2:
+          case MipsOp::cop2_command: {
+              if ((state.cop0.status & kStatusCu2) == 0u) {
+                  return enter_exception(state, R3000aExceptionCode::coprocessor_unusable,
+                                         R3000aStage::cop2, instruction_pc, current_delay,
+                                         instruction.raw, std::nullopt, 2u);
+              }
+              switch (instruction.op) {
+                  case MipsOp::mfc2:
+                      queue_load(instruction.rt, state.gte.data[instruction.rd]);
+                      break;
+                  case MipsOp::cfc2:
+                      queue_load(instruction.rt, state.gte.control[instruction.rd]);
+                      break;
+                  case MipsOp::mtc2:
+                      state.gte.data[instruction.rd] = rt;
+                      break;
+                  case MipsOp::ctc2:
+                      state.gte.control[instruction.rd] = rt;
+                      break;
+                  case MipsOp::cop2_command: {
+                      state.gte.last_command = instruction.raw;
+                      auto result = boundary(state, R3000aBoundaryCode::cop2_unimplemented,
+                                             R3000aStage::cop2, instruction_pc, instruction.raw);
+                      result.diagnostic.coprocessor = 2u;
+                      return result;
+                  }
+                  default:
+                      break;
+              }
+              break;
+          }
+          '''
+          if old not in text:
+              raise SystemExit('expected COP2 block not found; refusing non-deterministic patch')
+          path.write_text(text.replace(old, new, 1))
+      - name: Commit executor change
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "Phase 4 automation"
+          git config user.email "actions@users.noreply.github.com"
+          git add src/core/r3000a_reference_executor.cpp
+          git commit -m "feat: execute PS1 COP2 register transfers"
+          git push origin HEAD:feature/ps1-gpu-gte-phase4
