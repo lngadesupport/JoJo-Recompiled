@@ -26,3 +26,16 @@ jobs:
         run: cmake --build build --target jojo_ps1_commercial_frontier_tests jojo_ps1_commercial_evidence_tests jojo_ps1_commercial_evidence_io_tests -j2
       - name: Run Phase 2 contracts
         run: ctest --test-dir build -R 'jojo_ps1_commercial_(frontier|evidence|evidence_io)_tests' --output-on-failure
+
+  windows-shipping:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        run: cmake -S . -B build -A x64
+      - name: Build shipping app and Phase 2 tests
+        run: cmake --build build --config Debug --target jojo_recompiled jojo_win32_image_selection_tests jojo_ps1_commercial_frontier_tests jojo_ps1_commercial_evidence_tests jojo_ps1_commercial_evidence_io_tests
+      - name: Run Phase 2 core contracts
+        run: ctest --test-dir build -C Debug -R "jojo_ps1_commercial_(frontier|evidence|evidence_io)_tests" --output-on-failure
+      - name: Run Win32 direct-source contract
+        run: ctest --test-dir build -C Debug -R "jojo_win32_image_selection_tests" --output-on-failure
