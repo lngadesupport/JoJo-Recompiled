@@ -37,7 +37,8 @@ foreach(_legacy_test IN ITEMS
   "jojo_ps1_manifest_tests"
   "jojo_ps1_installation_tests"
   "jojo_ps1_conversion_tests"
-  "jojo_ps1_runtime_installation_tests")
+  "jojo_ps1_runtime_installation_tests"
+  "jojo_ps1_local_evidence_tests")
   string(FIND "${_cmake_lower}" "${_legacy_test}" _legacy_test_index)
   if(NOT _legacy_test_index EQUAL -1)
     message(FATAL_ERROR "Default CTest graph still contains legacy install test: ${_legacy_test}")
