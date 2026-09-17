@@ -1,8 +1,7 @@
 #ifdef _WIN32
 #define NOMINMAX
-#include "core/conversion.h"
-#include "core/ps1_boot_report_io.h"
-#include "core/ps1_installation.h"
+#include "core/game_source_binding.h"
+#include "core/ps1_disc_session.h"
 #include "core/runtime.h"
 #include "core/settings.h"
 #include <windows.h>
@@ -10,39 +9,64 @@
 #include <shellapi.h>
 #include <shobjidl.h>
 #include <shlobj_core.h>
-#include <algorithm>
-#include <atomic>
 #include <deque>
 #include <filesystem>
-#include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
-#include <thread>
+
+namespace jojo::win32 {
+namespace {
+std::filesystem::path path_from_utf8(const std::string& text) {
+#if defined(__cpp_lib_char8_t)
+    std::u8string encoded;
+    encoded.reserve(text.size());
+    for (const unsigned char ch : text) encoded.push_back(static_cast<char8_t>(ch));
+    return std::filesystem::path(encoded);
+#else
+    return std::filesystem::u8path(text);
+#endif
+}
+}
+
+Result<std::optional<std::filesystem::path>> resolve_startup_source(
+    const std::filesystem::path& executable_dir,
+    const AppSettings& settings,
+    const Ps1DiscOpenOptions& open_options) {
+    if (!settings.source_binding_path.empty()) {
+        const auto binding_path = path_from_utf8(settings.source_binding_path);
+        auto binding = load_game_source_binding(binding_path);
+        if (binding) {
+            auto reopened = reopen_bound_source(binding.value, open_options);
+            if (reopened) {
+                return Result<std::optional<std::filesystem::path>>::success(
+                    reopened.value.binding().source_path);
+            }
+        }
+    }
+
+    return discover_single_ps1_source(executable_dir / "Data" / "ROM");
+}
+} // namespace jojo::win32
 
 namespace {
 namespace fs = std::filesystem;
-constexpr UINT WM_PROGRESS = WM_APP + 10;
-constexpr UINT WM_FINISHED = WM_APP + 11;
 constexpr int ID_SOURCE_PATH = 1001;
 constexpr int ID_SELECT_SOURCE = 1002;
-constexpr int ID_PREPARE = 1003;
-constexpr int ID_INSTALL_PATH = 1004;
-constexpr int ID_SELECT_INSTALL = 1005;
+constexpr int ID_VALIDATE_SOURCE = 1003;
 constexpr int ID_RUN_CHECKPOINT = 1006;
 constexpr COLORREF BG=RGB(13,8,22), PANEL=RGB(35,21,53), TEXT=RGB(248,244,252), MUTED=RGB(185,169,198);
 constexpr COLORREF PURPLE=RGB(119,73,196), MAGENTA=RGB(220,64,166), GOLD=RGB(235,193,83);
-HWND win{}, source_box{}, source_btn{}, install_box{}, install_btn{}, prepare_btn{}, checkpoint_btn{};
+HWND win{}, source_box{}, source_btn{}, validate_btn{}, checkpoint_btn{};
 HFONT title_font{}, body_font{}, small_font{}, button_font{};
 HBRUSH edit_brush{};
-fs::path game_dir, settings_path;
+fs::path settings_path, binding_path, executable_root;
 jojo::AppSettings app_settings{};
-std::wstring source, status=L"Selecione a imagem da sua própria cópia do jogo.";
+jojo::Ps1DiscOpenOptions open_options{};
+std::wstring source;
+std::wstring status=L"Selecione a imagem da sua própria cópia do jogo.";
 std::deque<std::wstring> logs;
-int percent=0;
-bool running=false, converted=false;
-std::atomic_bool closing{false};
-struct ProgressMsg { jojo::ConversionProgress p; };
-struct FinishMsg { jojo::Result<jojo::ConversionManifest> r; };
+bool validated=false;
 
 std::wstring wide(const std::string& s) {
     if (s.empty()) return {};
@@ -69,9 +93,17 @@ fs::path app_root() {
     fs::path p(raw); CoTaskMemFree(raw); return p/L"JOJO Recompiled";
 }
 
+fs::path executable_dir() {
+    std::wstring buffer(32768,L'\0');
+    const DWORD length=GetModuleFileNameW(nullptr,buffer.data(),static_cast<DWORD>(buffer.size()));
+    if(length==0 || length>=buffer.size()) return fs::current_path();
+    buffer.resize(length);
+    return fs::path(buffer).parent_path();
+}
+
 void add_log(std::wstring s) {
     logs.push_back(std::move(s));
-    while(logs.size()>5) logs.pop_front();
+    while(logs.size()>6) logs.pop_front();
 }
 
 void draw_text(HDC dc,const std::wstring& text,RECT r,HFONT font,COLORREF color,UINT flags=DT_LEFT|DT_VCENTER|DT_SINGLELINE){
@@ -92,24 +124,17 @@ void paint(HDC dc,RECT c){
     for(int x=c.right-300;x<c.right;x+=38){ HPEN p=CreatePen(PS_SOLID,2,RGB(82,50,98)); auto op=SelectObject(dc,p); MoveToEx(dc,x,15,nullptr); LineTo(dc,x+120,145); SelectObject(dc,op); DeleteObject(p); }
 
     draw_text(dc,L"JOJO RECOMPILED",{78,36,800,90},title_font,TEXT);
-    draw_text(dc,L"HERITAGE FOR THE FUTURE  •  PROJETO NATIVO WINDOWS",{82,92,820,126},body_font,GOLD);
-    draw_text(dc,L"Use uma imagem obtida da sua própria cópia. O projeto não distribui ROM, BIOS, arte, música ou dados do jogo.",{82,140,905,194},body_font,MUTED,DT_LEFT|DT_TOP|DT_WORDBREAK);
+    draw_text(dc,L"HERITAGE FOR THE FUTURE  •  RUNTIME PS1 DIRETO",{82,92,820,126},body_font,GOLD);
+    draw_text(dc,L"A imagem original é aberta somente para leitura. Nenhuma instalação extraída do jogo é criada.",{82,140,905,194},body_font,MUTED,DT_LEFT|DT_TOP|DT_WORDBREAK);
 
     draw_text(dc,L"IMAGEM PS1 DA SUA CÓPIA",{82,211,500,241},body_font,TEXT);
-    draw_text(dc,L"PASTA DE INSTALAÇÃO",{82,309,500,339},body_font,TEXT);
-    draw_text(dc,status,{82,407,815,454},body_font,converted?GOLD:MUTED,DT_LEFT|DT_TOP|DT_WORDBREAK);
-    draw_text(dc,std::to_wstring(percent)+L"%",{820,414,920,449},body_font,GOLD,DT_RIGHT|DT_VCENTER|DT_SINGLELINE);
+    draw_text(dc,status,{82,326,920,392},body_font,validated?GOLD:MUTED,DT_LEFT|DT_TOP|DT_WORDBREAK);
 
-    RECT track{80,462,920,495}; fill_round(dc,track,RGB(34,21,47));
-    RECT bar{84,466,84+(832*std::clamp(percent,0,100))/100,491};
-    if(bar.right>bar.left){ b=CreateSolidBrush(MAGENTA); FillRect(dc,&bar,b); DeleteObject(b); }
+    RECT card{80,420,920,610}; fill_round(dc,card,PANEL);
+    draw_text(dc,L"ATIVIDADE",{102,434,400,465},body_font,GOLD);
+    int y=470; for(const auto& l:logs){ draw_text(dc,l,{102,y,892,y+22},small_font,MUTED); y+=22; }
 
-    RECT card{80,525,920,660}; fill_round(dc,card,PANEL);
-    draw_text(dc,L"ATIVIDADE",{102,536,400,567},body_font,GOLD);
-    int y=569; for(const auto& l:logs){ draw_text(dc,l,{102,y,892,y+21},small_font,MUTED); y+=18; }
-
-    const std::wstring destination=L"Destino: "+game_dir.wstring();
-    draw_text(dc,destination,{80,762,920,815},small_font,RGB(144,128,155),DT_LEFT|DT_TOP|DT_WORDBREAK);
+    draw_text(dc,L"Fluxo direto: binding salvo → Data/ROM → seleção manual. Sem PREPARAR JOGO e sem pasta de instalação.",{80,762,920,815},small_font,RGB(144,128,155),DT_LEFT|DT_TOP|DT_WORDBREAK);
 }
 
 bool supported_image(const fs::path& image) {
@@ -123,59 +148,19 @@ bool usable_image(const fs::path& image) {
     return attributes!=INVALID_FILE_ATTRIBUTES && (attributes&FILE_ATTRIBUTE_DIRECTORY)==0 && supported_image(image);
 }
 
-void refresh_install(){
-    converted=false;
-    auto kind=jojo::classify_installation(game_dir);
-    if(!kind){
-        percent=0;
-        status=L"Instalação inválida: "+wide(kind.detail);
-        add_log(L"A instalação selecionada não pôde ser classificada.");
-        SetWindowTextW(prepare_btn,L"PREPARAR JOGO");
-        EnableWindow(checkpoint_btn,FALSE);
-        InvalidateRect(win,nullptr,FALSE);
-        return;
-    }
-
-    switch(kind.value){
-    case jojo::InstallationKind::absent:
-        percent=0;
-        status=source.empty()
-            ? L"Selecione a imagem PS1 da sua própria cópia do jogo."
-            : L"Imagem PS1 selecionada. Pronto para preparar na pasta escolhida.";
-        SetWindowTextW(prepare_btn,L"PREPARAR JOGO");
-        break;
-    case jojo::InstallationKind::legacy_v1:
-        percent=0;
-        status=L"Instalação legada Dreamcast/SH-4 incompatível detectada. Reconverta sua imagem PS1 nesta pasta.";
-        add_log(L"Instalação legada preservada; uma nova geração PS1 será criada ao reconverter.");
-        SetWindowTextW(prepare_btn,L"RECONVERTER NESTA PASTA");
-        break;
-    case jojo::InstallationKind::ps1_m1:{
-        auto validated=jojo::validate_installation(game_dir);
-        if(!validated){
-            percent=0;
-            status=L"Instalação PS1 inválida: "+wide(validated.detail);
-            add_log(L"A geração PS1 ativa falhou na validação.");
-            SetWindowTextW(prepare_btn,L"REFAZER PREPARAÇÃO");
-            break;
-        }
-        converted=true;
-        percent=100;
-        status=L"Executável PS1 identificado e instalação validada. Checkpoint R3000A disponível.";
-        add_log(L"Geração PS1 M1 validada a partir dos dados locais preparados.");
-        SetWindowTextW(prepare_btn,L"REFAZER PREPARAÇÃO");
-        break;
-    }
-    }
-    EnableWindow(checkpoint_btn,converted&&!running);
-    InvalidateRect(win,nullptr,FALSE);
+void refresh_actions(){
+    EnableWindow(validate_btn,TRUE);
+    EnableWindow(checkpoint_btn,validated?TRUE:FALSE);
 }
 
 void select_image(const fs::path& image) {
     source=image.wstring();
-    SetWindowTextW(source_box,source.c_str());
-    add_log(L"Imagem PS1 selecionada.");
-    refresh_install();
+    validated=false;
+    if(source_box) SetWindowTextW(source_box,source.c_str());
+    status=L"Imagem selecionada. Clique em VALIDAR JOGO para confirmar a revisão e o PS-X EXE.";
+    add_log(L"Imagem PS1 selecionada diretamente; nenhum conteúdo foi extraído.");
+    refresh_actions();
+    if(win) InvalidateRect(win,nullptr,FALSE);
 }
 
 std::wstring choose_image(){
@@ -186,81 +171,58 @@ std::wstring choose_image(){
     d->Release(); return out;
 }
 
-std::wstring choose_install_root(){
-    IFileOpenDialog* d=nullptr;
-    if(FAILED(CoCreateInstance(CLSID_FileOpenDialog,nullptr,CLSCTX_INPROC_SERVER,IID_PPV_ARGS(&d)))) return {};
-    DWORD options{};
-    if(SUCCEEDED(d->GetOptions(&options))) d->SetOptions(options|FOS_PICKFOLDERS|FOS_FORCEFILESYSTEM);
-    d->SetTitle(L"Selecione a pasta de instalação do JOJO Recompiled");
-    std::wstring out;
-    if(SUCCEEDED(d->Show(win))){
-        IShellItem* item=nullptr;
-        if(SUCCEEDED(d->GetResult(&item))){
-            PWSTR p=nullptr;
-            if(SUCCEEDED(item->GetDisplayName(SIGDN_FILESYSPATH,&p))){out=p;CoTaskMemFree(p);}
-            item->Release();
-        }
-    }
-    d->Release();
-    return out;
-}
-
-void select_install_root(const fs::path& root){
-    game_dir=root;
-    SetWindowTextW(install_box,game_dir.wstring().c_str());
-    app_settings.install_root=utf8(game_dir.wstring());
-    const auto saved=jojo::save_settings_atomic(settings_path,app_settings);
-    if(!saved){
-        status=L"Pasta selecionada, mas não foi possível salvar a configuração: "+wide(saved.detail);
-        add_log(L"Falha ao salvar settings.ini.");
-    }else{
-        add_log(L"Pasta de instalação atualizada.");
-    }
-    refresh_install();
-}
-
-void set_enabled(bool on){
-    EnableWindow(source_btn,on);
-    EnableWindow(install_btn,on);
-    EnableWindow(prepare_btn,on);
-    EnableWindow(checkpoint_btn,on&&converted);
-}
-
-void run_checkpoint(){
-    if(!converted||running) return;
-
-    const auto report_path=app_root()/L"diagnostics"/L"m3a-checkpoint.txt";
-    const auto result=jojo::bootstrap_runtime_local_evidence_to_file(game_dir,report_path);
-    if(!result){
-        status=L"Checkpoint profundo falhou: "+wide(result.detail);
-        add_log(L"Falha ao gerar diagnóstico derivado do checkpoint.");
-    }else{
-        status=L"Checkpoint profundo concluído. Relatório: "+report_path.wstring();
-        add_log(L"Parada: "+wide(jojo::ps1_boot_stop_reason_name(result.value.stop_reason)));
-    }
-    InvalidateRect(win,nullptr,FALSE);
-}
-
-void start_conversion(){
-    if(running) return;
+void validate_source(){
     if(source.empty()){
-        status=L"Selecione uma imagem .ISO, .BIN ou .CUE.";
+        validated=false;
+        status=L"Selecione uma imagem .ISO, .BIN ou .CUE para validar.";
         add_log(L"Nenhuma imagem PS1 selecionada.");
+        refresh_actions();
         InvalidateRect(win,nullptr,FALSE);
         return;
     }
-    running=true;converted=false;percent=0;logs.clear();status=L"Iniciando preparação PS1...";add_log(L"Processo PS1 iniciado.");set_enabled(false);InvalidateRect(win,nullptr,FALSE);
-    const std::wstring src=source; const fs::path dest=game_dir; const HWND target=win;
-    std::thread([src,dest,target](){
-        auto r=jojo::convert_image(fs::path(src),dest,[&](const jojo::ConversionProgress& p){
-            if(closing.load()) return;
-            auto* m=new ProgressMsg{p};
-            if(!PostMessageW(target,WM_PROGRESS,0,reinterpret_cast<LPARAM>(m))) delete m;
-        });
-        if(closing.load()) return;
-        auto* m=new FinishMsg{std::move(r)};
-        if(!PostMessageW(target,WM_FINISHED,0,reinterpret_cast<LPARAM>(m))) delete m;
-    }).detach();
+
+    auto opened=jojo::Ps1DiscSession::open(fs::path(source),open_options);
+    if(!opened){
+        validated=false;
+        status=L"A imagem não foi validada: "+wide(opened.detail);
+        add_log(L"Validação falhou; a fonte permanece intacta e somente leitura.");
+        refresh_actions();
+        InvalidateRect(win,nullptr,FALSE);
+        return;
+    }
+
+    validated=true;
+    status=L"Imagem validada. Revisão: "+wide(opened.value.binding().revision_id)+L". Checkpoint R3000A disponível.";
+    add_log(L"SYSTEM.CNF e PS-X EXE foram lidos diretamente da imagem original.");
+
+    const auto binding_saved=jojo::save_game_source_binding_atomic(binding_path,opened.value.binding());
+    if(!binding_saved){
+        add_log(L"Aviso: não foi possível persistir o binding: "+wide(binding_saved.detail));
+    }else{
+        app_settings.source_binding_path=utf8(binding_path.wstring());
+        const auto settings_saved=jojo::save_settings_atomic(settings_path,app_settings);
+        if(!settings_saved) add_log(L"Aviso: binding salvo, mas settings.ini não pôde ser atualizado.");
+        else add_log(L"Binding persistente atualizado para os próximos launches.");
+    }
+
+    refresh_actions();
+    InvalidateRect(win,nullptr,FALSE);
+}
+
+void run_checkpoint(){
+    if(!validated || source.empty()) return;
+
+    const auto report_path=app_root()/L"diagnostics"/L"direct-source-checkpoint.txt";
+    const auto result=jojo::bootstrap_runtime_checkpoint_from_disc_to_file(
+        fs::path(source),open_options,report_path);
+    if(!result){
+        status=L"Checkpoint direto falhou: "+wide(result.detail);
+        add_log(L"Falha no checkpoint sem alterar a imagem original.");
+    }else{
+        status=L"Checkpoint direto concluído. Relatório: "+report_path.wstring();
+        add_log(L"Parada: "+wide(jojo::ps1_boot_stop_reason_name(result.value.stop_reason)));
+    }
+    InvalidateRect(win,nullptr,FALSE);
 }
 
 void make_fonts(){
@@ -271,20 +233,19 @@ void make_fonts(){
 }
 
 void create_controls(HWND parent){
-    source_box=CreateWindowExW(0,L"EDIT",L"Nenhuma imagem selecionada",WS_CHILD|WS_VISIBLE|ES_READONLY|ES_AUTOHSCROLL,82,249,616,42,parent,reinterpret_cast<HMENU>(static_cast<INT_PTR>(ID_SOURCE_PATH)),GetModuleHandleW(nullptr),nullptr);
+    const wchar_t* initial=source.empty()?L"Nenhuma imagem selecionada":source.c_str();
+    source_box=CreateWindowExW(0,L"EDIT",initial,WS_CHILD|WS_VISIBLE|ES_READONLY|ES_AUTOHSCROLL,82,249,616,42,parent,reinterpret_cast<HMENU>(static_cast<INT_PTR>(ID_SOURCE_PATH)),GetModuleHandleW(nullptr),nullptr);
     source_btn=CreateWindowExW(0,L"BUTTON",L"SELECIONAR IMAGEM",WS_CHILD|WS_VISIBLE|BS_OWNERDRAW,712,249,208,42,parent,reinterpret_cast<HMENU>(static_cast<INT_PTR>(ID_SELECT_SOURCE)),GetModuleHandleW(nullptr),nullptr);
-    install_box=CreateWindowExW(0,L"EDIT",game_dir.wstring().c_str(),WS_CHILD|WS_VISIBLE|ES_READONLY|ES_AUTOHSCROLL,82,347,616,42,parent,reinterpret_cast<HMENU>(static_cast<INT_PTR>(ID_INSTALL_PATH)),GetModuleHandleW(nullptr),nullptr);
-    install_btn=CreateWindowExW(0,L"BUTTON",L"SELECIONAR PASTA",WS_CHILD|WS_VISIBLE|BS_OWNERDRAW,712,347,208,42,parent,reinterpret_cast<HMENU>(static_cast<INT_PTR>(ID_SELECT_INSTALL)),GetModuleHandleW(nullptr),nullptr);
     checkpoint_btn=CreateWindowExW(0,L"BUTTON",L"EXECUTAR CHECKPOINT",WS_CHILD|WS_VISIBLE|BS_OWNERDRAW,300,690,300,50,parent,reinterpret_cast<HMENU>(static_cast<INT_PTR>(ID_RUN_CHECKPOINT)),GetModuleHandleW(nullptr),nullptr);
-    prepare_btn=CreateWindowExW(0,L"BUTTON",L"PREPARAR JOGO",WS_CHILD|WS_VISIBLE|BS_OWNERDRAW,620,690,300,50,parent,reinterpret_cast<HMENU>(static_cast<INT_PTR>(ID_PREPARE)),GetModuleHandleW(nullptr),nullptr);
+    validate_btn=CreateWindowExW(0,L"BUTTON",L"VALIDAR JOGO",WS_CHILD|WS_VISIBLE|BS_OWNERDRAW,620,690,300,50,parent,reinterpret_cast<HMENU>(static_cast<INT_PTR>(ID_VALIDATE_SOURCE)),GetModuleHandleW(nullptr),nullptr);
     SendMessageW(source_box,WM_SETFONT,reinterpret_cast<WPARAM>(body_font),TRUE);
-    SendMessageW(install_box,WM_SETFONT,reinterpret_cast<WPARAM>(body_font),TRUE);
     DragAcceptFiles(parent,TRUE);
+    refresh_actions();
 }
 
 void draw_button(DRAWITEMSTRUCT* d){
     const bool off=(d->itemState&ODS_DISABLED)!=0, press=(d->itemState&ODS_SELECTED)!=0;
-    COLORREF c=d->CtlID==ID_PREPARE?MAGENTA:PURPLE;
+    COLORREF c=d->CtlID==ID_VALIDATE_SOURCE?MAGENTA:PURPLE;
     if(press)c=RGB(GetRValue(c)*3/4,GetGValue(c)*3/4,GetBValue(c)*3/4);
     if(off)c=RGB(68,54,76);
     fill_round(d->hDC,d->rcItem,c);
@@ -294,20 +255,21 @@ void draw_button(DRAWITEMSTRUCT* d){
 LRESULT CALLBACK proc(HWND h,UINT m,WPARAM w,LPARAM l){
     switch(m){
     case WM_CREATE:
-        win=h;create_controls(h);refresh_install();return 0;
+        win=h;
+        create_controls(h);
+        if(!source.empty()){
+            status=L"Imagem detectada automaticamente. Validando diretamente da fonte original...";
+            validate_source();
+        }
+        return 0;
     case WM_COMMAND:
         if(LOWORD(w)==ID_SELECT_SOURCE){
             auto p=choose_image();
             if(!p.empty()&&usable_image(fs::path(p)))select_image(fs::path(p));
             return 0;
         }
-        if(LOWORD(w)==ID_SELECT_INSTALL){
-            auto p=choose_install_root();
-            if(!p.empty())select_install_root(fs::path(p));
-            return 0;
-        }
+        if(LOWORD(w)==ID_VALIDATE_SOURCE){validate_source();return 0;}
         if(LOWORD(w)==ID_RUN_CHECKPOINT){run_checkpoint();return 0;}
-        if(LOWORD(w)==ID_PREPARE){start_conversion();return 0;}
         break;
     case WM_DROPFILES:{
         const auto drop=reinterpret_cast<HDROP>(w); const UINT count=DragQueryFileW(drop,0xFFFFFFFF,nullptr,0);
@@ -317,44 +279,33 @@ LRESULT CALLBACK proc(HWND h,UINT m,WPARAM w,LPARAM l){
         }
         DragFinish(drop);return 0;
     }
-    case WM_PROGRESS:{
-        std::unique_ptr<ProgressMsg> p(reinterpret_cast<ProgressMsg*>(l));
-        if(p){percent=std::clamp(p->p.percent,0,100);status=wide(p->p.detail);add_log(L"["+std::to_wstring(percent)+L"%] "+wide(p->p.detail));InvalidateRect(h,nullptr,FALSE);}
-        return 0;
-    }
-    case WM_FINISHED:{
-        std::unique_ptr<FinishMsg> p(reinterpret_cast<FinishMsg*>(l));
-        running=false;set_enabled(true);
-        if(!p||!p->r){
-            status=L"Falha na preparação PS1."+(p?L" "+wide(p->r.detail):L"");
-            if(p)add_log(L"ERRO: "+wide(p->r.detail));
-        }else{
-            add_log(L"Conversão PS1 concluída; validando geração ativa.");
-            refresh_install();
-        }
-        InvalidateRect(h,nullptr,FALSE);return 0;
-    }
     case WM_DRAWITEM:draw_button(reinterpret_cast<DRAWITEMSTRUCT*>(l));return TRUE;
     case WM_CTLCOLOREDIT:case WM_CTLCOLORSTATIC:{HDC dc=reinterpret_cast<HDC>(w);SetTextColor(dc,TEXT);SetBkColor(dc,PANEL);return reinterpret_cast<INT_PTR>(edit_brush);}
     case WM_ERASEBKGND:return 1;
     case WM_PAINT:{PAINTSTRUCT ps{};HDC dc=BeginPaint(h,&ps);RECT c{};GetClientRect(h,&c);paint(dc,c);EndPaint(h,&ps);return 0;}
-    case WM_CLOSE:closing.store(true);DestroyWindow(h);return 0;
+    case WM_CLOSE:DestroyWindow(h);return 0;
     case WM_DESTROY:PostQuitMessage(0);return 0;
     }
     return DefWindowProcW(h,m,w,l);
 }
-}
+} // namespace
 
 int WINAPI wWinMain(HINSTANCE inst,HINSTANCE,PWSTR,int show){
     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
     if(FAILED(CoInitializeEx(nullptr,COINIT_APARTMENTTHREADED)))return 2;
 
     const auto root=app_root();
+    executable_root=executable_dir();
     settings_path=root/L"settings.ini";
+    binding_path=root/L"config"/L"game-source.ini";
     const auto loaded=jojo::load_settings(settings_path);
     if(loaded) app_settings=loaded.value;
-    if(!app_settings.install_root.empty()) game_dir=fs::path(wide(app_settings.install_root));
-    if(game_dir.empty()) game_dir=root/L"game";
+    if(app_settings.source_binding_path.empty()) app_settings.source_binding_path=utf8(binding_path.wstring());
+    else binding_path=fs::path(wide(app_settings.source_binding_path));
+
+    const auto startup=jojo::win32::resolve_startup_source(executable_root,app_settings,open_options);
+    if(startup && startup.value) source=startup.value->wstring();
+    else if(!startup) status=L"Autodetecção de Data/ROM falhou: "+wide(startup.detail);
 
     make_fonts();edit_brush=CreateSolidBrush(PANEL);
     WNDCLASSEXW c{};c.cbSize=sizeof(c);c.lpfnWndProc=proc;c.hInstance=inst;c.hCursor=LoadCursorW(nullptr,IDC_ARROW);c.hIcon=LoadIconW(nullptr,IDI_APPLICATION);c.lpszClassName=L"JOJORecompiledWindow";
