@@ -8,8 +8,10 @@
 #include <cstddef>
 #include <cstdint>
 #include <d3d11.h>
+#include <dxgi.h>
 #include <dxgiformat.h>
 #include <windows.h>
+#include <wrl/client.h>
 
 namespace jojo {
 
@@ -60,6 +62,29 @@ struct D3d11FrameUploadPlan {
     ID3D11RenderTargetView* render_target,
     std::uint32_t target_width,
     std::uint32_t target_height);
+
+class D3d11Ps1Presenter {
+public:
+    D3d11Ps1Presenter() = default;
+
+    [[nodiscard]] static Result<D3d11Ps1Presenter> create(HWND window);
+    [[nodiscard]] Result<void> present(const Ps1DisplayFrame& frame);
+
+    [[nodiscard]] std::uint32_t back_buffer_width() const noexcept;
+    [[nodiscard]] std::uint32_t back_buffer_height() const noexcept;
+
+private:
+    [[nodiscard]] Result<void> recreate_render_target();
+    [[nodiscard]] Result<void> resize_to_client();
+
+    HWND window_{};
+    Microsoft::WRL::ComPtr<ID3D11Device> device_{};
+    Microsoft::WRL::ComPtr<ID3D11DeviceContext> context_{};
+    Microsoft::WRL::ComPtr<IDXGISwapChain> swap_chain_{};
+    Microsoft::WRL::ComPtr<ID3D11RenderTargetView> render_target_{};
+    std::uint32_t back_buffer_width_{};
+    std::uint32_t back_buffer_height_{};
+};
 
 [[nodiscard]] Result<RendererCapabilities> probe_d3d11_renderer_capabilities();
 
