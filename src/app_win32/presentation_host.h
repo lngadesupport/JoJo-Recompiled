@@ -7,6 +7,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <d3d11.h>
 #include <dxgiformat.h>
 #include <windows.h>
 
@@ -45,6 +46,12 @@ struct D3d11FrameUploadPlan {
 
 [[nodiscard]] Result<D3d11FrameUploadPlan> make_d3d11_frame_upload_plan(
     const Ps1DisplayFrame& frame);
+
+[[nodiscard]] Result<void> upload_d3d11_ps1_frame(
+    ID3D11Device* device,
+    ID3D11DeviceContext* context,
+    const Ps1DisplayFrame& frame,
+    ID3D11Texture2D** texture_out);
 
 [[nodiscard]] Result<RendererCapabilities> probe_d3d11_renderer_capabilities();
 
