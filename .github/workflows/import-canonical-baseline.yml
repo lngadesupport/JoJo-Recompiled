@@ -1,4 +1,4 @@
-name: Import canonical baseline once
+name: Verify PS1 source binding M3
 
 on:
   push:
@@ -11,121 +11,78 @@ permissions:
   contents: write
 
 jobs:
-  import:
+  verify-m3:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout migration branch
+      - name: Checkout M3 branch
         uses: actions/checkout@v4
         with:
-          ref: feature/ps1-direct-runtime-m2
+          ref: feature/ps1-source-binding-m3
           fetch-depth: 0
 
-      - name: Preserve M1 and M2 overlay
-        shell: bash
-        run: |
-          set -euo pipefail
-          preserve=/tmp/jojo-migration-preserve
-          rm -rf "$preserve"
-          mkdir -p "$preserve"
-          files=(
-            "M2-STATUS.md"
-            "MIGRATION-BOOTSTRAP.md"
-            "docs/superpowers/plans/2026-09-16-ps1-united-style-direct-runtime.md"
-            "docs/superpowers/specs/2026-09-16-ps1-united-style-direct-runtime-design.md"
-            "src/core/ps1_disc_session.cpp"
-            "src/core/ps1_disc_session.h"
-            "src/core/ps1_direct_runtime.cpp"
-            "src/core/revision.cpp"
-            "src/core/revision.h"
-            "src/core/runtime.h"
-            "tests/test_ps1_disc_session.cpp"
-            "tests/test_ps1_direct_runtime.cpp"
-          )
-          for file in "${files[@]}"; do
-            if [[ -f "$file" ]]; then
-              mkdir -p "$preserve/$(dirname "$file")"
-              cp "$file" "$preserve/$file"
-            fi
-          done
-
-      - name: Clone canonical source baseline
-        shell: bash
-        run: |
-          set -euo pipefail
-          rm -rf /tmp/jojo-canonical
-          git clone --depth 1 --branch main https://github.com/matheuz232/JOJO-Recompiled.git /tmp/jojo-canonical
-
-      - name: Overlay canonical baseline and restore direct-runtime work
-        shell: bash
-        run: |
-          set -euo pipefail
-          rsync -a --delete --exclude='.git/' --exclude='.github/workflows/' /tmp/jojo-canonical/ ./
-          cp -a /tmp/jojo-migration-preserve/. ./
-
-      - name: Wire M1 and M2 into canonical baseline
+      - name: Wire settings persistence and CMake
         shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
 
+          settings = Path('src/core/settings.cpp')
+          text = settings.read_text(encoding='utf-8')
+          load_line = '        else if (key == "source_binding_path") result.source_binding_path = value;\n'
+          if load_line not in text:
+              anchor = '        else if (key == "install_dir" && result.install_root.empty()) result.install_root = value;\n'
+              if anchor not in text:
+                  raise SystemExit('settings load anchor not found')
+              text = text.replace(anchor, anchor + load_line, 1)
+          save_line = '        out << "source_binding_path=" << settings.source_binding_path << \'\\n\';\n'
+          if save_line not in text:
+              anchor = '        out << "install_root=" << settings.install_root << \'\\n\';\n'
+              if anchor not in text:
+                  raise SystemExit('settings save anchor not found')
+              text = text.replace(anchor, anchor + save_line, 1)
+          settings.write_text(text, encoding='utf-8')
+
           cmake = Path('CMakeLists.txt')
           text = cmake.read_text(encoding='utf-8')
-          if 'src/core/ps1_disc_session.cpp' not in text:
-              anchor = '  src/core/ps1_exe.cpp\n'
-              if anchor not in text: raise SystemExit('missing ps1_exe source anchor')
-              text = text.replace(anchor, anchor + '  src/core/ps1_disc_session.cpp\n', 1)
-          if 'src/core/ps1_direct_runtime.cpp' not in text:
-              anchor = '  src/core/runtime.cpp\n'
-              if anchor not in text: raise SystemExit('missing runtime source anchor')
-              text = text.replace(anchor, anchor + '  src/core/ps1_direct_runtime.cpp\n', 1)
-          session_test = 'add_jojo_test(jojo_ps1_disc_session_tests tests/test_ps1_disc_session.cpp)\n'
-          if session_test not in text:
-              anchor = 'add_jojo_test(jojo_ps1_exe_tests tests/test_ps1_exe.cpp)\n'
-              if anchor not in text: raise SystemExit('missing ps1 exe test anchor')
-              text = text.replace(anchor, anchor + session_test, 1)
-          direct_test = 'add_jojo_test(jojo_ps1_direct_runtime_tests tests/test_ps1_direct_runtime.cpp)\n'
-          if direct_test not in text:
-              anchor = 'add_jojo_test(jojo_ps1_runtime_installation_tests tests/test_ps1_runtime_installation.cpp)\n'
-              if anchor not in text: raise SystemExit('missing runtime-installation test anchor')
-              text = text.replace(anchor, anchor + direct_test, 1)
+          source_line = '  src/core/game_source_binding.cpp\n'
+          if source_line not in text:
+              anchor = '  src/core/ps1_disc_session.cpp\n'
+              if anchor not in text:
+                  raise SystemExit('CMake ps1_disc_session source anchor not found')
+              text = text.replace(anchor, anchor + source_line, 1)
+          test_line = 'add_jojo_test(jojo_game_source_binding_tests tests/test_game_source_binding.cpp)\n'
+          if test_line not in text:
+              anchor = 'add_jojo_test(jojo_ps1_disc_session_tests tests/test_ps1_disc_session.cpp)\n'
+              if anchor not in text:
+                  raise SystemExit('CMake disc-session test anchor not found')
+              text = text.replace(anchor, anchor + test_line, 1)
           cmake.write_text(text, encoding='utf-8')
-
-          conversion = Path('src/core/conversion.cpp')
-          ctext = conversion.read_text(encoding='utf-8')
-          struct_start = ctext.find('struct ObservedDiscRevision {')
-          next_table = ctext.find('constexpr std::array<std::string_view, 28>', struct_start)
-          if struct_start != -1:
-              if next_table == -1:
-                  raise SystemExit('could not locate conversion table after ObservedDiscRevision')
-              ctext = ctext[:struct_start] + ctext[next_table:]
-          fn_start = ctext.find('Result<GameRevisionMatch> identify_observed_disc_revision(')
-          fn_end = ctext.find('Result<void> save_conversion_manifest_atomic(', fn_start)
-          if fn_start != -1:
-              if fn_end == -1:
-                  raise SystemExit('could not locate end of identify_observed_disc_revision')
-              ctext = ctext[:fn_start] + ctext[fn_end:]
-          conversion.write_text(ctext, encoding='utf-8')
           PY
 
-      - name: Verify imported baseline with M1 and M2
+      - name: Configure and build
         shell: bash
         run: |
           set -euo pipefail
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
           cmake --build build -j2
-          ctest --test-dir build -R 'jojo_(media|iso|ps1_system_cnf|ps1_exe|ps1_disc_session|ps1_direct_runtime|ps1_boot_runtime|ps1_runtime_installation)_tests' --output-on-failure
 
-      - name: Commit imported buildable baseline
+      - name: Run complete test suite
+        shell: bash
+        run: |
+          set -euo pipefail
+          ctest --test-dir build --output-on-failure
+
+      - name: Commit verified M3 integration
         shell: bash
         run: |
           set -euo pipefail
           git config user.name 'JOJO Recompiled CI'
           git config user.email 'actions@users.noreply.github.com'
-          git add -A
+          git add CMakeLists.txt src/core/settings.cpp
           if git diff --cached --quiet; then
-            echo 'No import changes to commit.'
+            echo 'No integration changes to commit.'
             exit 0
           fi
-          git commit -m 'chore: import canonical baseline with direct runtime M1-M2'
-          git push origin HEAD:feature/ps1-direct-runtime-m2
+          git commit -m 'feat: integrate persistent PS1 source binding M3'
+          git push origin HEAD:feature/ps1-source-binding-m3
