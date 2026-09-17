@@ -37,6 +37,7 @@ jobs:
               'add_jojo_test(jojo_ps1_installation_tests tests/test_ps1_installation.cpp)\n',
               'add_jojo_test(jojo_ps1_conversion_tests tests/test_ps1_conversion.cpp)\n',
               'add_jojo_test(jojo_ps1_runtime_installation_tests tests/test_ps1_runtime_installation.cpp)\n',
+              'add_jojo_test(jojo_ps1_local_evidence_tests tests/test_ps1_local_evidence.cpp)\n',
           ]:
               text = text.replace(line, '')
           cmake.write_text(text)
@@ -74,6 +75,7 @@ jobs:
           ! grep -q 'src/core/conversion.cpp' CMakeLists.txt
           ! grep -q 'src/core/ps1_installation.cpp' CMakeLists.txt
           ! grep -q 'jojo_ps1_runtime_installation_tests' CMakeLists.txt
+          ! grep -q 'jojo_ps1_local_evidence_tests' CMakeLists.txt
           ! grep -q 'install_root' src/core/settings.h
           ! grep -q 'install_root=' src/core/settings.cpp
 
