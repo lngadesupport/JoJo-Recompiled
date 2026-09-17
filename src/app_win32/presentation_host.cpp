@@ -186,6 +186,43 @@ Result<void> apply_win32_window_plan(HWND window, const Win32WindowPlan& plan) {
     return Result<void>::success();
 }
 
+Result<D3d11FrameUploadPlan> make_d3d11_frame_upload_plan(
+    const Ps1DisplayFrame& frame) {
+    if (frame.width == 0u || frame.height == 0u) {
+        return Result<D3d11FrameUploadPlan>::failure(
+            ErrorCode::invalid_argument,
+            "PS1 display frame dimensions must be non-zero");
+    }
+
+    const auto width = static_cast<std::size_t>(frame.width);
+    const auto height = static_cast<std::size_t>(frame.height);
+    if (width > std::numeric_limits<std::size_t>::max() / height) {
+        return Result<D3d11FrameUploadPlan>::failure(
+            ErrorCode::invalid_argument,
+            "PS1 display frame dimensions overflow host storage");
+    }
+    const auto pixel_count = width * height;
+    if (frame.rgba8.size() != pixel_count) {
+        return Result<D3d11FrameUploadPlan>::failure(
+            ErrorCode::invalid_argument,
+            "PS1 display frame pixel storage does not match its dimensions");
+    }
+    if (frame.width > std::numeric_limits<std::uint32_t>::max() / sizeof(std::uint32_t)) {
+        return Result<D3d11FrameUploadPlan>::failure(
+            ErrorCode::invalid_argument,
+            "PS1 display frame row pitch exceeds D3D11 limits");
+    }
+
+    D3d11FrameUploadPlan plan{};
+    plan.width = frame.width;
+    plan.height = frame.height;
+    plan.row_pitch = frame.width * static_cast<std::uint32_t>(sizeof(std::uint32_t));
+    plan.byte_size = frame.rgba8.size() * sizeof(std::uint32_t);
+    plan.format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    plan.pixels = frame.rgba8.data();
+    return Result<D3d11FrameUploadPlan>::success(plan);
+}
+
 Result<RendererCapabilities> probe_d3d11_renderer_capabilities() {
     ID3D11Device* device = nullptr;
     ID3D11DeviceContext* context = nullptr;
