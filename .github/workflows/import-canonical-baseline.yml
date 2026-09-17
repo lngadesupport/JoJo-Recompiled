@@ -1,0 +1,114 @@
+name: Import canonical baseline once
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/import-canonical-baseline.yml
+
+permissions:
+  contents: write
+
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout migration branch
+        uses: actions/checkout@v4
+        with:
+          ref: feature/ps1-direct-runtime-m2
+          fetch-depth: 0
+
+      - name: Preserve M1 and M2 overlay
+        shell: bash
+        run: |
+          set -euo pipefail
+          preserve=/tmp/jojo-migration-preserve
+          rm -rf "$preserve"
+          mkdir -p "$preserve"
+          files=(
+            "M2-STATUS.md"
+            "MIGRATION-BOOTSTRAP.md"
+            "docs/superpowers/plans/2026-09-16-ps1-united-style-direct-runtime.md"
+            "docs/superpowers/specs/2026-09-16-ps1-united-style-direct-runtime-design.md"
+            "src/core/ps1_disc_session.cpp"
+            "src/core/ps1_disc_session.h"
+            "src/core/ps1_direct_runtime.cpp"
+            "src/core/revision.cpp"
+            "src/core/revision.h"
+            "src/core/runtime.h"
+            "tests/test_ps1_disc_session.cpp"
+            "tests/test_ps1_direct_runtime.cpp"
+          )
+          for file in "${files[@]}"; do
+            if [[ -f "$file" ]]; then
+              mkdir -p "$preserve/$(dirname "$file")"
+              cp "$file" "$preserve/$file"
+            fi
+          done
+
+      - name: Clone canonical source baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/jojo-canonical
+          git clone --depth 1 --branch main https://github.com/matheuz232/JOJO-Recompiled.git /tmp/jojo-canonical
+
+      - name: Overlay canonical baseline and restore direct-runtime work
+        shell: bash
+        run: |
+          set -euo pipefail
+          rsync -a --delete --exclude='.git/' /tmp/jojo-canonical/ ./
+          cp -a /tmp/jojo-migration-preserve/. ./
+
+      - name: Wire M1 and M2 into CMake
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('CMakeLists.txt')
+          text = path.read_text(encoding='utf-8')
+          if 'src/core/ps1_disc_session.cpp' not in text:
+              anchor = '  src/core/ps1_exe.cpp\n'
+              if anchor not in text: raise SystemExit('missing ps1_exe source anchor')
+              text = text.replace(anchor, anchor + '  src/core/ps1_disc_session.cpp\n', 1)
+          if 'src/core/ps1_direct_runtime.cpp' not in text:
+              anchor = '  src/core/runtime.cpp\n'
+              if anchor not in text: raise SystemExit('missing runtime source anchor')
+              text = text.replace(anchor, anchor + '  src/core/ps1_direct_runtime.cpp\n', 1)
+          session_test = 'add_jojo_test(jojo_ps1_disc_session_tests tests/test_ps1_disc_session.cpp)\n'
+          if session_test not in text:
+              anchor = 'add_jojo_test(jojo_ps1_exe_tests tests/test_ps1_exe.cpp)\n'
+              if anchor not in text: raise SystemExit('missing ps1 exe test anchor')
+              text = text.replace(anchor, anchor + session_test, 1)
+          direct_test = 'add_jojo_test(jojo_ps1_direct_runtime_tests tests/test_ps1_direct_runtime.cpp)\n'
+          if direct_test not in text:
+              anchor = 'add_jojo_test(jojo_ps1_runtime_installation_tests tests/test_ps1_runtime_installation.cpp)\n'
+              if anchor not in text: raise SystemExit('missing runtime-installation test anchor')
+              text = text.replace(anchor, anchor + direct_test, 1)
+          path.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Verify imported baseline with M1 and M2
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+          cmake --build build -j2
+          ctest --test-dir build -R 'jojo_(media|iso|ps1_system_cnf|ps1_exe|ps1_disc_session|ps1_direct_runtime|ps1_boot_runtime|ps1_runtime_installation)_tests' --output-on-failure
+
+      - name: Commit imported buildable baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'JOJO Recompiled CI'
+          git config user.email 'actions@users.noreply.github.com'
+          git add -A
+          if git diff --cached --quiet; then
+            echo 'No import changes to commit.'
+            exit 0
+          fi
+          git commit -m 'chore: import canonical baseline with direct runtime M1-M2'
+          git push origin HEAD:feature/ps1-direct-runtime-m2
