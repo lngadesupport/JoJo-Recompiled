@@ -29,6 +29,7 @@ add_library(jojo_core STATIC
   src/core/game_source_binding.cpp
   src/core/ps1_memory_bus.cpp
   src/core/ps1_hardware_services.cpp
+  src/core/ps1_cdrom.cpp
   src/core/ps1_hardware_services.cpp
   src/core/ps1_executable_loader.cpp
   src/core/ps1_hle_bios.cpp
@@ -105,6 +106,7 @@ add_jojo_test(jojo_ps1_commercial_evidence_tests tests/test_ps1_commercial_evide
 add_jojo_test(jojo_ps1_commercial_evidence_io_tests tests/test_ps1_commercial_evidence_io.cpp)
 add_jojo_test(jojo_ps1_hardware_irq_timer_tests tests/test_ps1_hardware_irq_timers.cpp)
 add_jojo_test(jojo_ps1_hardware_dma_tests tests/test_ps1_hardware_dma.cpp)
+add_jojo_test(jojo_ps1_cdrom_tests tests/test_ps1_cdrom.cpp)
 add_jojo_test(jojo_ps1_memory_bus_tests tests/test_ps1_memory_bus.cpp)
 add_jojo_test(jojo_ps1_executable_loader_tests tests/test_ps1_executable_loader.cpp)
 add_jojo_test(jojo_ps1_boot_runtime_tests tests/test_ps1_boot_runtime.cpp)
