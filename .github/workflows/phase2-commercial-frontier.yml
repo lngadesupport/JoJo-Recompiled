@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 jobs:
-  linux-contract:
+  linux-full-gate:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -20,22 +20,23 @@ jobs:
           grep -q 'Ps1CommercialEvidenceRunner' src/app_win32/main.cpp
           grep -q 'commercial-frontier.txt' src/app_win32/main.cpp
           ! grep -q 'bootstrap_runtime_checkpoint_from_disc_to_file' src/app_win32/main.cpp
-      - name: Configure
-        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
-      - name: Build Phase 2 contracts
-        run: cmake --build build --target jojo_ps1_commercial_frontier_tests jojo_ps1_commercial_evidence_tests jojo_ps1_commercial_evidence_io_tests -j2
-      - name: Run Phase 2 contracts
-        run: ctest --test-dir build -R 'jojo_ps1_commercial_(frontier|evidence|evidence_io)_tests' --output-on-failure
+      - name: Active PS1 architecture gate
+        shell: bash
+        run: cmake -DJOJO_SOURCE_DIR="$PWD" -P cmake/CheckPs1ActiveArchitecture.cmake
+      - name: Configure Release
+        run: cmake -S . -B build-linux -DCMAKE_BUILD_TYPE=Release
+      - name: Build full graph
+        run: cmake --build build-linux -j2
+      - name: Run full CTest graph
+        run: ctest --test-dir build-linux --output-on-failure
 
-  windows-shipping:
+  windows-x64-full-gate:
     runs-on: windows-2022
     steps:
       - uses: actions/checkout@v4
-      - name: Configure
-        run: cmake -S . -B build -A x64
-      - name: Build shipping app and Phase 2 tests
-        run: cmake --build build --config Debug --target jojo_recompiled jojo_win32_image_selection_tests jojo_ps1_commercial_frontier_tests jojo_ps1_commercial_evidence_tests jojo_ps1_commercial_evidence_io_tests
-      - name: Run Phase 2 core contracts
-        run: ctest --test-dir build -C Debug -R "jojo_ps1_commercial_(frontier|evidence|evidence_io)_tests" --output-on-failure
-      - name: Run Win32 direct-source contract
-        run: ctest --test-dir build -C Debug -R "jojo_win32_image_selection_tests" --output-on-failure
+      - name: Configure Release x64
+        run: cmake -S . -B build-win -A x64
+      - name: Build full graph
+        run: cmake --build build-win --config Release
+      - name: Run full CTest graph
+        run: ctest --test-dir build-win -C Release --output-on-failure
