@@ -8,46 +8,50 @@ on:
       - .github/workflows/import-canonical-baseline.yml
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  verify-m5:
+  linux-regression:
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout M5 branch
         uses: actions/checkout@v4
         with:
-          ref: feature/ps1-cd-streaming-m5-single
-          fetch-depth: 0
+          ref: feature/ps1-cd-streaming-m5
 
-      - name: Register streaming contract target
+      - name: Guard streaming contract registration
         shell: bash
         run: |
           set -euo pipefail
-          if ! grep -q 'jojo_ps1_disc_streaming_tests' CMakeLists.txt; then
-            sed -i '/add_jojo_test(jojo_ps1_disc_session_tests tests\/test_ps1_disc_session.cpp)/a add_jojo_test(jojo_ps1_disc_streaming_tests tests/test_ps1_disc_streaming.cpp)' CMakeLists.txt
-          fi
           grep -q 'jojo_ps1_disc_streaming_tests tests/test_ps1_disc_streaming.cpp' CMakeLists.txt
+          grep -q 'read_sectors' src/core/ps1_disc_session.h
+          ! grep -q 'ofstream' src/core/ps1_disc_session.cpp
 
       - name: Configure Release
         run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 
-      - name: Build streaming and adjacent media contracts
-        run: cmake --build build --target jojo_media_tests jojo_ps1_disc_session_tests jojo_ps1_disc_streaming_tests -j2
+      - name: Build all
+        run: cmake --build build -j2
 
-      - name: Run streaming and adjacent media contracts
-        run: ctest --test-dir build -R 'jojo_(media|ps1_disc_session|ps1_disc_streaming)_tests' --output-on-failure
+      - name: Run complete CTest suite
+        run: ctest --test-dir build --output-on-failure
 
-      - name: Commit verified CMake registration
-        shell: bash
-        run: |
-          set -euo pipefail
-          git config user.name 'JOJO Recompiled CI'
-          git config user.email 'actions@users.noreply.github.com'
-          git add CMakeLists.txt tests/test_ps1_disc_streaming.cpp
-          if git diff --cached --quiet; then
-            echo 'No M5 changes to commit.'
-            exit 0
-          fi
-          git commit -m 'feat: expose direct PS1 sector streaming contract'
-          git push origin HEAD:feature/ps1-cd-streaming-m5-single
+  windows-regression:
+    runs-on: windows-2022
+    steps:
+      - name: Checkout M5 branch
+        uses: actions/checkout@v4
+        with:
+          ref: feature/ps1-cd-streaming-m5
+
+      - name: Configure Windows x64
+        shell: pwsh
+        run: cmake -S . -B build -A x64
+
+      - name: Build all Release targets
+        shell: pwsh
+        run: cmake --build build --config Release
+
+      - name: Run complete CTest suite
+        shell: pwsh
+        run: ctest --test-dir build -C Release --output-on-failure
