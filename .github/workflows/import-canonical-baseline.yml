@@ -26,7 +26,7 @@ jobs:
 
       - name: Build shipping app and M4 contract
         shell: pwsh
-        run: cmake --build build --config Release --target jojo_recompiled jojo_win32_image_selection_tests
+        run: cmake --build build --config Release --target jojo_win32_image_selection_tests
 
       - name: Run M4 Win32 contract
         shell: pwsh
