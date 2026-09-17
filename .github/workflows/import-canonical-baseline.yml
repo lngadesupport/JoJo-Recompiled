@@ -20,14 +20,40 @@ jobs:
           ref: feature/ps1-win32-direct-source-m4
           fetch-depth: 0
 
+      - name: Apply focused M4 include fix
+        shell: pwsh
+        run: |
+          $path = 'src/app_win32/main.cpp'
+          $text = [System.IO.File]::ReadAllText($path)
+          $include = '#include "core/ps1_boot_report_io.h"'
+          if (-not $text.Contains($include)) {
+            $anchor = '#include "core/ps1_disc_session.h"'
+            if (-not $text.Contains($anchor)) { throw 'main.cpp include anchor not found' }
+            $text = $text.Replace($anchor, "$anchor`n$include")
+            [System.IO.File]::WriteAllText($path, $text, [System.Text.UTF8Encoding]::new($false))
+          }
+
       - name: Configure Windows x64
         shell: pwsh
         run: cmake -S . -B build -A x64
 
       - name: Build shipping app and M4 contract
         shell: pwsh
-        run: cmake --build build --config Release --target jojo_win32_image_selection_tests
+        run: cmake --build build --config Release --target jojo_recompiled jojo_win32_image_selection_tests
 
       - name: Run M4 Win32 contract
         shell: pwsh
         run: ctest --test-dir build -C Release -R jojo_win32_image_selection_tests --output-on-failure
+
+      - name: Commit verified M4 include fix
+        shell: pwsh
+        run: |
+          git config user.name 'JOJO Recompiled CI'
+          git config user.email 'actions@users.noreply.github.com'
+          git add src/app_win32/main.cpp
+          if (git diff --cached --quiet) {
+            Write-Host 'No M4 include change to commit.'
+            exit 0
+          }
+          git commit -m 'fix: include PS1 boot report names in direct Win32 flow'
+          git push origin HEAD:feature/ps1-win32-direct-source-m4
