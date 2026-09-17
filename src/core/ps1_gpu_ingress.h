@@ -8,6 +8,15 @@
 
 namespace jojo {
 
+struct Ps1GpuDisplayState {
+    bool enabled{};
+    bool rgb24{};
+    std::uint32_t start_x{};
+    std::uint32_t start_y{};
+    std::uint32_t width{256u};
+    std::uint32_t height{240u};
+};
+
 class Ps1GpuIngress {
 public:
     static constexpr std::uint32_t vram_width = 1024u;
@@ -21,6 +30,7 @@ public:
     [[nodiscard]] std::uint64_t gp1_command_count() const noexcept;
     [[nodiscard]] std::uint16_t vram_pixel(std::uint32_t x, std::uint32_t y) const noexcept;
     [[nodiscard]] std::uint64_t vram_write_count() const noexcept;
+    [[nodiscard]] Ps1GpuDisplayState display_state() const noexcept;
     [[nodiscard]] const std::optional<std::uint8_t>& last_unsupported_gp0_command() const noexcept;
     [[nodiscard]] const std::optional<std::uint8_t>& last_unsupported_gp1_command() const noexcept;
 
@@ -37,14 +47,17 @@ private:
     };
 
     void reset_command_buffer() noexcept;
+    void reset_display_state() noexcept;
     void write_transfer_pixel(std::uint16_t pixel) noexcept;
     void fill_rectangle(std::uint32_t width, std::uint32_t height) noexcept;
+    void apply_display_mode(std::uint32_t parameter) noexcept;
 
     std::uint32_t status_{reset_status};
     std::uint64_t gp0_word_count_{};
     std::uint64_t gp1_command_count_{};
     std::array<std::uint16_t, vram_width * vram_height> vram_{};
     std::uint64_t vram_write_count_{};
+    Ps1GpuDisplayState display_{};
 
     Gp0Mode gp0_mode_{Gp0Mode::command};
     std::uint16_t fill_color_{};
