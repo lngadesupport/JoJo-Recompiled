@@ -264,6 +264,34 @@ static void test_mega_probe_continues_through_unknown_mmio_and_records_events() 
     CHECK(runtime.cpu_state().gpr[10] == 0x00001234u);
 }
 
+static void test_runtime_exposes_host_neutral_gpu_display_frame() {
+    const std::vector<std::uint32_t> words{
+        test_mips::j(0x02u, 0x80010000u >> 2),
+        0x00000000u,
+    };
+    auto runtime = make_runtime(words);
+
+    CHECK(runtime.bus().write32(0x1F801810u, 0xA0000000u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(runtime.bus().write32(0x1F801810u, 0x00000000u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(runtime.bus().write32(0x1F801810u, (1u << 16u) | 2u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(runtime.bus().write32(0x1F801810u, 0x03E0001Fu).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(runtime.bus().write32(0x1F801814u, 0x03000000u).status ==
+          jojo::R3000aBusStatus::ok);
+
+    const auto frame = runtime.display_frame();
+    CHECK(frame.width == 256u);
+    CHECK(frame.height == 240u);
+    CHECK(frame.rgba8.size() == static_cast<std::size_t>(256u * 240u));
+    if (frame.rgba8.size() >= 2u) {
+        CHECK(frame.rgba8[0] == 0xFF0000FFu);
+        CHECK(frame.rgba8[1] == 0xFF00FF00u);
+    }
+}
+
 static void test_deterministic_replay_matches_full_m3a_state() {
     const std::vector<std::uint32_t> words{
         test_mips::j(0x02u, 0x80010000u >> 2),
@@ -326,6 +354,7 @@ int main() {
     test_a0_33_remains_unimplemented();
     test_mmio_access_stops_with_structured_evidence();
     test_mega_probe_continues_through_unknown_mmio_and_records_events();
+    test_runtime_exposes_host_neutral_gpu_display_frame();
     test_deterministic_replay_matches_full_m3a_state();
     return failures ? 1 : 0;
 }
