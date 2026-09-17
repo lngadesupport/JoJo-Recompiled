@@ -1,0 +1,21 @@
+name: Phase 3 Hardware Services
+
+on:
+  push:
+    branches:
+      - feature/ps1-hardware-services-phase3
+
+permissions:
+  contents: read
+
+jobs:
+  linux-contract:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
+      - name: Build Phase 3A contract
+        run: cmake --build build --target jojo_ps1_hardware_irq_timer_tests -j2
+      - name: Run Phase 3A contract
+        run: ctest --test-dir build -R jojo_ps1_hardware_irq_timer_tests --output-on-failure
