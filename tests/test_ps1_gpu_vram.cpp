@@ -28,5 +28,24 @@ int main() {
     CHECK(gpu.write_gp0(0x00000000u).status == jojo::R3000aBusStatus::ok);
     CHECK(gpu.gp0_word_count() == 6u);
 
+    // GP0(02h): Fill Rectangle. Keep X/width aligned here so this test isolates
+    // packet assembly, color conversion and deterministic in-bounds raster writes.
+    {
+        jojo::Ps1GpuIngress fill_gpu;
+        CHECK(fill_gpu.write_gp0(0x020000F8u).status == jojo::R3000aBusStatus::ok); // red
+        CHECK(fill_gpu.write_gp0((30u << 16u) | 32u).status == jojo::R3000aBusStatus::ok);
+        CHECK(fill_gpu.write_gp0((2u << 16u) | 16u).status == jojo::R3000aBusStatus::ok);
+
+        for (std::uint32_t y = 30u; y < 32u; ++y) {
+            for (std::uint32_t x = 32u; x < 48u; ++x) {
+                CHECK(fill_gpu.vram_pixel(x, y) == 0x001Fu);
+            }
+        }
+        CHECK(fill_gpu.vram_pixel(31u, 30u) == 0u);
+        CHECK(fill_gpu.vram_pixel(48u, 30u) == 0u);
+        CHECK(fill_gpu.vram_write_count() == 32u);
+        CHECK(fill_gpu.gp0_word_count() == 3u);
+    }
+
     return failures ? 1 : 0;
 }
