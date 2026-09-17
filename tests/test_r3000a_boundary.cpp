@@ -57,8 +57,10 @@ int main() {
         CHECK(s.pc == 0x80000080u && s.next_pc == 0x80000084u);
     }
 
-    // CU2 set: GTE/COP2 is deliberately not implemented in M2 and must stop explicitly.
-    for (const auto raw : operations) {
+    // CU2 set: register transfers are implemented by Phase 4A, while GTE commands
+    // remain an explicit frontier until Phase 4B implements the required operation.
+    {
+        const auto raw = cop2(0x10u);
         TestR3000aBus bus;
         auto s = base_state();
         s.cop0.status |= kCu2;
