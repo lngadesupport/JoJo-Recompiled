@@ -2,6 +2,7 @@
 
 #include "core/r3000a_bus.h"
 #include "core/ps1_hardware_services.h"
+#include "core/ps1_hardware_services.h"
 #include "core/result.h"
 
 #include <array>

@@ -164,6 +164,9 @@ Ps1BootReport Ps1BootRuntime::run(const Ps1BootOptions& options) noexcept {
             bus_.hardware_services().step(1u);
             cpu_.external_interrupt_pending =
                 bus_.hardware_services().interrupt_pending() ? 1u : 0u;
+            bus_.hardware_services().step(1u);
+            cpu_.external_interrupt_pending =
+                bus_.hardware_services().interrupt_pending() ? 1u : 0u;
             if (const auto& probe = bus_.last_diagnostic_mmio_probe(); probe) {
                 ++report.speculative_mmio_count;
                 record_recent_mmio(report, Ps1MmioSummary{

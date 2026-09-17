@@ -29,6 +29,7 @@ add_library(jojo_core STATIC
   src/core/game_source_binding.cpp
   src/core/ps1_memory_bus.cpp
   src/core/ps1_hardware_services.cpp
+  src/core/ps1_hardware_services.cpp
   src/core/ps1_executable_loader.cpp
   src/core/ps1_hle_bios.cpp
   src/core/ps1_boot_runtime.cpp
