@@ -6,16 +6,130 @@ on:
       - feature/ps1-hardware-services-phase3
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   linux-contract:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+      - name: Integrate Phase 3A hardware services
+        shell: python
+        run: |
+          from pathlib import Path
+
+          def replace_once(text, old, new, label):
+              if old not in text:
+                  if new in text:
+                      return text
+                  raise SystemExit(f"missing integration anchor: {label}")
+              return text.replace(old, new, 1)
+
+          cmake = Path('CMakeLists.txt')
+          text = cmake.read_text()
+          text = replace_once(text,
+              '  src/core/ps1_memory_bus.cpp\n',
+              '  src/core/ps1_memory_bus.cpp\n  src/core/ps1_hardware_services.cpp\n',
+              'CMake hardware source')
+          cmake.write_text(text)
+
+          header = Path('src/core/ps1_memory_bus.h')
+          text = header.read_text()
+          text = replace_once(text,
+              '#include "core/r3000a_bus.h"\n',
+              '#include "core/r3000a_bus.h"\n#include "core/ps1_hardware_services.h"\n',
+              'bus hardware include')
+          text = replace_once(text,
+              '    [[nodiscard]] std::uint16_t timer1_mode() const noexcept;\n    [[nodiscard]] std::uint64_t diagnostic_state_hash() const noexcept;\n',
+              '    [[nodiscard]] std::uint16_t timer1_mode() const noexcept;\n    [[nodiscard]] Ps1HardwareServices& hardware_services() noexcept;\n    [[nodiscard]] const Ps1HardwareServices& hardware_services() const noexcept;\n    [[nodiscard]] std::uint64_t diagnostic_state_hash() const noexcept;\n',
+              'bus hardware accessors')
+          text = replace_once(text,
+              '    std::array<std::uint8_t, scratchpad_size> scratchpad_{};\n    std::uint16_t interrupt_status_{};\n    std::uint16_t interrupt_mask_{};\n    std::uint32_t dma_control_{0x07654321u};\n    std::uint32_t dma_interrupt_{};\n    std::uint16_t timer1_counter_{};\n    std::uint16_t timer1_mode_{};\n',
+              '    std::array<std::uint8_t, scratchpad_size> scratchpad_{};\n    Ps1HardwareServices hardware_{};\n    std::uint32_t dma_control_{0x07654321u};\n    std::uint32_t dma_interrupt_{};\n',
+              'bus hardware state')
+          header.write_text(text)
+
+          cpp = Path('src/core/ps1_memory_bus.cpp')
+          text = cpp.read_text()
+          text = replace_once(text,
+              'constexpr std::uint32_t kInterruptStatusAddress = 0x1F801070u;\nconstexpr std::uint32_t kInterruptMaskAddress = 0x1F801074u;\n',
+              '', 'remove IRQ constants')
+          text = replace_once(text,
+              'constexpr std::uint32_t kTimer1ModeAddress = 0x1F801114u;\nconstexpr std::uint16_t kInterruptValidBits = 0x07FFu;\n',
+              '', 'remove timer constants')
+          text = replace_once(text,
+              '        if (*physical == kInterruptMaskAddress) {\n            return {R3000aBusStatus::ok, interrupt_mask_};\n        }\n',
+              '', 'remove bus IMASK read')
+          text = replace_once(text,
+              '        if (auto* p = mapped_bytes(*physical, 2u, main_ram_, scratchpad_)) {\n            return {R3000aBusStatus::ok, read_little_endian(p, 2u)};\n        }\n        if (diagnostic_mmio_probe_enabled_) {',
+              '        if (auto* p = mapped_bytes(*physical, 2u, main_ram_, scratchpad_)) {\n            return {R3000aBusStatus::ok, read_little_endian(p, 2u)};\n        }\n        const auto hardware = hardware_.read16(*physical);\n        if (hardware.status == R3000aBusStatus::ok) return hardware;\n        if (diagnostic_mmio_probe_enabled_) {',
+              'route read16 hardware')
+          text = replace_once(text,
+              '        if (auto* p = mapped_bytes(*physical, 4u, main_ram_, scratchpad_)) {\n            return {R3000aBusStatus::ok, read_little_endian(p, 4u)};\n        }\n        if (diagnostic_mmio_probe_enabled_) {',
+              '        if (auto* p = mapped_bytes(*physical, 4u, main_ram_, scratchpad_)) {\n            return {R3000aBusStatus::ok, read_little_endian(p, 4u)};\n        }\n        const auto hardware = hardware_.read32(*physical);\n        if (hardware.status == R3000aBusStatus::ok) return hardware;\n        if (diagnostic_mmio_probe_enabled_) {',
+              'route read32 hardware')
+          text = replace_once(text,
+              '        if (auto* p = mapped_bytes(*physical, 1u, main_ram_, scratchpad_)) {\n            write_little_endian(p, 1u, value);\n            return {R3000aBusStatus::ok, 0u};\n        }\n        if (diagnostic_mmio_probe_enabled_) {',
+              '        if (auto* p = mapped_bytes(*physical, 1u, main_ram_, scratchpad_)) {\n            write_little_endian(p, 1u, value);\n            return {R3000aBusStatus::ok, 0u};\n        }\n        const auto hardware = hardware_.write8(*physical, value);\n        if (hardware.status == R3000aBusStatus::ok) return hardware;\n        if (diagnostic_mmio_probe_enabled_) {',
+              'route write8 hardware')
+          text = replace_once(text,
+              '        if (*physical == kInterruptStatusAddress) {\n            interrupt_status_ = static_cast<std::uint16_t>(interrupt_status_ & value & kInterruptValidBits);\n            return {R3000aBusStatus::ok, 0u};\n        }\n        if (*physical == kInterruptMaskAddress) {\n            interrupt_mask_ = static_cast<std::uint16_t>(value & kInterruptValidBits);\n            return {R3000aBusStatus::ok, 0u};\n        }\n',
+              '', 'remove bus IRQ writes')
+          text = replace_once(text,
+              '        if (auto* p = mapped_bytes(*physical, 2u, main_ram_, scratchpad_)) {\n            write_little_endian(p, 2u, value);\n            return {R3000aBusStatus::ok, 0u};\n        }\n        if (diagnostic_mmio_probe_enabled_) {',
+              '        if (auto* p = mapped_bytes(*physical, 2u, main_ram_, scratchpad_)) {\n            write_little_endian(p, 2u, value);\n            return {R3000aBusStatus::ok, 0u};\n        }\n        const auto hardware = hardware_.write16(*physical, value);\n        if (hardware.status == R3000aBusStatus::ok) return hardware;\n        if (diagnostic_mmio_probe_enabled_) {',
+              'route write16 hardware')
+          text = replace_once(text,
+              '        if (*physical == kTimer1ModeAddress) {\n            timer1_mode_ = static_cast<std::uint16_t>(value & 0xFFFFu);\n            timer1_counter_ = 0u;\n            return {R3000aBusStatus::ok, 0u};\n        }\n',
+              '', 'remove bus timer1 write')
+          text = replace_once(text,
+              '        if (auto* p = mapped_bytes(*physical, 4u, main_ram_, scratchpad_)) {\n            write_little_endian(p, 4u, value);\n            return {R3000aBusStatus::ok, 0u};\n        }\n        if (diagnostic_mmio_probe_enabled_) {',
+              '        if (auto* p = mapped_bytes(*physical, 4u, main_ram_, scratchpad_)) {\n            write_little_endian(p, 4u, value);\n            return {R3000aBusStatus::ok, 0u};\n        }\n        const auto hardware = hardware_.write32(*physical, value);\n        if (hardware.status == R3000aBusStatus::ok) return hardware;\n        if (diagnostic_mmio_probe_enabled_) {',
+              'route write32 hardware')
+          text = replace_once(text,
+              'std::uint16_t Ps1MemoryBus::interrupt_mask() const noexcept {\n    return interrupt_mask_;\n}\n',
+              'std::uint16_t Ps1MemoryBus::interrupt_mask() const noexcept {\n    return hardware_.interrupt_mask();\n}\n',
+              'delegate interrupt mask')
+          text = replace_once(text,
+              'std::uint16_t Ps1MemoryBus::timer1_counter() const noexcept {\n    return timer1_counter_;\n}\n\nstd::uint16_t Ps1MemoryBus::timer1_mode() const noexcept {\n    return timer1_mode_;\n}\n',
+              'std::uint16_t Ps1MemoryBus::timer1_counter() const noexcept {\n    return hardware_.timer_counter(1u);\n}\n\nstd::uint16_t Ps1MemoryBus::timer1_mode() const noexcept {\n    return hardware_.timer_mode(1u);\n}\n\nPs1HardwareServices& Ps1MemoryBus::hardware_services() noexcept {\n    return hardware_;\n}\n\nconst Ps1HardwareServices& Ps1MemoryBus::hardware_services() const noexcept {\n    return hardware_;\n}\n',
+              'delegate timers and expose hardware')
+          text = replace_once(text,
+              '    hash_u16(hash, interrupt_status_);\n    hash_u16(hash, interrupt_mask_);\n    hash_u32(hash, dma_control_);\n    hash_u32(hash, dma_interrupt_);\n    hash_u16(hash, timer1_counter_);\n    hash_u16(hash, timer1_mode_);\n',
+              '    const auto hardware_hash = hardware_.diagnostic_state_hash();\n    hash_u32(hash, static_cast<std::uint32_t>(hardware_hash));\n    hash_u32(hash, static_cast<std::uint32_t>(hardware_hash >> 32u));\n    hash_u32(hash, dma_control_);\n    hash_u32(hash, dma_interrupt_);\n',
+              'hash hardware state')
+          cpp.write_text(text)
+
+          runtime = Path('src/core/ps1_boot_runtime.cpp')
+          text = runtime.read_text()
+          text = replace_once(text,
+              '        if (step.status == R3000aStepStatus::retired) {\n            ++report.instructions_retired;\n            ++instructions_since_progress;\n',
+              '        if (step.status == R3000aStepStatus::retired) {\n            ++report.instructions_retired;\n            ++instructions_since_progress;\n            bus_.hardware_services().step(1u);\n            cpu_.external_interrupt_pending =\n                bus_.hardware_services().interrupt_pending() ? 1u : 0u;\n',
+              'advance hardware per retired instruction')
+          runtime.write_text(text)
+
+          test = Path('tests/test_ps1_memory_bus.cpp')
+          text = test.read_text()
+          text = replace_once(text,
+              '    CHECK(bus.read16(0x1F801070u).status == jojo::R3000aBusStatus::unsupported);\n',
+              '    CHECK(bus.read16(0x1F801070u).status == jojo::R3000aBusStatus::ok);\n',
+              'I_STAT is now readable')
+          test.write_text(text)
       - name: Configure
         run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
-      - name: Build Phase 3A contract
-        run: cmake --build build --target jojo_ps1_hardware_irq_timer_tests -j2
-      - name: Run Phase 3A contract
-        run: ctest --test-dir build -R jojo_ps1_hardware_irq_timer_tests --output-on-failure
+      - name: Build Phase 3A and adjacent contracts
+        run: cmake --build build --target jojo_ps1_hardware_irq_timer_tests jojo_ps1_memory_bus_tests jojo_ps1_boot_runtime_tests jojo_ps1_diagnostic_frontier_tests jojo_ps1_commercial_evidence_tests -j2
+      - name: Run Phase 3A and adjacent contracts
+        run: ctest --test-dir build -R 'jojo_ps1_(hardware_irq_timer|memory_bus|boot_runtime|diagnostic_frontier|commercial_evidence)_tests' --output-on-failure
+      - name: Commit verified Phase 3A integration
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet; then
+            exit 0
+          fi
+          git config user.name "TheTeu"
+          git config user.email "kingmath3us@gmail.com"
+          git add CMakeLists.txt src/core/ps1_memory_bus.h src/core/ps1_memory_bus.cpp src/core/ps1_boot_runtime.cpp tests/test_ps1_memory_bus.cpp
+          git commit -m "feat: integrate PS1 IRQ and timer hardware services"
+          git push origin HEAD:feature/ps1-hardware-services-phase3
