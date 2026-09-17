@@ -20,12 +20,22 @@ jobs:
           ref: feature/ps1-source-binding-m3
           fetch-depth: 0
 
-      - name: Wire settings persistence and CMake
+      - name: Wire M3 integration
         shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
+
+          test = Path('tests/test_game_source_binding.cpp')
+          text = test.read_text(encoding='utf-8')
+          include = '#include "core/ps1_disc_session.h"\n'
+          if include not in text:
+              anchor = '#include "core/game_source_binding.h"\n'
+              if anchor not in text:
+                  raise SystemExit('game-source test include anchor not found')
+              text = text.replace(anchor, anchor + include, 1)
+          test.write_text(text, encoding='utf-8')
 
           settings = Path('src/core/settings.cpp')
           text = settings.read_text(encoding='utf-8')
@@ -79,7 +89,7 @@ jobs:
           set -euo pipefail
           git config user.name 'JOJO Recompiled CI'
           git config user.email 'actions@users.noreply.github.com'
-          git add CMakeLists.txt src/core/settings.cpp
+          git add CMakeLists.txt src/core/settings.cpp tests/test_game_source_binding.cpp
           if git diff --cached --quiet; then
             echo 'No integration changes to commit.'
             exit 0
