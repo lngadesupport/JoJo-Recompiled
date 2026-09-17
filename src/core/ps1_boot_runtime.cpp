@@ -278,6 +278,10 @@ std::uint64_t Ps1BootRuntime::diagnostic_state_hash() const noexcept {
     return hash;
 }
 
+Ps1DisplayFrame Ps1BootRuntime::display_frame() const {
+    return capture_ps1_display_frame(bus_.hardware_services().gpu());
+}
+
 const R3000aState& Ps1BootRuntime::cpu_state() const noexcept {
     return cpu_;
 }

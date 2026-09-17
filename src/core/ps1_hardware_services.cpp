@@ -422,6 +422,10 @@ std::uint64_t Ps1HardwareServices::gpu_gp1_command_count() const noexcept {
     return gpu_.gp1_command_count();
 }
 
+const Ps1GpuIngress& Ps1HardwareServices::gpu() const noexcept {
+    return gpu_;
+}
+
 std::uint64_t Ps1HardwareServices::diagnostic_state_hash() const noexcept {
     std::uint64_t hash = kFnvOffset;
     hash_u16(hash, interrupt_status_);

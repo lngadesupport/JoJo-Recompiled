@@ -65,6 +65,7 @@ public:
     [[nodiscard]] std::uint32_t gpu_status() const noexcept;
     [[nodiscard]] std::uint64_t gpu_gp0_word_count() const noexcept;
     [[nodiscard]] std::uint64_t gpu_gp1_command_count() const noexcept;
+    [[nodiscard]] const Ps1GpuIngress& gpu() const noexcept;
 
     [[nodiscard]] std::uint64_t diagnostic_state_hash() const noexcept;
 

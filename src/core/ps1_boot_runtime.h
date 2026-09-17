@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/ps1_boot_report.h"
+#include "core/ps1_display_frame.h"
 #include "core/ps1_exe.h"
 #include "core/ps1_hle_bios.h"
 #include "core/ps1_memory_bus.h"
@@ -29,6 +30,7 @@ public:
     [[nodiscard]] Ps1BootReport run(const Ps1BootOptions& options) noexcept;
     [[nodiscard]] bool apply_diagnostic_bios_fallback(Ps1BiosFallback fallback) noexcept;
     [[nodiscard]] std::uint64_t diagnostic_state_hash() const noexcept;
+    [[nodiscard]] Ps1DisplayFrame display_frame() const;
 
     [[nodiscard]] const R3000aState& cpu_state() const noexcept;
     [[nodiscard]] const std::optional<Ps1BiosHeapState>& bios_heap_state() const noexcept;
