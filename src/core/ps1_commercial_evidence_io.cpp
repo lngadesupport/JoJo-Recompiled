@@ -26,6 +26,10 @@ std::string optional_hex32(const std::optional<std::uint32_t>& value) {
     return value ? hex32(*value) : "none";
 }
 
+std::string optional_u8(const std::optional<std::uint8_t>& value) {
+    return value ? std::to_string(static_cast<unsigned>(*value)) : "none";
+}
+
 std::string fallback_name(Ps1BiosFallback fallback) {
     switch (fallback) {
         case Ps1BiosFallback::return_zero: return "return_zero";
@@ -87,6 +91,35 @@ std::string format_ps1_commercial_evidence_report(
     out << "gpu_gp1_command_count=" << report.boot.gpu_gp1_command_count << '\n';
     out << "vram_write_count=" << report.boot.vram_write_count << '\n';
     out << "presented_frames=" << report.boot.presented_frames << '\n';
+
+    if (report.boot.cpu_diagnostic) {
+        const auto& cpu = *report.boot.cpu_diagnostic;
+        out << "cpu_boundary=" << static_cast<unsigned>(cpu.boundary) << '\n';
+        out << "cpu_stage=" << static_cast<unsigned>(cpu.stage) << '\n';
+        out << "cpu_pc=" << hex32(cpu.pc) << '\n';
+        out << "cpu_opcode=" << optional_hex32(cpu.opcode) << '\n';
+        out << "cpu_address=" << optional_hex32(cpu.address) << '\n';
+        out << "cpu_write_value=" << optional_hex32(cpu.write_value) << '\n';
+        out << "cpu_access_width=" << optional_u8(cpu.access_width) << '\n';
+        out << "cpu_coprocessor=" << optional_u8(cpu.coprocessor) << '\n';
+        out << "cpu_register_index=" << optional_u8(cpu.register_index) << '\n';
+        out << "cpu_exception_code="
+            << (cpu.exception_code
+                    ? std::to_string(static_cast<unsigned>(*cpu.exception_code))
+                    : std::string("none"))
+            << '\n';
+    } else {
+        out << "cpu_boundary=none\n"
+            << "cpu_stage=none\n"
+            << "cpu_pc=none\n"
+            << "cpu_opcode=none\n"
+            << "cpu_address=none\n"
+            << "cpu_write_value=none\n"
+            << "cpu_access_width=none\n"
+            << "cpu_coprocessor=none\n"
+            << "cpu_register_index=none\n"
+            << "cpu_exception_code=none\n";
+    }
 
     out << "trace_sample_count=" << report.boot.recent_trace.size() << '\n';
     for (std::size_t i = 0; i < report.boot.recent_trace.size(); ++i) {
