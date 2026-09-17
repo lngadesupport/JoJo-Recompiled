@@ -1,8 +1,10 @@
 #ifdef _WIN32
 #define NOMINMAX
 #include "app_win32/presentation_host.h"
+#include "core/ps1_display_frame.h"
 
 #include <algorithm>
+#include <dxgiformat.h>
 #include <iostream>
 #include <windows.h>
 
@@ -96,6 +98,33 @@ void test_d3d11_probe_reports_real_device_quality_capabilities() {
               mode == jojo::Msaa::x4 || mode == jojo::Msaa::x8);
     }
 }
+
+void test_d3d11_ps1_frame_upload_plan_is_tightly_packed_rgba8() {
+    jojo::Ps1DisplayFrame frame{};
+    frame.width = 2u;
+    frame.height = 1u;
+    frame.rgba8 = {0xFF0000FFu, 0xFF00FF00u};
+
+    const auto plan = jojo::make_d3d11_frame_upload_plan(frame);
+    CHECK(plan);
+    if (!plan) return;
+    CHECK(plan.value.width == 2u);
+    CHECK(plan.value.height == 1u);
+    CHECK(plan.value.row_pitch == 8u);
+    CHECK(plan.value.byte_size == 8u);
+    CHECK(plan.value.format == DXGI_FORMAT_R8G8B8A8_UNORM);
+    CHECK(plan.value.pixels == frame.rgba8.data());
+}
+
+void test_d3d11_ps1_frame_upload_plan_rejects_malformed_storage() {
+    jojo::Ps1DisplayFrame frame{};
+    frame.width = 2u;
+    frame.height = 2u;
+    frame.rgba8 = {0xFFFFFFFFu};
+    const auto plan = jojo::make_d3d11_frame_upload_plan(frame);
+    CHECK(!plan);
+    CHECK(plan.error == jojo::ErrorCode::invalid_argument);
+}
 }
 
 int main() {
@@ -104,6 +133,8 @@ int main() {
     test_exclusive_plan_requests_display_switch_and_popup_surface();
     test_invalid_monitor_or_dpi_is_rejected();
     test_d3d11_probe_reports_real_device_quality_capabilities();
+    test_d3d11_ps1_frame_upload_plan_is_tightly_packed_rgba8();
+    test_d3d11_ps1_frame_upload_plan_rejects_malformed_storage();
     if (failures != 0) {
         std::cerr << failures << " Win32 presentation test(s) failed\n";
         return 1;
