@@ -13,6 +13,13 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+      - name: Guard shipping Phase 2 integration
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q 'Ps1CommercialEvidenceRunner' src/app_win32/main.cpp
+          grep -q 'commercial-frontier.txt' src/app_win32/main.cpp
+          ! grep -q 'bootstrap_runtime_checkpoint_from_disc_to_file' src/app_win32/main.cpp
       - name: Configure
         run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
       - name: Build Phase 2 contracts
