@@ -33,6 +33,18 @@ int main() {
     report.boot.gpu_gp1_command_count = 8u;
     report.boot.vram_write_count = 9u;
     report.boot.presented_frames = 1u;
+    report.boot.cpu_diagnostic = jojo::R3000aDiagnostic{
+        jojo::R3000aBoundaryCode::cop2_unimplemented,
+        jojo::R3000aStage::cop2,
+        0x80023450u,
+        0x4A000001u,
+        std::nullopt,
+        std::nullopt,
+        std::nullopt,
+        2u,
+        std::nullopt,
+        std::nullopt,
+    };
     report.boot.recent_trace.push_back({0x80010000u, 0x24080001u});
     report.boot.recent_bios_calls.push_back({0x8001000Cu, 0x000000A0u, 0x33u, 1u, 2u, 3u, 4u, 0x80010014u});
     report.boot.recent_mmio.push_back({0x80010100u, 0x1F801810u, 32u, true, 0xE1000400u, false});
@@ -55,6 +67,15 @@ int main() {
     CHECK(text.find("cdrom_event_0_command=6") != std::string::npos);
     CHECK(text.find("dma_transfer_count=4") != std::string::npos);
     CHECK(text.find("gpu_gp0_command_count=7") != std::string::npos);
+    CHECK(text.find("cpu_boundary=" +
+                    std::to_string(static_cast<unsigned>(jojo::R3000aBoundaryCode::cop2_unimplemented))) !=
+          std::string::npos);
+    CHECK(text.find("cpu_stage=" +
+                    std::to_string(static_cast<unsigned>(jojo::R3000aStage::cop2))) !=
+          std::string::npos);
+    CHECK(text.find("cpu_pc=0x80023450") != std::string::npos);
+    CHECK(text.find("cpu_opcode=0x4a000001") != std::string::npos);
+    CHECK(text.find("cpu_coprocessor=2") != std::string::npos);
     CHECK(text.find("diagnostic_decision_0_fallback=return_zero") != std::string::npos);
     CHECK(text.find("PS-X EXE") == std::string::npos);
     CHECK(text.find("source_path=") == std::string::npos);
