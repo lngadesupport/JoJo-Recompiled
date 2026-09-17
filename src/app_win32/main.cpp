@@ -1,9 +1,9 @@
 #ifdef _WIN32
 #define NOMINMAX
 #include "core/game_source_binding.h"
+#include "core/ps1_commercial_evidence.h"
+#include "core/ps1_commercial_evidence_io.h"
 #include "core/ps1_disc_session.h"
-#include "core/ps1_boot_report_io.h"
-#include "core/runtime.h"
 #include "core/settings.h"
 #include <windows.h>
 #include <knownfolders.h>
@@ -193,7 +193,7 @@ void validate_source(){
     }
 
     validated=true;
-    status=L"Imagem validada. Revisão: "+wide(opened.value.binding().revision_id)+L". Checkpoint R3000A disponível.";
+    status=L"Imagem validada. Revisão: "+wide(opened.value.binding().revision_id)+L". Análise de frontier disponível.";
     add_log(L"SYSTEM.CNF e PS-X EXE foram lidos diretamente da imagem original.");
 
     const auto binding_saved=jojo::save_game_source_binding_atomic(binding_path,opened.value.binding());
@@ -213,15 +213,32 @@ void validate_source(){
 void run_checkpoint(){
     if(!validated || source.empty()) return;
 
-    const auto report_path=app_root()/L"diagnostics"/L"direct-source-checkpoint.txt";
-    const auto result=jojo::bootstrap_runtime_checkpoint_from_disc_to_file(
-        fs::path(source),open_options,report_path);
-    if(!result){
-        status=L"Checkpoint direto falhou: "+wide(result.detail);
-        add_log(L"Falha no checkpoint sem alterar a imagem original.");
+    const auto report_path=app_root()/L"diagnostics"/L"commercial-frontier.txt";
+    auto runner=jojo::Ps1CommercialEvidenceRunner::open(fs::path(source),open_options);
+    if(!runner){
+        status=L"Análise comercial falhou ao abrir a fonte: "+wide(runner.detail);
+        add_log(L"Falha antes da execução; a imagem original permaneceu intacta.");
+        InvalidateRect(win,nullptr,FALSE);
+        return;
+    }
+
+    jojo::Ps1CommercialEvidenceOptions options{};
+    options.boot.instruction_budget=250000u;
+    options.boot.trace_capacity=64u;
+    options.boot.mmio_event_capacity=64u;
+    options.boot.bios_event_capacity=64u;
+    options.boot.stagnation_instruction_limit=50000u;
+
+    const auto report=runner.value.run(options);
+    const auto saved=jojo::save_ps1_commercial_evidence_report_atomic(report_path,report);
+    const auto frontier_name=std::string(jojo::ps1_commercial_frontier_class_name(report.frontier));
+    if(!saved){
+        status=L"Frontier identificado, mas o relatório não pôde ser salvo: "+wide(saved.detail);
+        add_log(L"Frontier: "+wide(frontier_name));
     }else{
-        status=L"Checkpoint direto concluído. Relatório: "+report_path.wstring();
-        add_log(L"Parada: "+wide(jojo::ps1_boot_stop_reason_name(result.value.stop_reason)));
+        status=L"Frontier comercial identificado: "+wide(frontier_name)+L". Relatório: "+report_path.wstring();
+        add_log(L"Frontier: "+wide(frontier_name));
+        add_log(L"Instruções aposentadas: "+std::to_wstring(report.total_instructions_retired));
     }
     InvalidateRect(win,nullptr,FALSE);
 }
