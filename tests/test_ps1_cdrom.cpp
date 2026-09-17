@@ -29,7 +29,7 @@ int main() {
     jojo::Ps1DiscOpenOptions open_options{};
     open_options.revision_profiles.push_back(test_ps1::make_revision_profile(fixture));
     auto disc = jojo::Ps1DiscSession::open(iso_path, open_options);
-    CHECK(disc.ok());
+    CHECK(static_cast<bool>(disc));
     if (!disc) return 1;
 
     jojo::Ps1CdromController cd;
