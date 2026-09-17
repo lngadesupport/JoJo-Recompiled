@@ -2,6 +2,7 @@
 #define NOMINMAX
 #include "core/game_source_binding.h"
 #include "core/ps1_disc_session.h"
+#include "core/ps1_boot_report_io.h"
 #include "core/runtime.h"
 #include "core/settings.h"
 #include <windows.h>
