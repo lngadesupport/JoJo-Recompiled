@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/ps1_cdrom.h"
+#include "core/ps1_gpu_ingress.h"
 #include "core/r3000a_bus.h"
 
 #include <array>
@@ -61,6 +62,10 @@ public:
     void cancel_pending_dma_transfer() noexcept;
     [[nodiscard]] std::uint64_t completed_dma_transfer_count() const noexcept;
 
+    [[nodiscard]] std::uint32_t gpu_status() const noexcept;
+    [[nodiscard]] std::uint64_t gpu_gp0_word_count() const noexcept;
+    [[nodiscard]] std::uint64_t gpu_gp1_command_count() const noexcept;
+
     [[nodiscard]] std::uint64_t diagnostic_state_hash() const noexcept;
 
 private:
@@ -76,6 +81,7 @@ private:
     std::optional<Ps1DmaTransferRequest> pending_dma_transfer_{};
     std::uint64_t completed_dma_transfer_count_{};
     Ps1CdromController cdrom_{};
+    Ps1GpuIngress gpu_{};
 };
 
 } // namespace jojo
