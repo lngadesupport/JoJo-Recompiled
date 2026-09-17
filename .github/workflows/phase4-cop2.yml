@@ -10,7 +10,6 @@ permissions:
 
 jobs:
   cop2-linux:
-    if: ${{ !contains(github.event.head_commit.message, '[skip ci]') }}
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -98,5 +97,5 @@ jobs:
           git config user.name 'TheTeu'
           git config user.email 'kingmath3us@gmail.com'
           git add src/core/r3000a_reference_executor.cpp
-          git commit -m 'feat: add PS1 COP2 GTE register transfers [skip ci]'
+          git commit -m 'feat: add PS1 COP2 GTE register transfers'
           git push origin HEAD:feature/ps1-gpu-gte-first-frame-phase4
