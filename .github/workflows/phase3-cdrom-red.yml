@@ -1,4 +1,4 @@
-name: Phase 3C CD-ROM RED
+name: Phase 3C CD-ROM
 
 on:
   push:
@@ -6,27 +6,45 @@ on:
       - feature/ps1-hardware-services-phase3
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  red-contract:
+  cdrom-contract:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - name: Register CD-ROM test target
+      - name: Integrate CD-ROM source and test targets
         shell: python
         run: |
           from pathlib import Path
           p = Path('CMakeLists.txt')
           text = p.read_text()
-          line = 'add_jojo_test(jojo_ps1_cdrom_tests tests/test_ps1_cdrom.cpp)\n'
-          anchor = 'add_jojo_test(jojo_ps1_hardware_dma_tests tests/test_ps1_hardware_dma.cpp)\n'
-          if line not in text:
-              if anchor not in text:
+          source = '  src/core/ps1_cdrom.cpp\n'
+          source_anchor = '  src/core/ps1_hardware_services.cpp\n'
+          if source not in text:
+              if source_anchor not in text:
+                  raise SystemExit('missing hardware source anchor')
+              text = text.replace(source_anchor, source_anchor + source, 1)
+          test = 'add_jojo_test(jojo_ps1_cdrom_tests tests/test_ps1_cdrom.cpp)\n'
+          test_anchor = 'add_jojo_test(jojo_ps1_hardware_dma_tests tests/test_ps1_hardware_dma.cpp)\n'
+          if test not in text:
+              if test_anchor not in text:
                   raise SystemExit('missing DMA test anchor')
-              text = text.replace(anchor, anchor + line, 1)
+              text = text.replace(test_anchor, test_anchor + test, 1)
           p.write_text(text)
       - name: Configure
         run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
-      - name: Build CD-ROM contract (expected RED until production exists)
-        run: cmake --build build --target jojo_ps1_cdrom_tests -j2
+      - name: Build CD-ROM and adjacent contracts
+        run: cmake --build build --target jojo_ps1_cdrom_tests jojo_ps1_hardware_dma_tests jojo_ps1_disc_session_tests jojo_ps1_disc_streaming_tests -j2
+      - name: Run CD-ROM and adjacent contracts
+        run: ctest --test-dir build -R 'jojo_ps1_(cdrom|hardware_dma|disc_session|disc_streaming)_tests' --output-on-failure
+      - name: Commit verified CD-ROM CMake integration
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet; then exit 0; fi
+          git config user.name "TheTeu"
+          git config user.email "kingmath3us@gmail.com"
+          git add CMakeLists.txt
+          git commit -m "build: register Phase 3C CD-ROM runtime"
+          git push origin HEAD:feature/ps1-hardware-services-phase3
