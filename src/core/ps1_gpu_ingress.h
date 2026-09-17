@@ -2,9 +2,9 @@
 
 #include "core/r3000a_bus.h"
 
-#include <array>
 #include <cstdint>
 #include <optional>
+#include <vector>
 
 namespace jojo {
 
@@ -55,7 +55,7 @@ private:
     std::uint32_t status_{reset_status};
     std::uint64_t gp0_word_count_{};
     std::uint64_t gp1_command_count_{};
-    std::array<std::uint16_t, vram_width * vram_height> vram_{};
+    std::vector<std::uint16_t> vram_{vram_width * vram_height, 0u};
     std::uint64_t vram_write_count_{};
     Ps1GpuDisplayState display_{};
 
