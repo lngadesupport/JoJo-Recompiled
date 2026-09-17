@@ -31,13 +31,18 @@ jobs:
               if test_anchor not in text:
                   raise SystemExit('missing DMA test anchor')
               text = text.replace(test_anchor, test_anchor + test, 1)
+          dma_test = 'add_jojo_test(jojo_ps1_cdrom_dma_tests tests/test_ps1_cdrom_dma.cpp)\n'
+          if dma_test not in text:
+              if test not in text:
+                  raise SystemExit('missing CD-ROM test anchor')
+              text = text.replace(test, test + dma_test, 1)
           p.write_text(text)
       - name: Configure
         run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
       - name: Build CD-ROM and adjacent contracts
-        run: cmake --build build --target jojo_ps1_cdrom_tests jojo_ps1_hardware_dma_tests jojo_ps1_disc_session_tests jojo_ps1_disc_streaming_tests -j2
+        run: cmake --build build --target jojo_ps1_cdrom_tests jojo_ps1_cdrom_dma_tests jojo_ps1_hardware_dma_tests jojo_ps1_disc_session_tests jojo_ps1_disc_streaming_tests -j2
       - name: Run CD-ROM and adjacent contracts
-        run: ctest --test-dir build -R 'jojo_ps1_(cdrom|hardware_dma|disc_session|disc_streaming)_tests' --output-on-failure
+        run: ctest --test-dir build -R 'jojo_ps1_(cdrom|cdrom_dma|hardware_dma|disc_session|disc_streaming)_tests' --output-on-failure
       - name: Commit verified CD-ROM CMake integration
         shell: bash
         run: |
