@@ -522,17 +522,37 @@ R3000aStepResult step_r3000a(R3000aState& state, R3000aBus& bus) noexcept {
         case MipsOp::cfc2:
         case MipsOp::mtc2:
         case MipsOp::ctc2:
-        case MipsOp::cop2_command:
+        case MipsOp::cop2_command: {
             if ((state.cop0.status & kStatusCu2) == 0u) {
                 return enter_exception(state, R3000aExceptionCode::coprocessor_unusable,
                                        R3000aStage::cop2, instruction_pc, current_delay,
                                        instruction.raw, std::nullopt, 2u);
-            } else {
-                auto result = boundary(state, R3000aBoundaryCode::cop2_unimplemented,
-                                       R3000aStage::cop2, instruction_pc, instruction.raw);
-                result.diagnostic.coprocessor = 2u;
-                return result;
             }
+            switch (instruction.op) {
+                case MipsOp::mfc2:
+                    queue_load(instruction.rt, state.gte.data[instruction.rd]);
+                    break;
+                case MipsOp::cfc2:
+                    queue_load(instruction.rt, state.gte.control[instruction.rd]);
+                    break;
+                case MipsOp::mtc2:
+                    state.gte.data[instruction.rd] = rt;
+                    break;
+                case MipsOp::ctc2:
+                    state.gte.control[instruction.rd] = rt;
+                    break;
+                case MipsOp::cop2_command: {
+                    state.gte.last_command = instruction.raw;
+                    auto result = boundary(state, R3000aBoundaryCode::cop2_unimplemented,
+                                           R3000aStage::cop2, instruction_pc, instruction.raw);
+                    result.diagnostic.coprocessor = 2u;
+                    return result;
+                }
+                default:
+                    break;
+            }
+            break;
+        }
         case MipsOp::syscall:
             return enter_exception(state, R3000aExceptionCode::syscall, R3000aStage::execute,
                                    instruction_pc, current_delay, instruction.raw);
