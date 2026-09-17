@@ -7,6 +7,21 @@ namespace {
 
 constexpr std::uint32_t kInterruptStatusAddress = 0x1F801070u;
 constexpr std::uint32_t kInterruptMaskAddress = 0x1F801074u;
+constexpr std::uint32_t kDmaBase = 0x1F801080u;
+constexpr std::uint32_t kDmaStride = 0x10u;
+constexpr std::uint32_t kDmaControlAddress = 0x1F8010F0u;
+constexpr std::uint32_t kDmaInterruptAddress = 0x1F8010F4u;
+constexpr std::uint32_t kDmaInterruptControlMask = 0x00FF807Fu;
+constexpr std::uint32_t kDmaInterruptFlagMask = 0x7F000000u;
+constexpr std::uint32_t kDmaInterruptMasterFlag = 0x80000000u;
+constexpr std::uint32_t kDmaInterruptMasterEnable = 0x00800000u;
+constexpr std::uint32_t kDmaInterruptBusError = 0x00008000u;
+constexpr std::uint32_t kDmaBusy = 1u << 24u;
+constexpr std::uint32_t kDmaTrigger = 1u << 28u;
+constexpr std::uint32_t kDmaDirectionFromRam = 1u;
+constexpr std::uint32_t kDmaSyncMask = 3u << 9u;
+constexpr std::uint32_t kDmaStepDecrement = 1u << 1u;
+constexpr std::uint32_t kDmaChopping = 1u << 8u;
 constexpr std::uint32_t kTimerBase = 0x1F801100u;
 constexpr std::uint32_t kTimerStride = 0x10u;
 constexpr std::uint32_t kTimerCounterOffset = 0x0u;
@@ -31,9 +46,45 @@ bool decode_timer_register(std::uint32_t physical,
            offset == kTimerTargetOffset;
 }
 
+bool decode_dma_register(std::uint32_t physical,
+                         std::uint32_t& channel,
+                         std::uint32_t& offset) noexcept {
+    if (physical < kDmaBase || physical >= kDmaBase + 7u * kDmaStride) {
+        return false;
+    }
+    const auto relative = physical - kDmaBase;
+    channel = relative / kDmaStride;
+    offset = relative % kDmaStride;
+    return offset == 0u || offset == 4u || offset == 8u;
+}
+
+std::uint32_t visible_dma_interrupt(std::uint32_t state) noexcept {
+    std::uint32_t value = state & (kDmaInterruptControlMask | kDmaInterruptFlagMask);
+    if ((value & kDmaInterruptBusError) != 0u ||
+        ((value & kDmaInterruptMasterEnable) != 0u &&
+         (value & kDmaInterruptFlagMask) != 0u)) {
+        value |= kDmaInterruptMasterFlag;
+    }
+    return value;
+}
+
+bool dma_channel_enabled(std::uint32_t dpcr, std::uint32_t channel) noexcept {
+    return (dpcr & (1u << (channel * 4u + 3u))) != 0u;
+}
+
+bool supported_dma_device_direction(std::uint32_t channel, bool from_ram) noexcept {
+    if (channel == 2u) return from_ram;
+    if (channel == 3u) return !from_ram;
+    return false;
+}
+
 void hash_byte(std::uint64_t& hash, std::uint8_t value) noexcept {
     hash ^= value;
     hash *= kFnvPrime;
+}
+
+void hash_bool(std::uint64_t& hash, bool value) noexcept {
+    hash_byte(hash, static_cast<std::uint8_t>(value ? 1u : 0u));
 }
 
 void hash_u16(std::uint64_t& hash, std::uint16_t value) noexcept {
@@ -43,6 +94,12 @@ void hash_u16(std::uint64_t& hash, std::uint16_t value) noexcept {
 
 void hash_u32(std::uint64_t& hash, std::uint32_t value) noexcept {
     for (unsigned shift = 0; shift < 32u; shift += 8u) {
+        hash_byte(hash, static_cast<std::uint8_t>(value >> shift));
+    }
+}
+
+void hash_u64(std::uint64_t& hash, std::uint64_t value) noexcept {
+    for (unsigned shift = 0; shift < 64u; shift += 8u) {
         hash_byte(hash, static_cast<std::uint8_t>(value >> shift));
     }
 }
@@ -72,7 +129,22 @@ R3000aBusResult Ps1HardwareServices::read16(std::uint32_t physical) noexcept {
     return {R3000aBusStatus::unsupported, 0u};
 }
 
-R3000aBusResult Ps1HardwareServices::read32(std::uint32_t) noexcept {
+R3000aBusResult Ps1HardwareServices::read32(std::uint32_t physical) noexcept {
+    if (physical == kDmaControlAddress) {
+        return {R3000aBusStatus::ok, dma_control_};
+    }
+    if (physical == kDmaInterruptAddress) {
+        return {R3000aBusStatus::ok, visible_dma_interrupt(dma_interrupt_)};
+    }
+
+    std::uint32_t channel = 0u;
+    std::uint32_t offset = 0u;
+    if (decode_dma_register(physical, channel, offset)) {
+        const auto& dma = dma_channels_[channel];
+        if (offset == 0u) return {R3000aBusStatus::ok, dma.madr};
+        if (offset == 4u) return {R3000aBusStatus::ok, dma.bcr};
+        return {R3000aBusStatus::ok, dma.chcr};
+    }
     return {R3000aBusStatus::unsupported, 0u};
 }
 
@@ -119,9 +191,68 @@ R3000aBusResult Ps1HardwareServices::write16(std::uint32_t physical,
 
 R3000aBusResult Ps1HardwareServices::write32(std::uint32_t physical,
                                              std::uint32_t value) noexcept {
-    std::uint32_t channel = 0u;
-    std::uint32_t offset = 0u;
-    if (decode_timer_register(physical, channel, offset) && offset == kTimerModeOffset) {
+    if (physical == kDmaControlAddress) {
+        dma_control_ = value;
+        return {R3000aBusStatus::ok, 0u};
+    }
+    if (physical == kDmaInterruptAddress) {
+        const auto flags = (dma_interrupt_ & kDmaInterruptFlagMask) &
+                           ~(value & kDmaInterruptFlagMask);
+        dma_interrupt_ = (value & kDmaInterruptControlMask) | flags;
+        return {R3000aBusStatus::ok, 0u};
+    }
+
+    std::uint32_t dma_channel_index = 0u;
+    std::uint32_t dma_offset = 0u;
+    if (decode_dma_register(physical, dma_channel_index, dma_offset)) {
+        auto& dma = dma_channels_[dma_channel_index];
+        if (dma_offset == 0u) {
+            dma.madr = value & 0x00FFFFFFu;
+            return {R3000aBusStatus::ok, 0u};
+        }
+        if (dma_offset == 4u) {
+            dma.bcr = value;
+            return {R3000aBusStatus::ok, 0u};
+        }
+
+        if ((value & kDmaBusy) == 0u) {
+            dma.chcr = value;
+            return {R3000aBusStatus::ok, 0u};
+        }
+        if (!dma_channel_enabled(dma_control_, dma_channel_index) ||
+            pending_dma_transfer_.has_value()) {
+            return {R3000aBusStatus::unsupported, 0u};
+        }
+        if ((value & kDmaSyncMask) != 0u ||
+            (value & kDmaTrigger) == 0u ||
+            (value & kDmaStepDecrement) != 0u ||
+            (value & kDmaChopping) != 0u) {
+            return {R3000aBusStatus::unsupported, 0u};
+        }
+
+        const bool from_ram = (value & kDmaDirectionFromRam) != 0u;
+        if (!supported_dma_device_direction(dma_channel_index, from_ram)) {
+            return {R3000aBusStatus::unsupported, 0u};
+        }
+        const auto words = dma.bcr & 0xFFFFu;
+        if (words == 0u || words > 0x10000u) {
+            return {R3000aBusStatus::unsupported, 0u};
+        }
+
+        dma.chcr = value;
+        pending_dma_transfer_ = Ps1DmaTransferRequest{
+            static_cast<std::uint8_t>(dma_channel_index),
+            dma.madr,
+            words,
+            from_ram,
+        };
+        return {R3000aBusStatus::ok, 0u};
+    }
+
+    std::uint32_t timer_channel = 0u;
+    std::uint32_t timer_offset = 0u;
+    if (decode_timer_register(physical, timer_channel, timer_offset) &&
+        timer_offset == kTimerModeOffset) {
         return write16(physical, static_cast<std::uint16_t>(value & 0xFFFFu));
     }
     return {R3000aBusStatus::unsupported, 0u};
@@ -174,6 +305,50 @@ bool Ps1HardwareServices::interrupt_pending() const noexcept {
     return (interrupt_status_ & interrupt_mask_) != 0u;
 }
 
+std::uint32_t Ps1HardwareServices::dma_control() const noexcept {
+    return dma_control_;
+}
+
+std::uint32_t Ps1HardwareServices::dma_interrupt() const noexcept {
+    return visible_dma_interrupt(dma_interrupt_);
+}
+
+const Ps1DmaChannelState& Ps1HardwareServices::dma_channel(std::uint32_t channel) const noexcept {
+    static const Ps1DmaChannelState empty{};
+    return channel < dma_channels_.size() ? dma_channels_[channel] : empty;
+}
+
+const std::optional<Ps1DmaTransferRequest>&
+Ps1HardwareServices::pending_dma_transfer() const noexcept {
+    return pending_dma_transfer_;
+}
+
+bool Ps1HardwareServices::complete_dma_transfer(std::uint32_t channel) noexcept {
+    if (!pending_dma_transfer_ || pending_dma_transfer_->channel != channel ||
+        channel >= dma_channels_.size()) {
+        return false;
+    }
+
+    auto& dma = dma_channels_[channel];
+    dma.chcr &= ~(kDmaBusy | kDmaTrigger);
+    dma_interrupt_ |= 1u << (24u + channel);
+    ++completed_dma_transfer_count_;
+    pending_dma_transfer_.reset();
+
+    if ((visible_dma_interrupt(dma_interrupt_) & kDmaInterruptMasterFlag) != 0u) {
+        interrupt_status_ = static_cast<std::uint16_t>(interrupt_status_ | 0x0008u);
+    }
+    return true;
+}
+
+void Ps1HardwareServices::cancel_pending_dma_transfer() noexcept {
+    pending_dma_transfer_.reset();
+}
+
+std::uint64_t Ps1HardwareServices::completed_dma_transfer_count() const noexcept {
+    return completed_dma_transfer_count_;
+}
+
 std::uint64_t Ps1HardwareServices::diagnostic_state_hash() const noexcept {
     std::uint64_t hash = kFnvOffset;
     hash_u16(hash, interrupt_status_);
@@ -184,6 +359,21 @@ std::uint64_t Ps1HardwareServices::diagnostic_state_hash() const noexcept {
         hash_u16(hash, timer.target);
         hash_u32(hash, timer.cycle_accumulator);
     }
+    for (const auto& dma : dma_channels_) {
+        hash_u32(hash, dma.madr);
+        hash_u32(hash, dma.bcr);
+        hash_u32(hash, dma.chcr);
+    }
+    hash_u32(hash, dma_control_);
+    hash_u32(hash, dma_interrupt_);
+    hash_bool(hash, pending_dma_transfer_.has_value());
+    if (pending_dma_transfer_) {
+        hash_byte(hash, pending_dma_transfer_->channel);
+        hash_u32(hash, pending_dma_transfer_->madr);
+        hash_u32(hash, pending_dma_transfer_->words);
+        hash_bool(hash, pending_dma_transfer_->from_ram);
+    }
+    hash_u64(hash, completed_dma_transfer_count_);
     return hash;
 }
 
