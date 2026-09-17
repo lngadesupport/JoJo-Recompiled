@@ -1,0 +1,21 @@
+name: Phase 4 Commercial Evidence
+
+on:
+  push:
+    branches:
+      - feature/ps1-gpu-gte-first-frame-phase4
+
+permissions:
+  contents: read
+
+jobs:
+  commercial-evidence-linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+      - name: Build commercial evidence regression
+        run: cmake --build build --target jojo_ps1_commercial_evidence_tests -j2
+      - name: Run commercial evidence regression
+        run: ctest --test-dir build -R '^jojo_ps1_commercial_evidence_tests$' --output-on-failure
