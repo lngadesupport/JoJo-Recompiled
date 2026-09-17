@@ -16,6 +16,7 @@ enum class Ps1CommercialFrontierClass : std::uint8_t {
     dma_operation,
     gpu_gp0_command,
     gpu_gp1_command,
+    gte_command,
     cpu_boundary,
     diagnostic_stall,
     commercial_frame_presented,
