@@ -1,10 +1,12 @@
 #pragma once
 
+#include "core/ps1_cdrom.h"
 #include "core/r3000a_bus.h"
 
 #include <array>
 #include <cstdint>
 #include <optional>
+#include <span>
 
 namespace jojo {
 
@@ -32,6 +34,8 @@ class Ps1HardwareServices {
 public:
     Ps1HardwareServices() = default;
 
+    void attach_disc(const Ps1DiscSession* disc) noexcept;
+
     [[nodiscard]] R3000aBusResult read8(std::uint32_t physical) noexcept;
     [[nodiscard]] R3000aBusResult read16(std::uint32_t physical) noexcept;
     [[nodiscard]] R3000aBusResult read32(std::uint32_t physical) noexcept;
@@ -52,6 +56,7 @@ public:
     [[nodiscard]] std::uint32_t dma_interrupt() const noexcept;
     [[nodiscard]] const Ps1DmaChannelState& dma_channel(std::uint32_t channel) const noexcept;
     [[nodiscard]] const std::optional<Ps1DmaTransferRequest>& pending_dma_transfer() const noexcept;
+    [[nodiscard]] bool execute_pending_dma(std::span<std::uint8_t> main_ram) noexcept;
     [[nodiscard]] bool complete_dma_transfer(std::uint32_t channel) noexcept;
     void cancel_pending_dma_transfer() noexcept;
     [[nodiscard]] std::uint64_t completed_dma_transfer_count() const noexcept;
@@ -70,6 +75,7 @@ private:
     std::uint32_t dma_interrupt_{};
     std::optional<Ps1DmaTransferRequest> pending_dma_transfer_{};
     std::uint64_t completed_dma_transfer_count_{};
+    Ps1CdromController cdrom_{};
 };
 
 } // namespace jojo
