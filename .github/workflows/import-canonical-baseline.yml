@@ -1,4 +1,4 @@
-name: Verify PS1 source binding M3
+name: Verify Win32 direct-source M4
 
 on:
   push:
@@ -11,88 +11,23 @@ permissions:
   contents: write
 
 jobs:
-  verify-m3:
-    runs-on: ubuntu-latest
+  verify-m4:
+    runs-on: windows-2022
     steps:
-      - name: Checkout M3 branch
+      - name: Checkout M4 branch
         uses: actions/checkout@v4
         with:
-          ref: feature/ps1-source-binding-m3
+          ref: feature/ps1-win32-direct-source-m4
           fetch-depth: 0
 
-      - name: Wire M3 integration
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          from pathlib import Path
+      - name: Configure Windows x64
+        shell: pwsh
+        run: cmake -S . -B build -A x64
 
-          test = Path('tests/test_game_source_binding.cpp')
-          text = test.read_text(encoding='utf-8')
-          include = '#include "core/ps1_disc_session.h"\n'
-          if include not in text:
-              anchor = '#include "core/game_source_binding.h"\n'
-              if anchor not in text:
-                  raise SystemExit('game-source test include anchor not found')
-              text = text.replace(anchor, anchor + include, 1)
-          test.write_text(text, encoding='utf-8')
+      - name: Build shipping app and M4 contract
+        shell: pwsh
+        run: cmake --build build --config Release --target jojo_recompiled jojo_win32_image_selection_tests
 
-          settings = Path('src/core/settings.cpp')
-          text = settings.read_text(encoding='utf-8')
-          load_line = '        else if (key == "source_binding_path") result.source_binding_path = value;\n'
-          if load_line not in text:
-              anchor = '        else if (key == "install_dir" && result.install_root.empty()) result.install_root = value;\n'
-              if anchor not in text:
-                  raise SystemExit('settings load anchor not found')
-              text = text.replace(anchor, anchor + load_line, 1)
-          save_line = '        out << "source_binding_path=" << settings.source_binding_path << \'\\n\';\n'
-          if save_line not in text:
-              anchor = '        out << "install_root=" << settings.install_root << \'\\n\';\n'
-              if anchor not in text:
-                  raise SystemExit('settings save anchor not found')
-              text = text.replace(anchor, anchor + save_line, 1)
-          settings.write_text(text, encoding='utf-8')
-
-          cmake = Path('CMakeLists.txt')
-          text = cmake.read_text(encoding='utf-8')
-          source_line = '  src/core/game_source_binding.cpp\n'
-          if source_line not in text:
-              anchor = '  src/core/ps1_disc_session.cpp\n'
-              if anchor not in text:
-                  raise SystemExit('CMake ps1_disc_session source anchor not found')
-              text = text.replace(anchor, anchor + source_line, 1)
-          test_line = 'add_jojo_test(jojo_game_source_binding_tests tests/test_game_source_binding.cpp)\n'
-          if test_line not in text:
-              anchor = 'add_jojo_test(jojo_ps1_disc_session_tests tests/test_ps1_disc_session.cpp)\n'
-              if anchor not in text:
-                  raise SystemExit('CMake disc-session test anchor not found')
-              text = text.replace(anchor, anchor + test_line, 1)
-          cmake.write_text(text, encoding='utf-8')
-          PY
-
-      - name: Configure and build
-        shell: bash
-        run: |
-          set -euo pipefail
-          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-          cmake --build build -j2
-
-      - name: Run complete test suite
-        shell: bash
-        run: |
-          set -euo pipefail
-          ctest --test-dir build --output-on-failure
-
-      - name: Commit verified M3 integration
-        shell: bash
-        run: |
-          set -euo pipefail
-          git config user.name 'JOJO Recompiled CI'
-          git config user.email 'actions@users.noreply.github.com'
-          git add CMakeLists.txt src/core/settings.cpp tests/test_game_source_binding.cpp
-          if git diff --cached --quiet; then
-            echo 'No integration changes to commit.'
-            exit 0
-          fi
-          git commit -m 'feat: integrate persistent PS1 source binding M3'
-          git push origin HEAD:feature/ps1-source-binding-m3
+      - name: Run M4 Win32 contract
+        shell: pwsh
+        run: ctest --test-dir build -C Release -R jojo_win32_image_selection_tests --output-on-failure
