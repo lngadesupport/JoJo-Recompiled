@@ -25,6 +25,8 @@ Result<Ps1CommercialEvidenceRunner> Ps1CommercialEvidenceRunner::open(
 
 Ps1CommercialEvidenceReport Ps1CommercialEvidenceRunner::run(
     const Ps1CommercialEvidenceOptions& options) noexcept {
+    runtime_.bus().hardware_services().attach_disc(&disc_);
+
     Ps1CommercialEvidenceReport report{};
     report.source = disc_.binding();
 
