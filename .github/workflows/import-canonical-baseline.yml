@@ -32,8 +32,8 @@ jobs:
       - name: Configure Release
         run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 
-      - name: Build streaming contract
-        run: cmake --build build --target jojo_ps1_disc_streaming_tests -j2
+      - name: Build streaming and adjacent media contracts
+        run: cmake --build build --target jojo_media_tests jojo_ps1_disc_session_tests jojo_ps1_disc_streaming_tests -j2
 
       - name: Run streaming and adjacent media contracts
         run: ctest --test-dir build -R 'jojo_(media|ps1_disc_session|ps1_disc_streaming)_tests' --output-on-failure
