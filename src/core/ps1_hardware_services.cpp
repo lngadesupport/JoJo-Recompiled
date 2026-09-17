@@ -138,6 +138,9 @@ R3000aBusResult Ps1HardwareServices::read16(std::uint32_t physical) noexcept {
 }
 
 R3000aBusResult Ps1HardwareServices::read32(std::uint32_t physical) noexcept {
+    if (physical == 0x1F801814u) {
+        return {R3000aBusStatus::ok, gpu_.status()};
+    }
     if (physical == kDmaControlAddress) {
         return {R3000aBusStatus::ok, dma_control_};
     }
@@ -203,6 +206,8 @@ R3000aBusResult Ps1HardwareServices::write16(std::uint32_t physical,
 
 R3000aBusResult Ps1HardwareServices::write32(std::uint32_t physical,
                                              std::uint32_t value) noexcept {
+    if (physical == 0x1F801810u) return gpu_.write_gp0(value);
+    if (physical == 0x1F801814u) return gpu_.write_gp1(value);
     if (physical == kDmaControlAddress) {
         dma_control_ = value;
         return {R3000aBusStatus::ok, 0u};
@@ -339,13 +344,30 @@ bool Ps1HardwareServices::execute_pending_dma(
     std::span<std::uint8_t> main_ram) noexcept {
     if (!pending_dma_transfer_) return false;
     const auto request = *pending_dma_transfer_;
-    if (request.channel != 3u || request.from_ram) return false;
-
     const auto start = static_cast<std::size_t>(request.madr);
     const auto byte_count = static_cast<std::size_t>(request.words) * 4u;
     if (start >= main_ram.size() || byte_count > main_ram.size() - start) {
         return false;
     }
+
+    if (request.channel == 2u && request.from_ram) {
+        auto candidate = gpu_;
+        for (std::size_t i = 0; i < request.words; ++i) {
+            const auto offset = start + i * 4u;
+            const std::uint32_t value =
+                static_cast<std::uint32_t>(main_ram[offset + 0u]) |
+                (static_cast<std::uint32_t>(main_ram[offset + 1u]) << 8u) |
+                (static_cast<std::uint32_t>(main_ram[offset + 2u]) << 16u) |
+                (static_cast<std::uint32_t>(main_ram[offset + 3u]) << 24u);
+            if (candidate.write_gp0(value).status != R3000aBusStatus::ok) {
+                return false;
+            }
+        }
+        gpu_ = candidate;
+        return complete_dma_transfer(2u);
+    }
+
+    if (request.channel != 3u || request.from_ram) return false;
     if (cdrom_.data_bytes_available() < byte_count) return false;
 
     std::vector<std::uint32_t> words(request.words, 0u);
@@ -386,6 +408,18 @@ void Ps1HardwareServices::cancel_pending_dma_transfer() noexcept {
 
 std::uint64_t Ps1HardwareServices::completed_dma_transfer_count() const noexcept {
     return completed_dma_transfer_count_;
+}
+
+std::uint32_t Ps1HardwareServices::gpu_status() const noexcept {
+    return gpu_.status();
+}
+
+std::uint64_t Ps1HardwareServices::gpu_gp0_word_count() const noexcept {
+    return gpu_.gp0_word_count();
+}
+
+std::uint64_t Ps1HardwareServices::gpu_gp1_command_count() const noexcept {
+    return gpu_.gp1_command_count();
 }
 
 std::uint64_t Ps1HardwareServices::diagnostic_state_hash() const noexcept {
