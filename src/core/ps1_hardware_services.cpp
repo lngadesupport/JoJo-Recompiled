@@ -422,6 +422,10 @@ std::uint64_t Ps1HardwareServices::gpu_gp1_command_count() const noexcept {
     return gpu_.gp1_command_count();
 }
 
+std::uint64_t Ps1HardwareServices::gpu_vram_write_count() const noexcept {
+    return gpu_.vram_write_count();
+}
+
 const Ps1GpuIngress& Ps1HardwareServices::gpu() const noexcept {
     return gpu_;
 }

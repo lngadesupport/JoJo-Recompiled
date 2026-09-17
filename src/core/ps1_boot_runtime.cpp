@@ -112,6 +112,26 @@ Ps1BootReport Ps1BootRuntime::run(const Ps1BootOptions& options) noexcept {
     report.diagnostic_probe_mode = options.diagnostic_mmio_probe;
     bus_.set_diagnostic_mmio_probe_enabled(options.diagnostic_mmio_probe);
 
+    const auto& hardware_at_start = bus_.hardware_services();
+    const auto dma_transfer_count_at_start = hardware_at_start.completed_dma_transfer_count();
+    const auto gpu_gp0_word_count_at_start = hardware_at_start.gpu_gp0_word_count();
+    const auto gpu_gp1_command_count_at_start = hardware_at_start.gpu_gp1_command_count();
+    const auto vram_write_count_at_start = hardware_at_start.gpu_vram_write_count();
+
+    const auto finish = [&](Ps1BootStopReason reason) {
+        report.stop_reason = reason;
+        const auto& hardware = bus_.hardware_services();
+        report.dma_transfer_count =
+            hardware.completed_dma_transfer_count() - dma_transfer_count_at_start;
+        report.gpu_gp0_command_count =
+            hardware.gpu_gp0_word_count() - gpu_gp0_word_count_at_start;
+        report.gpu_gp1_command_count =
+            hardware.gpu_gp1_command_count() - gpu_gp1_command_count_at_start;
+        report.vram_write_count =
+            hardware.gpu_vram_write_count() - vram_write_count_at_start;
+        return report;
+    };
+
     std::uint64_t instructions_since_progress = 0u;
     std::set<std::uint64_t> observed_bios_dependencies;
     std::set<std::uint64_t> observed_mmio_dependencies;
@@ -142,8 +162,7 @@ Ps1BootReport Ps1BootRuntime::run(const Ps1BootOptions& options) noexcept {
                 continue;
             }
             diagnostic_bios_frontier_pending_ = true;
-            report.stop_reason = Ps1BootStopReason::bios_call_unimplemented;
-            return report;
+            return finish(Ps1BootStopReason::bios_call_unimplemented);
         }
 
         diagnostic_bios_frontier_pending_ = false;
@@ -183,8 +202,7 @@ Ps1BootReport Ps1BootRuntime::run(const Ps1BootOptions& options) noexcept {
             }
             if (options.stagnation_instruction_limit != 0u &&
                 instructions_since_progress >= options.stagnation_instruction_limit) {
-                report.stop_reason = Ps1BootStopReason::diagnostic_stall;
-                return report;
+                return finish(Ps1BootStopReason::diagnostic_stall);
             }
             continue;
         }
@@ -201,7 +219,6 @@ Ps1BootReport Ps1BootRuntime::run(const Ps1BootOptions& options) noexcept {
             const auto physical = Ps1MemoryBus::guest_to_physical(
                 report.unsupported_access->guest_address);
             if (physical && is_initial_mmio_window(*physical)) {
-                report.stop_reason = Ps1BootStopReason::mmio_unimplemented;
                 record_recent_mmio(report, Ps1MmioSummary{
                     step.diagnostic.pc,
                     report.unsupported_access->guest_address,
@@ -210,16 +227,14 @@ Ps1BootReport Ps1BootRuntime::run(const Ps1BootOptions& options) noexcept {
                     report.unsupported_access->value,
                     false,
                 }, options.mmio_event_capacity);
-                return report;
+                return finish(Ps1BootStopReason::mmio_unimplemented);
             }
         }
 
-        report.stop_reason = Ps1BootStopReason::cpu_boundary;
-        return report;
+        return finish(Ps1BootStopReason::cpu_boundary);
     }
 
-    report.stop_reason = Ps1BootStopReason::execution_budget_exhausted;
-    return report;
+    return finish(Ps1BootStopReason::execution_budget_exhausted);
 }
 
 bool Ps1BootRuntime::apply_diagnostic_bios_fallback(Ps1BiosFallback fallback) noexcept {
