@@ -1,0 +1,47 @@
+name: Phase 4 Presentation Gate
+
+on:
+  push:
+    branches:
+      - feature/ps1-gpu-gte-first-frame-phase4
+
+permissions:
+  contents: read
+
+jobs:
+  linux-full:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Guard Phase 4 architecture
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -DJOJO_SOURCE_DIR="$PWD" -P cmake/CheckPs1ActiveArchitecture.cmake
+          grep -q 'src/core/ps1_display_frame.cpp' CMakeLists.txt
+          grep -q 'jojo_ps1_gpu_vram_tests' CMakeLists.txt
+          grep -q 'capture_ps1_display_frame' src/core/ps1_display_frame.h
+          grep -q 'Ps1GpuIngress' src/core/ps1_display_frame.cpp
+          ! grep -q 'convert_image' src/app_win32/main.cpp
+          ! grep -q 'boot.psxexe' src/app_win32/main.cpp
+      - name: Configure Release
+        run: cmake -S . -B build-linux -DCMAKE_BUILD_TYPE=Release
+      - name: Build full graph
+        run: cmake --build build-linux -j2
+      - name: Run Phase 4 core focus
+        run: ctest --test-dir build-linux -R "jojo_(r3000a_cop2|ps1_gpu_ingress|ps1_gpu_vram|ps1_display_frame)_tests" --output-on-failure
+      - name: Run full CTest graph
+        run: ctest --test-dir build-linux --output-on-failure
+
+  windows-x64-full:
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure Release x64
+        run: cmake -S . -B build-win -A x64
+      - name: Build full graph
+        run: cmake --build build-win --config Release
+      - name: Run Phase 4 focus
+        run: ctest --test-dir build-win -C Release -R "jojo_(r3000a_cop2|ps1_gpu_ingress|ps1_gpu_vram|ps1_display_frame|win32_presentation)_tests" --output-on-failure
+      - name: Run full CTest graph
+        run: ctest --test-dir build-win -C Release --output-on-failure
