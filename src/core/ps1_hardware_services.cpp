@@ -1,6 +1,7 @@
 #include "core/ps1_hardware_services.h"
 
 #include <cstddef>
+#include <vector>
 
 namespace jojo {
 namespace {
@@ -106,7 +107,14 @@ void hash_u64(std::uint64_t& hash, std::uint64_t value) noexcept {
 
 } // namespace
 
-R3000aBusResult Ps1HardwareServices::read8(std::uint32_t) noexcept {
+void Ps1HardwareServices::attach_disc(const Ps1DiscSession* disc) noexcept {
+    cdrom_.attach_disc(disc);
+}
+
+R3000aBusResult Ps1HardwareServices::read8(std::uint32_t physical) noexcept {
+    if (physical >= 0x1F801800u && physical <= 0x1F801803u) {
+        return cdrom_.read8(physical);
+    }
     return {R3000aBusStatus::unsupported, 0u};
 }
 
@@ -148,7 +156,11 @@ R3000aBusResult Ps1HardwareServices::read32(std::uint32_t physical) noexcept {
     return {R3000aBusStatus::unsupported, 0u};
 }
 
-R3000aBusResult Ps1HardwareServices::write8(std::uint32_t, std::uint8_t) noexcept {
+R3000aBusResult Ps1HardwareServices::write8(std::uint32_t physical,
+                                          std::uint8_t value) noexcept {
+    if (physical >= 0x1F801800u && physical <= 0x1F801803u) {
+        return cdrom_.write8(physical, value);
+    }
     return {R3000aBusStatus::unsupported, 0u};
 }
 
@@ -321,6 +333,33 @@ const Ps1DmaChannelState& Ps1HardwareServices::dma_channel(std::uint32_t channel
 const std::optional<Ps1DmaTransferRequest>&
 Ps1HardwareServices::pending_dma_transfer() const noexcept {
     return pending_dma_transfer_;
+}
+
+bool Ps1HardwareServices::execute_pending_dma(
+    std::span<std::uint8_t> main_ram) noexcept {
+    if (!pending_dma_transfer_) return false;
+    const auto request = *pending_dma_transfer_;
+    if (request.channel != 3u || request.from_ram) return false;
+
+    const auto start = static_cast<std::size_t>(request.madr);
+    const auto byte_count = static_cast<std::size_t>(request.words) * 4u;
+    if (start >= main_ram.size() || byte_count > main_ram.size() - start) {
+        return false;
+    }
+    if (cdrom_.data_bytes_available() < byte_count) return false;
+
+    std::vector<std::uint32_t> words(request.words, 0u);
+    if (cdrom_.read_data_words(words) != words.size()) return false;
+
+    for (std::size_t i = 0; i < words.size(); ++i) {
+        const auto value = words[i];
+        const auto offset = start + i * 4u;
+        main_ram[offset + 0u] = static_cast<std::uint8_t>(value);
+        main_ram[offset + 1u] = static_cast<std::uint8_t>(value >> 8u);
+        main_ram[offset + 2u] = static_cast<std::uint8_t>(value >> 16u);
+        main_ram[offset + 3u] = static_cast<std::uint8_t>(value >> 24u);
+    }
+    return complete_dma_transfer(3u);
 }
 
 bool Ps1HardwareServices::complete_dma_transfer(std::uint32_t channel) noexcept {
