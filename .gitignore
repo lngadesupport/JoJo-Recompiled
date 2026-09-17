@@ -1,0 +1,25 @@
+# Build outputs
+/build/
+/out/
+/.vs/
+/.vscode/
+*.obj
+*.pdb
+*.ilk
+*.exe
+
+# Local isolated worktrees
+/.worktrees/
+
+# Never commit user-supplied game media
+*.iso
+*.bin
+*.cue
+*.gdi
+*.cdi
+*.chd
+
+# Converter-created local installations
+/local-install/
+
+/build-*/

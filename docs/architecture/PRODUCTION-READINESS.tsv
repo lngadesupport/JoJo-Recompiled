@@ -1,0 +1,7 @@
+# workstream	status	evidence	blocker
+R2.1	verified	github-actions:run-34314593101	none
+R2.2	blocked-external-evidence	github-actions:run-34314593101	commercial-psx-exe-discovery-awaiting-local-run
+R2.3	implemented-unverified	github-actions:run-34334677057	jojo-bios-hle-and-device-runtime-not-implemented
+R2.4	not-started	none	boot-render-audio-input-gameplay-not-verified
+R2.5	implemented-unverified	github-actions:run-34314593101	commercial-game-integration-pending
+R2.6	not-started	none	base-game-not-yet-playable
