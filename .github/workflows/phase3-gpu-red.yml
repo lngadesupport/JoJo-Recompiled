@@ -1,0 +1,32 @@
+name: Phase 3D GPU Ingress
+
+on:
+  push:
+    branches:
+      - feature/ps1-hardware-services-phase3
+
+permissions:
+  contents: write
+
+jobs:
+  gpu-contract:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Integrate GPU test target only
+        shell: python
+        run: |
+          from pathlib import Path
+          p = Path('CMakeLists.txt')
+          text = p.read_text()
+          line = 'add_jojo_test(jojo_ps1_gpu_ingress_tests tests/test_ps1_gpu_ingress.cpp)\n'
+          anchor = 'add_jojo_test(jojo_ps1_cdrom_dma_tests tests/test_ps1_cdrom_dma.cpp)\n'
+          if line not in text:
+              if anchor not in text:
+                  raise SystemExit('missing CD-ROM DMA test anchor')
+              text = text.replace(anchor, anchor + line, 1)
+          p.write_text(text)
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
+      - name: Build GPU RED contract
+        run: cmake --build build --target jojo_ps1_gpu_ingress_tests -j2
