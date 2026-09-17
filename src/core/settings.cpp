@@ -226,9 +226,7 @@ Result<AppSettings> load_settings(const std::filesystem::path& path) {
         const auto key = trim(line.substr(0, eq));
         const auto value = trim(line.substr(eq + 1));
 
-        if (key == "install_root") result.install_root = value;
-        else if (key == "install_dir" && result.install_root.empty()) result.install_root = value;
-        else if (key == "source_binding_path") result.source_binding_path = value;
+        if (key == "source_binding_path") result.source_binding_path = value;
         else if (key == "selected_device" || key == "selected_device.p1") result.input.players[0].selected_device = value;
         else if (key == "selected_device.p2") result.input.players[1].selected_device = value;
         else if (key.rfind("bind.p1.", 0) == 0) {
@@ -304,7 +302,6 @@ Result<void> save_settings_atomic(const std::filesystem::path& path, const AppSe
         std::ofstream out(temp, std::ios::trunc);
         if (!out) return Result<void>::failure(ErrorCode::io_error, "failed to open temporary settings file");
         out << "# JOJO Recompiled settings\n";
-        out << "install_root=" << settings.install_root << '\n';
         out << "source_binding_path=" << settings.source_binding_path << '\n';
         out << "width=" << settings.graphics.width << '\n';
         out << "height=" << settings.graphics.height << '\n';

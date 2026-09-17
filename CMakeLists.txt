@@ -27,7 +27,6 @@ add_library(jojo_core STATIC
   src/core/ps1_exe.cpp
   src/core/ps1_disc_session.cpp
   src/core/game_source_binding.cpp
-  src/core/ps1_installation.cpp
   src/core/ps1_memory_bus.cpp
   src/core/ps1_executable_loader.cpp
   src/core/ps1_hle_bios.cpp
@@ -38,7 +37,6 @@ add_library(jojo_core STATIC
   src/core/mips_decoder.cpp
   src/core/r3000a_reference_executor.cpp
   src/core/revision.cpp
-  src/core/conversion.cpp
   src/core/runtime.cpp
   src/core/ps1_direct_runtime.cpp
   src/core/device_id.cpp
@@ -96,10 +94,6 @@ add_jojo_test(jojo_ps1_exe_tests tests/test_ps1_exe.cpp)
 add_jojo_test(jojo_ps1_disc_session_tests tests/test_ps1_disc_session.cpp)
 add_jojo_test(jojo_ps1_disc_streaming_tests tests/test_ps1_disc_streaming.cpp)
 add_jojo_test(jojo_game_source_binding_tests tests/test_game_source_binding.cpp)
-add_jojo_test(jojo_ps1_manifest_tests tests/test_ps1_manifest.cpp)
-add_jojo_test(jojo_ps1_installation_tests tests/test_ps1_installation.cpp)
-add_jojo_test(jojo_ps1_conversion_tests tests/test_ps1_conversion.cpp)
-add_jojo_test(jojo_ps1_runtime_installation_tests tests/test_ps1_runtime_installation.cpp)
 add_jojo_test(jojo_ps1_direct_runtime_tests tests/test_ps1_direct_runtime.cpp)
 add_jojo_test(jojo_ps1_memory_bus_tests tests/test_ps1_memory_bus.cpp)
 add_jojo_test(jojo_ps1_executable_loader_tests tests/test_ps1_executable_loader.cpp)
@@ -110,7 +104,6 @@ add_jojo_test(jojo_ps1_96_remove_tests tests/test_ps1_96_remove.cpp)
 add_jojo_test(jojo_ps1_diagnostic_frontier_tests tests/test_ps1_diagnostic_frontier.cpp)
 add_jojo_test(jojo_ps1_max3_explorer_tests tests/test_ps1_max3_explorer.cpp)
 add_jojo_test(jojo_ps1_boot_report_io_tests tests/test_ps1_boot_report_io.cpp)
-add_jojo_test(jojo_ps1_local_evidence_tests tests/test_ps1_local_evidence.cpp)
 add_jojo_test(jojo_mips_decoder_tests tests/test_mips_decoder.cpp)
 add_jojo_test(jojo_r3000a_integer_tests tests/test_r3000a_integer.cpp)
 add_jojo_test(jojo_r3000a_exception_tests tests/test_r3000a_exceptions.cpp)

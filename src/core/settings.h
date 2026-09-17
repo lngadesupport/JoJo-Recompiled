@@ -44,7 +44,6 @@ struct AudioSettings {
 };
 
 struct AppSettings {
-    std::string install_root{};
     std::string source_binding_path{};
     GraphicsSettings graphics{};
     AudioSettings audio{};

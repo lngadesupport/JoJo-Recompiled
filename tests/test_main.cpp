@@ -52,7 +52,6 @@ static void test_graphics_rejects_invalid_options() {
 static void test_settings_round_trip() {
     const auto path = temp_file("settings.ini");
     jojo::AppSettings in{};
-    in.install_root = "C:/Games/JOJO-Recompiled";
     in.graphics.width = 7680;
     in.graphics.height = 4320;
     in.graphics.aspect_ratio = jojo::AspectRatio::ratio_32_9;
@@ -66,36 +65,12 @@ static void test_settings_round_trip() {
     const auto loaded = jojo::load_settings(path);
     CHECK(loaded);
     if (loaded) {
-        CHECK(loaded.value.install_root == in.install_root);
         CHECK(loaded.value.graphics == in.graphics);
     }
     std::error_code ec;
     fs::remove(path, ec);
 }
 
-static void test_legacy_install_dir_migrates_to_install_root() {
-    const auto path = temp_file("legacy_install_dir.ini");
-    {
-        std::ofstream out(path, std::ios::trunc);
-        out << "install_dir=D:/Old/JoJo\n";
-    }
-
-    const auto loaded = jojo::load_settings(path);
-    CHECK(loaded);
-    if (loaded) {
-        CHECK(loaded.value.install_root == "D:/Old/JoJo");
-        CHECK(jojo::save_settings_atomic(path, loaded.value));
-    }
-
-    std::ifstream in(path);
-    const std::string text((std::istreambuf_iterator<char>(in)),
-                           std::istreambuf_iterator<char>());
-    CHECK(text.find("install_root=D:/Old/JoJo") != std::string::npos);
-    CHECK(text.find("install_dir=") == std::string::npos);
-
-    std::error_code ec;
-    fs::remove(path, ec);
-}
 
 static void test_graphics_extended_options_round_trip() {
     const auto path = temp_file("graphics_extended.ini");
@@ -193,7 +168,6 @@ int main() {
     test_graphics_defaults_are_valid();
     test_graphics_rejects_invalid_options();
     test_settings_round_trip();
-    test_legacy_install_dir_migrates_to_install_root();
     test_graphics_extended_options_round_trip();
     test_graphics_rejects_unknown_extended_options();
     test_input_bindings_round_trip();
