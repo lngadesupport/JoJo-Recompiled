@@ -3,8 +3,11 @@
 #ifdef _WIN32
 #define NOMINMAX
 #include "core/presentation.h"
+#include "core/ps1_display_frame.h"
 
+#include <cstddef>
 #include <cstdint>
+#include <dxgiformat.h>
 #include <windows.h>
 
 namespace jojo {
@@ -22,6 +25,15 @@ struct Win32WindowPlan {
     std::uint32_t dpi{96u};
 };
 
+struct D3d11FrameUploadPlan {
+    std::uint32_t width{};
+    std::uint32_t height{};
+    std::uint32_t row_pitch{};
+    std::size_t byte_size{};
+    DXGI_FORMAT format{DXGI_FORMAT_UNKNOWN};
+    const void* pixels{};
+};
+
 [[nodiscard]] Result<Win32WindowPlan> make_win32_window_plan(
     const PresentationPlan& presentation,
     RECT monitor_bounds,
@@ -30,6 +42,9 @@ struct Win32WindowPlan {
 [[nodiscard]] Result<void> apply_win32_window_plan(
     HWND window,
     const Win32WindowPlan& plan);
+
+[[nodiscard]] Result<D3d11FrameUploadPlan> make_d3d11_frame_upload_plan(
+    const Ps1DisplayFrame& frame);
 
 [[nodiscard]] Result<RendererCapabilities> probe_d3d11_renderer_capabilities();
 
