@@ -27,10 +27,36 @@ Ps1CommercialEvidenceReport Ps1CommercialEvidenceRunner::run(
     const Ps1CommercialEvidenceOptions& options) noexcept {
     Ps1CommercialEvidenceReport report{};
     report.source = disc_.binding();
-    report.boot = runtime_.run(options.boot);
-    report.total_instructions_retired = report.boot.instructions_retired;
-    report.frontier = classify_ps1_commercial_frontier(report.boot);
-    return report;
+
+    std::size_t fallback_index = 0u;
+    while (true) {
+        auto segment = runtime_.run(options.boot);
+        report.total_instructions_retired += segment.instructions_retired;
+        report.boot = std::move(segment);
+        report.frontier = classify_ps1_commercial_frontier(report.boot);
+
+        if (report.frontier != Ps1CommercialFrontierClass::bios_call) {
+            return report;
+        }
+        if (fallback_index >= options.diagnostic_bios_fallbacks.size()) {
+            return report;
+        }
+        if (report.boot.recent_bios_calls.empty()) {
+            return report;
+        }
+
+        const auto bios = report.boot.recent_bios_calls.back();
+        const auto fallback = options.diagnostic_bios_fallbacks[fallback_index++];
+        if (!runtime_.apply_diagnostic_bios_fallback(fallback)) {
+            return report;
+        }
+
+        report.diagnostic_decisions.push_back(Ps1CommercialDiagnosticDecision{
+            bios.table_physical,
+            bios.selector,
+            fallback,
+        });
+    }
 }
 
 const Ps1DiscSession& Ps1CommercialEvidenceRunner::disc_session() const noexcept {
