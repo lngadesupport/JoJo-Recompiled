@@ -15,7 +15,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Configure
         run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
-      - name: Build frontier contract
-        run: cmake --build build --target jojo_ps1_commercial_frontier_tests -j2
-      - name: Run frontier contract
-        run: ctest --test-dir build -R jojo_ps1_commercial_frontier_tests --output-on-failure
+      - name: Build Phase 2 contracts
+        run: cmake --build build --target jojo_ps1_commercial_frontier_tests jojo_ps1_commercial_evidence_tests -j2
+      - name: Run Phase 2 contracts
+        run: ctest --test-dir build -R 'jojo_ps1_commercial_(frontier|evidence)_tests' --output-on-failure
