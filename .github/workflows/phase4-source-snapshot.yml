@@ -1,0 +1,27 @@
+name: Phase 4 Source Snapshot
+
+on:
+  push:
+    branches:
+      - feature/ps1-gpu-gte-first-frame-phase4
+
+permissions:
+  contents: read
+
+jobs:
+  source-snapshot:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Package source snapshot
+        shell: bash
+        run: |
+          set -euo pipefail
+          git rev-parse HEAD > PHASE4-SNAPSHOT-HEAD.txt
+          zip -qr jojo-phase4-source.zip .             -x '.git/*' 'build/*' 'build-*/*' 'jojo-phase4-source.zip'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: jojo-phase4-source
+          path: jojo-phase4-source.zip
+          if-no-files-found: error
+          retention-days: 1
