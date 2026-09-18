@@ -135,6 +135,8 @@ public:
         const Ps1CommercialEvidenceOptions& options) noexcept;
     [[nodiscard]] Ps1BootReport run_segment(
         const Ps1BootOptions& options) noexcept;
+    void set_native_x64_enabled(bool enabled) noexcept;
+    [[nodiscard]] bool native_x64_enabled() const noexcept;
     void signal_vblank() noexcept;
 
     [[nodiscard]] const Ps1DiscSession& disc_session() const noexcept;
