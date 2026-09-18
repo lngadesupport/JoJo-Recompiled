@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/r3000a_bus.h"
 #include "core/r3000a_state.h"
 
 #include <array>
@@ -38,7 +39,8 @@ public:
     [[nodiscard]] Ps1HleBiosDispatchStatus dispatch(
         R3000aState& cpu,
         std::uint32_t table_physical,
-        std::uint32_t selector) noexcept;
+        std::uint32_t selector,
+        R3000aBus* bus = nullptr) noexcept;
     [[nodiscard]] Ps1HleBiosDispatchStatus dispatch_syscall(
         R3000aState& cpu,
         std::uint32_t selector) noexcept;
@@ -56,6 +58,8 @@ public:
     [[nodiscard]] std::optional<bool> root_counter_auto_ack_enabled(
         std::uint32_t counter) const noexcept;
     [[nodiscard]] bool iso9660_removed() const noexcept;
+    [[nodiscard]] std::optional<std::uint32_t> interrupt_priority_head(
+        std::uint32_t priority) const noexcept;
 
 private:
     std::optional<Ps1BiosHeapState> heap_state_{};
@@ -67,6 +71,7 @@ private:
     bool backup_unit_initialized_{};
     std::array<Ps1BiosEventState, 16> events_{};
     std::array<std::optional<bool>, 4> root_counter_auto_ack_enabled_{};
+    std::array<std::optional<std::uint32_t>, 4> interrupt_priority_heads_{};
     bool iso9660_removed_{};
 };
 
