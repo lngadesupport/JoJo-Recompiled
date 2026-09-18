@@ -28,6 +28,7 @@ jojo::RendererCapabilities full_caps() {
         jojo::Msaa::x2,
         jojo::Msaa::x4,
         jojo::Msaa::x8,
+        jojo::Msaa::x16,
     };
     return caps;
 }
@@ -185,7 +186,7 @@ void test_ui_auto_scale_is_dpi_aware_and_expanded_hud_uses_full_aspect() {
 void test_quality_modes_use_requested_value_when_supported_and_fallback_downward() {
     jojo::GraphicsSettings graphics{};
     graphics.texture_filter = jojo::TextureFilter::x16;
-    graphics.msaa = jojo::Msaa::x8;
+    graphics.msaa = jojo::Msaa::x16;
     jojo::PresentationInputs inputs{};
 
     auto caps = full_caps();
@@ -193,7 +194,7 @@ void test_quality_modes_use_requested_value_when_supported_and_fallback_downward
     CHECK(exact);
     if (exact) {
         CHECK(exact.value.applied_texture_filter == jojo::TextureFilter::x16);
-        CHECK(exact.value.applied_msaa == jojo::Msaa::x8);
+        CHECK(exact.value.applied_msaa == jojo::Msaa::x16);
         CHECK(!exact.value.texture_filter_fallback);
         CHECK(!exact.value.msaa_fallback);
     }
