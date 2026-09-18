@@ -39,6 +39,8 @@ public:
 
     Result<void> load_main_ram(std::uint32_t guest_address,
                                std::span<const std::uint8_t> bytes);
+    [[nodiscard]] std::uint8_t* main_ram_data() noexcept;
+    [[nodiscard]] const std::uint8_t* main_ram_data() const noexcept;
 
     [[nodiscard]] std::uint16_t interrupt_mask() const noexcept;
     [[nodiscard]] std::uint32_t dma_interrupt() const noexcept;
