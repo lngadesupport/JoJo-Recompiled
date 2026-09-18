@@ -1,5 +1,6 @@
 #include "core/ps1_boot_runtime.h"
 
+#include "core/mips_decoder.h"
 #include "core/ps1_executable_loader.h"
 #include "core/r3000a_reference_executor.h"
 
@@ -227,6 +228,26 @@ Ps1BootReport Ps1BootRuntime::run(const Ps1BootOptions& options) noexcept {
         bus_.clear_last_unsupported_access();
         bus_.clear_last_diagnostic_mmio_probe();
 
+        if (observed_opcode.status == R3000aBusStatus::ok &&
+            decode_mips(observed_opcode.value).op == MipsOp::syscall &&
+            !cpu_.delay_slot.active) {
+            const auto syscall_status =
+                bios_.dispatch_syscall(cpu_, cpu_.gpr[4]);
+            if (syscall_status == Ps1HleBiosDispatchStatus::handled) {
+                ++report.execution_steps;
+                ++instructions_since_progress;
+                bus_.hardware_services().step(1u);
+                cpu_.external_interrupt_pending =
+                    bus_.hardware_services().interrupt_pending() ? 1u : 0u;
+                if (options.stagnation_instruction_limit != 0u &&
+                    instructions_since_progress >=
+                        options.stagnation_instruction_limit) {
+                    return finish(Ps1BootStopReason::diagnostic_stall);
+                }
+                continue;
+            }
+        }
+
         const bool pc_in_native_text =
             native_text_end_ > native_text_begin_ &&
             cpu_.pc >= native_text_begin_ &&
@@ -303,16 +324,9 @@ Ps1BootReport Ps1BootRuntime::run(const Ps1BootOptions& options) noexcept {
             if (step.diagnostic.exception_code == R3000aExceptionCode::interrupt) {
                 ++report.interrupts_accepted;
             }
-            ++instructions_since_progress;
             bus_.hardware_services().step(1u);
             cpu_.external_interrupt_pending =
                 bus_.hardware_services().interrupt_pending() ? 1u : 0u;
-            if (options.stagnation_instruction_limit != 0u &&
-                instructions_since_progress >=
-                    options.stagnation_instruction_limit) {
-                return finish(Ps1BootStopReason::diagnostic_stall);
-            }
-            continue;
         }
 
         report.cpu_diagnostic = step.diagnostic;
