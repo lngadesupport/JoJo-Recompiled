@@ -53,17 +53,27 @@ struct OnlineCreateRoomDraft {
     friend bool operator==(const OnlineCreateRoomDraft&, const OnlineCreateRoomDraft&) = default;
 };
 
+struct OnlineChatMessage {
+    std::string sender{};
+    std::string text{};
+    friend bool operator==(const OnlineChatMessage&, const OnlineChatMessage&) = default;
+};
+
 struct OnlineLobbyModel {
     OnlineLobbyScreen screen{OnlineLobbyScreen::home};
     std::string player_name{"PLAYER"};
+    std::string remote_player_name{"OPPONENT"};
     std::string region{"SOUTH AMERICA - ARGENTINA"};
     OnlineMatchQueue queue{OnlineMatchQueue::casual};
     OnlineCreateRoomDraft create_room{};
     std::vector<OnlineRoomInfo> rooms{};
     std::optional<std::size_t> selected_room{};
     bool ready{false};
+    bool remote_ready{false};
     bool local_player_is_host{false};
+    bool start_requested{false};
     std::uint32_t spectator_count{0};
+    std::vector<OnlineChatMessage> chat_messages{};
     std::string status{};
 };
 
@@ -102,5 +112,19 @@ void online_set_connecting(
 void online_set_ready(
     OnlineLobbyModel& model,
     bool ready) noexcept;
+[[nodiscard]] Result<void> online_set_remote_player_name(
+    OnlineLobbyModel& model,
+    std::string name);
+void online_set_remote_ready(
+    OnlineLobbyModel& model,
+    bool ready) noexcept;
+[[nodiscard]] Result<void> online_append_chat(
+    OnlineLobbyModel& model,
+    std::string sender,
+    std::string text);
+void online_request_start(
+    OnlineLobbyModel& model) noexcept;
+void online_reset_peer_state(
+    OnlineLobbyModel& model) noexcept;
 
 } // namespace jojo
