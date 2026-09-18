@@ -14,11 +14,13 @@
 #include <shellapi.h>
 #include <shobjidl.h>
 #include <shlobj_core.h>
+#include <chrono>
 #include <deque>
 #include <filesystem>
 #include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 #include <utility>
 #include <string_view>
 
@@ -62,6 +64,8 @@ constexpr int ID_SOURCE_PATH = 1001;
 constexpr int ID_SELECT_SOURCE = 1002;
 constexpr int ID_VALIDATE_SOURCE = 1003;
 constexpr int ID_RUN_CHECKPOINT = 1006;
+constexpr UINT_PTR ID_GAME_TIMER = 2001u;
+constexpr std::uint64_t GAME_SLICE_INSTRUCTIONS = 565044u;
 constexpr COLORREF BG=RGB(13,8,22), PANEL=RGB(35,21,53), TEXT=RGB(248,244,252), MUTED=RGB(185,169,198);
 constexpr COLORREF PURPLE=RGB(119,73,196), MAGENTA=RGB(220,64,166), GOLD=RGB(235,193,83);
 HWND win{}, source_box{}, source_btn{}, validate_btn{}, checkpoint_btn{}, game_window{};
@@ -70,7 +74,11 @@ HBRUSH edit_brush{};
 std::optional<jojo::D3d11Ps1Presenter> game_presenter{};
 std::unique_ptr<jojo::XAudio2Ps1AudioHost> game_audio_host{};
 std::unique_ptr<jojo::win32::Win32InputHost> input_host{};
+std::unique_ptr<jojo::Ps1CommercialEvidenceRunner> game_runner{};
 jojo::Ps1DisplayFrame game_frame{};
+std::uint64_t game_total_instructions{};
+std::uint32_t game_execution_segments{};
+std::chrono::steady_clock::time_point next_game_tick{};
 fs::path settings_path, binding_path, executable_root;
 jojo::AppSettings app_settings{};
 jojo::Ps1DiscOpenOptions open_options{};
@@ -160,11 +168,14 @@ bool usable_image(const fs::path& image) {
 }
 
 void refresh_actions(){
-    EnableWindow(validate_btn,TRUE);
-    EnableWindow(checkpoint_btn,validated?TRUE:FALSE);
+    const bool running=static_cast<bool>(game_runner);
+    EnableWindow(source_btn,running?FALSE:TRUE);
+    EnableWindow(validate_btn,running?FALSE:TRUE);
+    EnableWindow(checkpoint_btn,(validated||running)?TRUE:FALSE);
 }
 
 void select_image(const fs::path& image) {
+    if(game_runner) return;
     source=image.wstring();
     validated=false;
     if(source_box) SetWindowTextW(source_box,source.c_str());
@@ -183,6 +194,7 @@ std::wstring choose_image(){
 }
 
 void validate_source(){
+    if(game_runner) return;
     if(source.empty()){
         validated=false;
         status=L"Selecione uma imagem .ISO, .BIN ou .CUE para validar.";
@@ -298,10 +310,123 @@ void apply_current_input(jojo::Ps1CommercialEvidenceRunner& runner){
     }
 }
 
+void stop_game_runtime(const jojo::Ps1BootReport* final_boot=nullptr){
+    if(!game_runner) return;
+
+    if(win) KillTimer(win,ID_GAME_TIMER);
+
+    if(final_boot){
+        jojo::Ps1CommercialEvidenceReport report{};
+        report.source=game_runner->disc_session().binding();
+        report.frontier=jojo::classify_ps1_commercial_frontier(*final_boot);
+        report.boot=*final_boot;
+        report.total_instructions_retired=game_total_instructions;
+        report.execution_segments=game_execution_segments;
+        report.first_frame=jojo::make_ps1_commercial_frame_evidence(
+            game_runner->display_frame());
+
+        const auto report_path=app_root()/L"diagnostics"/L"commercial-frontier.txt";
+        const auto saved=jojo::save_ps1_commercial_evidence_report_atomic(report_path,report);
+        const auto frontier_name=std::string(
+            jojo::ps1_commercial_frontier_class_name(report.frontier));
+        status=L"Execução interrompida no frontier: "+wide(frontier_name)+L".";
+        add_log(L"Frontier: "+wide(frontier_name));
+        if(saved) add_log(L"Diagnóstico atualizado: "+report_path.wstring());
+        else add_log(L"Aviso: relatório não pôde ser salvo: "+wide(saved.detail));
+    }else{
+        status=L"Execução do jogo encerrada.";
+    }
+
+    const auto flushed=game_runner->flush_memory_cards();
+    if(!flushed) add_log(L"Aviso: falha ao salvar Memory Card: "+wide(flushed.detail));
+
+    game_runner.reset();
+    game_audio_host.reset();
+    game_total_instructions=0u;
+    game_execution_segments=0u;
+    if(checkpoint_btn) SetWindowTextW(checkpoint_btn,L"INICIAR JOGO");
+    refresh_actions();
+    if(win) InvalidateRect(win,nullptr,FALSE);
+}
+
+void service_game_audio(){
+    if(!game_runner) return;
+    auto audio_samples=game_runner->drain_audio_samples();
+    if(audio_samples.empty()) return;
+
+    if(!game_audio_host){
+        auto audio_host=jojo::XAudio2Ps1AudioHost::create();
+        if(audio_host) game_audio_host=std::move(audio_host.value);
+        else{
+            add_log(L"Aviso: XAudio2 indisponível: "+wide(audio_host.detail));
+            return;
+        }
+    }
+
+    const auto submitted=game_audio_host->submit(audio_samples);
+    if(!submitted){
+        add_log(L"Aviso: envio de áudio falhou: "+wide(submitted.detail));
+    }
+}
+
+void game_tick(){
+    if(!game_runner) return;
+
+    const auto now=std::chrono::steady_clock::now();
+    const auto frame_period=std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+        std::chrono::duration<double>(1001.0/60000.0));
+    if(now<next_game_tick) return;
+    if(now-next_game_tick>frame_period*4) next_game_tick=now;
+    next_game_tick+=frame_period;
+
+    apply_current_input(*game_runner);
+
+    jojo::Ps1BootOptions options{};
+    options.instruction_budget=GAME_SLICE_INSTRUCTIONS;
+    options.trace_capacity=64u;
+    options.mmio_event_capacity=64u;
+    options.bios_event_capacity=64u;
+    options.stagnation_instruction_limit=0u;
+
+    const auto segment=game_runner->run_segment(options);
+    ++game_execution_segments;
+    game_total_instructions+=segment.instructions_retired;
+
+    const auto frontier=jojo::classify_ps1_commercial_frontier(segment);
+    if(frontier!=jojo::Ps1CommercialFrontierClass::execution_budget){
+        service_game_audio();
+        const auto frame=game_runner->display_frame();
+        if(frame.width!=0u&&frame.height!=0u&&!frame.rgba8.empty()){
+            (void)show_game_frame(frame);
+        }
+        stop_game_runtime(&segment);
+        return;
+    }
+
+    service_game_audio();
+
+    const auto frame=game_runner->display_frame();
+    if(frame.width!=0u&&frame.height!=0u&&!frame.rgba8.empty()){
+        (void)show_game_frame(frame);
+    }
+
+    if((game_execution_segments%60u)==0u){
+        const auto flushed=game_runner->flush_memory_cards();
+        if(!flushed) add_log(L"Aviso: autosave do Memory Card falhou: "+wide(flushed.detail));
+        status=L"Jogo em execução • segmentos: "+
+            std::to_wstring(game_execution_segments)+
+            L" • instruções: "+std::to_wstring(game_total_instructions);
+        InvalidateRect(win,nullptr,FALSE);
+    }
+}
+
 void run_checkpoint(){
+    if(game_runner){
+        stop_game_runtime();
+        return;
+    }
     if(!validated || source.empty()) return;
 
-    const auto report_path=app_root()/L"diagnostics"/L"commercial-frontier.txt";
     auto runner=jojo::Ps1CommercialEvidenceRunner::open(fs::path(source),open_options);
     if(!runner){
         status=L"Análise comercial falhou ao abrir a fonte: "+wide(runner.detail);
@@ -325,53 +450,25 @@ void run_checkpoint(){
         }
     }
 
-    jojo::Ps1CommercialEvidenceOptions options{};
-    options.boot.instruction_budget=250000u;
-    options.max_execution_segments=16u;
-    options.boot.trace_capacity=64u;
-    options.boot.mmio_event_capacity=64u;
-    options.boot.bios_event_capacity=64u;
-    options.boot.stagnation_instruction_limit=50000u;
+    game_runner=std::make_unique<jojo::Ps1CommercialEvidenceRunner>(
+        std::move(runner.value));
+    game_total_instructions=0u;
+    game_execution_segments=0u;
+    next_game_tick=std::chrono::steady_clock::now();
 
-    const auto report=runner.value.run(options);
-    const auto cards_flushed=runner.value.flush_memory_cards();
-    if(!cards_flushed){
-        add_log(L"Aviso: falha ao salvar Memory Card: "+wide(cards_flushed.detail));
+    if(!SetTimer(win,ID_GAME_TIMER,1u,nullptr)){
+        status=L"Falha ao iniciar o relógio de execução do jogo.";
+        game_runner.reset();
+        refresh_actions();
+        InvalidateRect(win,nullptr,FALSE);
+        return;
     }
-    auto audio_samples=runner.value.drain_audio_samples();
-    if(!audio_samples.empty()){
-        if(!game_audio_host){
-            auto audio_host=jojo::XAudio2Ps1AudioHost::create();
-            if(audio_host) game_audio_host=std::move(audio_host.value);
-            else add_log(L"Aviso: XAudio2 indisponível: "+wide(audio_host.detail));
-        }
-        if(game_audio_host){
-            const auto submitted=game_audio_host->submit(audio_samples);
-            if(submitted){
-                add_log(L"Áudio SPU enviado ao XAudio2: "+
-                        std::to_wstring(audio_samples.size()/2u)+L" frames.");
-            }else{
-                add_log(L"Aviso: envio de áudio falhou: "+wide(submitted.detail));
-            }
-        }
-    }
-    if(report.first_frame){
-        if(show_game_frame(runner.value.display_frame())){
-            add_log(L"Primeiro frame PS1 apresentado na janela de jogo.");
-        }else{
-            add_log(L"Aviso: frame PS1 detectado, mas a apresentação D3D11 falhou.");
-        }
-    }
-    const auto saved=jojo::save_ps1_commercial_evidence_report_atomic(report_path,report);
-    const auto frontier_name=std::string(jojo::ps1_commercial_frontier_class_name(report.frontier));
-    if(!saved){
-        status=L"Frontier identificado, mas o relatório não pôde ser salvo: "+wide(saved.detail);
-        add_log(L"Frontier: "+wide(frontier_name));
-    }else{
-        status=L"Frontier comercial identificado: "+wide(frontier_name)+L". Relatório: "+report_path.wstring();
-        add_log(L"Frontier: "+wide(frontier_name));
-        add_log(L"Instruções aposentadas: "+std::to_wstring(report.total_instructions_retired));
-    }
+
+    if(checkpoint_btn) SetWindowTextW(checkpoint_btn,L"PARAR JOGO");
+    status=L"Jogo em execução • PS1 direto • 59,94 Hz.";
+    add_log(L"Runtime contínuo iniciado; controles e áudio atualizam por frame.");
+    refresh_actions();
+    game_tick();
     InvalidateRect(win,nullptr,FALSE);
 }
 
@@ -386,7 +483,7 @@ void create_controls(HWND parent){
     const wchar_t* initial=source.empty()?L"Nenhuma imagem selecionada":source.c_str();
     source_box=CreateWindowExW(0,L"EDIT",initial,WS_CHILD|WS_VISIBLE|ES_READONLY|ES_AUTOHSCROLL,82,249,616,42,parent,reinterpret_cast<HMENU>(static_cast<INT_PTR>(ID_SOURCE_PATH)),GetModuleHandleW(nullptr),nullptr);
     source_btn=CreateWindowExW(0,L"BUTTON",L"SELECIONAR IMAGEM",WS_CHILD|WS_VISIBLE|BS_OWNERDRAW,712,249,208,42,parent,reinterpret_cast<HMENU>(static_cast<INT_PTR>(ID_SELECT_SOURCE)),GetModuleHandleW(nullptr),nullptr);
-    checkpoint_btn=CreateWindowExW(0,L"BUTTON",L"EXECUTAR CHECKPOINT",WS_CHILD|WS_VISIBLE|BS_OWNERDRAW,300,690,300,50,parent,reinterpret_cast<HMENU>(static_cast<INT_PTR>(ID_RUN_CHECKPOINT)),GetModuleHandleW(nullptr),nullptr);
+    checkpoint_btn=CreateWindowExW(0,L"BUTTON",L"INICIAR JOGO",WS_CHILD|WS_VISIBLE|BS_OWNERDRAW,300,690,300,50,parent,reinterpret_cast<HMENU>(static_cast<INT_PTR>(ID_RUN_CHECKPOINT)),GetModuleHandleW(nullptr),nullptr);
     validate_btn=CreateWindowExW(0,L"BUTTON",L"VALIDAR JOGO",WS_CHILD|WS_VISIBLE|BS_OWNERDRAW,620,690,300,50,parent,reinterpret_cast<HMENU>(static_cast<INT_PTR>(ID_VALIDATE_SOURCE)),GetModuleHandleW(nullptr),nullptr);
     SendMessageW(source_box,WM_SETFONT,reinterpret_cast<WPARAM>(body_font),TRUE);
     DragAcceptFiles(parent,TRUE);
@@ -426,6 +523,12 @@ LRESULT CALLBACK proc(HWND h,UINT m,WPARAM w,LPARAM l){
             (void)changes;
         }
         return 0;
+    case WM_TIMER:
+        if(w==ID_GAME_TIMER){
+            game_tick();
+            return 0;
+        }
+        break;
     case WM_COMMAND:
         if(LOWORD(w)==ID_SELECT_SOURCE){
             auto p=choose_image();
@@ -447,8 +550,14 @@ LRESULT CALLBACK proc(HWND h,UINT m,WPARAM w,LPARAM l){
     case WM_CTLCOLOREDIT:case WM_CTLCOLORSTATIC:{HDC dc=reinterpret_cast<HDC>(w);SetTextColor(dc,TEXT);SetBkColor(dc,PANEL);return reinterpret_cast<INT_PTR>(edit_brush);}
     case WM_ERASEBKGND:return 1;
     case WM_PAINT:{PAINTSTRUCT ps{};HDC dc=BeginPaint(h,&ps);RECT c{};GetClientRect(h,&c);paint(dc,c);EndPaint(h,&ps);return 0;}
-    case WM_CLOSE:DestroyWindow(h);return 0;
-    case WM_DESTROY:PostQuitMessage(0);return 0;
+    case WM_CLOSE:
+        if(game_runner) stop_game_runtime();
+        DestroyWindow(h);
+        return 0;
+    case WM_DESTROY:
+        if(game_runner) stop_game_runtime();
+        PostQuitMessage(0);
+        return 0;
     }
     return DefWindowProcW(h,m,w,l);
 }
@@ -491,6 +600,7 @@ int WINAPI wWinMain(HINSTANCE inst,HINSTANCE,PWSTR,int show){
     if(game_window && IsWindow(game_window)) DestroyWindow(game_window);
     game_presenter.reset();
     game_audio_host.reset();
+    game_runner.reset();
     input_host.reset();
     game_frame={};
     if(title_font)DeleteObject(title_font);if(body_font)DeleteObject(body_font);if(small_font)DeleteObject(small_font);if(edit_brush)DeleteObject(edit_brush);CoUninitialize();return static_cast<int>(msg.wParam);
