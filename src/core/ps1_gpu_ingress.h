@@ -44,6 +44,9 @@ private:
         fill_rectangle_size,
         monochrome_rectangle_position,
         monochrome_rectangle_size,
+        textured_rectangle_position,
+        textured_rectangle_uv,
+        textured_rectangle_size,
         vram_copy_source,
         vram_copy_destination,
         vram_copy_size,
@@ -57,6 +60,7 @@ private:
     void write_transfer_pixel(std::uint16_t pixel) noexcept;
     void fill_rectangle(std::uint32_t width, std::uint32_t height) noexcept;
     void draw_monochrome_rectangle(std::uint32_t width, std::uint32_t height) noexcept;
+    void draw_raw_textured_rectangle(std::uint32_t width, std::uint32_t height) noexcept;
     void copy_vram_rectangle(std::uint32_t width, std::uint32_t height) noexcept;
     void apply_display_mode(std::uint32_t parameter) noexcept;
 
@@ -81,6 +85,11 @@ private:
     std::uint32_t draw_area_bottom_{vram_height - 1u};
     std::int32_t draw_offset_x_{};
     std::int32_t draw_offset_y_{};
+    std::uint32_t texture_page_x_{};
+    std::uint32_t texture_page_y_{};
+    std::uint8_t texture_depth_{};
+    std::uint8_t texture_u_{};
+    std::uint8_t texture_v_{};
     std::uint32_t copy_source_x_{};
     std::uint32_t copy_source_y_{};
     std::uint32_t copy_destination_x_{};

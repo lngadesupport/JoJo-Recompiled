@@ -124,6 +124,42 @@ void Ps1GpuIngress::draw_monochrome_rectangle(
     }
 }
 
+void Ps1GpuIngress::draw_raw_textured_rectangle(
+    std::uint32_t width,
+    std::uint32_t height) noexcept {
+    for (std::uint32_t local_y = 0u; local_y < height; ++local_y) {
+        const auto y = draw_y_ + draw_offset_y_ + static_cast<std::int32_t>(local_y);
+        if (y < 0 || y >= static_cast<std::int32_t>(vram_height) ||
+            y < static_cast<std::int32_t>(draw_area_top_) ||
+            y > static_cast<std::int32_t>(draw_area_bottom_)) {
+            continue;
+        }
+
+        const auto source_y =
+            (texture_page_y_ + ((static_cast<std::uint32_t>(texture_v_) + local_y) & 0xFFu)) &
+            (vram_height - 1u);
+        for (std::uint32_t local_x = 0u; local_x < width; ++local_x) {
+            const auto x = draw_x_ + draw_offset_x_ + static_cast<std::int32_t>(local_x);
+            if (x < 0 || x >= static_cast<std::int32_t>(vram_width) ||
+                x < static_cast<std::int32_t>(draw_area_left_) ||
+                x > static_cast<std::int32_t>(draw_area_right_)) {
+                continue;
+            }
+
+            const auto source_x =
+                (texture_page_x_ + ((static_cast<std::uint32_t>(texture_u_) + local_x) & 0xFFu)) &
+                (vram_width - 1u);
+            const auto texel =
+                vram_[static_cast<std::size_t>(source_y) * vram_width + source_x];
+            if ((texel & 0x7FFFu) == 0u) continue;
+
+            vram_[static_cast<std::size_t>(y) * vram_width +
+                  static_cast<std::uint32_t>(x)] = texel;
+            ++vram_write_count_;
+        }
+    }
+}
+
 void Ps1GpuIngress::copy_vram_rectangle(
     std::uint32_t width,
     std::uint32_t height) noexcept {
@@ -182,6 +218,26 @@ R3000aBusResult Ps1GpuIngress::write_gp0(std::uint32_t value) noexcept {
             reset_command_buffer();
             return {R3000aBusStatus::ok, 0u};
         }
+        case Gp0Mode::textured_rectangle_position:
+            ++gp0_word_count_;
+            draw_x_ = sign_extend16_coord(value);
+            draw_y_ = sign_extend16_coord(value >> 16u);
+            gp0_mode_ = Gp0Mode::textured_rectangle_uv;
+            return {R3000aBusStatus::ok, 0u};
+        case Gp0Mode::textured_rectangle_uv:
+            ++gp0_word_count_;
+            texture_u_ = static_cast<std::uint8_t>(value & 0xFFu);
+            texture_v_ = static_cast<std::uint8_t>((value >> 8u) & 0xFFu);
+            gp0_mode_ = Gp0Mode::textured_rectangle_size;
+            return {R3000aBusStatus::ok, 0u};
+        case Gp0Mode::textured_rectangle_size: {
+            ++gp0_word_count_;
+            const auto width = value & 0xFFFFu;
+            const auto height = (value >> 16u) & 0xFFFFu;
+            draw_raw_textured_rectangle(width, height);
+            reset_command_buffer();
+            return {R3000aBusStatus::ok, 0u};
+        }
         case Gp0Mode::vram_copy_source:
             ++gp0_word_count_;
             copy_source_x_ = value & 0x3FFu;
@@ -232,7 +288,12 @@ R3000aBusResult Ps1GpuIngress::write_gp0(std::uint32_t value) noexcept {
         case 0x00u: // NOP
         case 0x01u: // Clear cache
         case 0x1Fu: // IRQ request/control-side event
-        case 0xE1u:
+        case 0xE1u: // Draw mode / texture page
+            ++gp0_word_count_;
+            texture_page_x_ = (value & 0x0Fu) * 64u;
+            texture_page_y_ = ((value >> 4u) & 1u) * 256u;
+            texture_depth_ = static_cast<std::uint8_t>((value >> 7u) & 3u);
+            return {R3000aBusStatus::ok, 0u};
         case 0xE2u:
         case 0xE6u:
             ++gp0_word_count_;
@@ -264,6 +325,14 @@ R3000aBusResult Ps1GpuIngress::write_gp0(std::uint32_t value) noexcept {
             ++gp0_word_count_;
             draw_color_ = color24_to_bgr555(value & 0x00FFFFFFu);
             gp0_mode_ = Gp0Mode::monochrome_rectangle_position;
+            return {R3000aBusStatus::ok, 0u};
+        case 0x65u: // Raw-textured variable rectangle
+            if (texture_depth_ != 2u) {
+                last_unsupported_gp0_command_ = command;
+                return {R3000aBusStatus::unsupported, 0u};
+            }
+            ++gp0_word_count_;
+            gp0_mode_ = Gp0Mode::textured_rectangle_position;
             return {R3000aBusStatus::ok, 0u};
         case 0x80u: // VRAM -> VRAM rectangle copy
             ++gp0_word_count_;
