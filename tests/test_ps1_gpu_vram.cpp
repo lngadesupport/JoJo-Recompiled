@@ -50,6 +50,31 @@ int main() {
         CHECK(copy_gpu.vram_write_count() == before_copy_writes + 3u);
     }
 
+    // Drawing environment + GP0(60h): variable monochrome rectangle.
+    // The draw offset is applied before clipping to the E3/E4 drawing area.
+    {
+        jojo::Ps1GpuIngress draw_gpu;
+        CHECK(draw_gpu.write_gp0(0xE3000000u | 11u | (21u << 10u)).status ==
+              jojo::R3000aBusStatus::ok); // top-left = (11,21)
+        CHECK(draw_gpu.write_gp0(0xE4000000u | 13u | (22u << 10u)).status ==
+              jojo::R3000aBusStatus::ok); // bottom-right = (13,22)
+        CHECK(draw_gpu.write_gp0(0xE5000000u | 1u | (1u << 11u)).status ==
+              jojo::R3000aBusStatus::ok); // offset = (+1,+1)
+
+        CHECK(draw_gpu.write_gp0(0x6000F800u).status == jojo::R3000aBusStatus::ok);
+        CHECK(draw_gpu.write_gp0((20u << 16u) | 10u).status == jojo::R3000aBusStatus::ok);
+        CHECK(draw_gpu.write_gp0((3u << 16u) | 4u).status == jojo::R3000aBusStatus::ok);
+
+        for (std::uint32_t y = 21u; y <= 22u; ++y) {
+            for (std::uint32_t x = 11u; x <= 13u; ++x) {
+                CHECK(draw_gpu.vram_pixel(x, y) == 0x001Fu);
+            }
+        }
+        CHECK(draw_gpu.vram_pixel(10u, 20u) == 0u);
+        CHECK(draw_gpu.vram_pixel(14u, 22u) == 0u);
+        CHECK(draw_gpu.vram_write_count() == 6u);
+    }
+
     // GP0(02h): Fill Rectangle. Keep X/width aligned here so this test isolates
     // packet assembly, color conversion and deterministic in-bounds raster writes.
     {
