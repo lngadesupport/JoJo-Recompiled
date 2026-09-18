@@ -150,6 +150,30 @@ std::string format_ps1_commercial_evidence_report(
         << report.session_vblank_count << '\n';
     out << "spu_sample_frames=" << report.spu_sample_frames << '\n';
     out << "spu_nonzero_samples=" << report.spu_nonzero_samples << '\n';
+    out << "gpu_display_enabled=" << (report.gpu_display.enabled ? 1 : 0) << '\n';
+    out << "gpu_display_rgb24=" << (report.gpu_display.rgb24 ? 1 : 0) << '\n';
+    out << "gpu_display_pal=" << (report.gpu_display.pal ? 1 : 0) << '\n';
+    out << "gpu_display_interlaced=" << (report.gpu_display.interlaced ? 1 : 0) << '\n';
+    out << "gpu_display_start_x=" << report.gpu_display.start_x << '\n';
+    out << "gpu_display_start_y=" << report.gpu_display.start_y << '\n';
+    out << "gpu_display_width=" << report.gpu_display.width << '\n';
+    out << "gpu_display_height=" << report.gpu_display.height << '\n';
+    out << "gpu_nonzero_vram_words=" << report.gpu_nonzero_vram_words << '\n';
+    out << "gpu_display_region_nonzero_words="
+        << report.gpu_display_region_nonzero_words << '\n';
+    out << "gpu_nonzero_bounds_valid="
+        << (report.gpu_nonzero_bounds_valid ? 1 : 0) << '\n';
+    if (report.gpu_nonzero_bounds_valid) {
+        out << "gpu_nonzero_min_x=" << report.gpu_nonzero_min_x << '\n';
+        out << "gpu_nonzero_min_y=" << report.gpu_nonzero_min_y << '\n';
+        out << "gpu_nonzero_max_x=" << report.gpu_nonzero_max_x << '\n';
+        out << "gpu_nonzero_max_y=" << report.gpu_nonzero_max_y << '\n';
+    } else {
+        out << "gpu_nonzero_min_x=none\n"
+            << "gpu_nonzero_min_y=none\n"
+            << "gpu_nonzero_max_x=none\n"
+            << "gpu_nonzero_max_y=none\n";
+    }
     const auto validation = summarize_ps1_gameplay_validation(report);
     out << "validation_frame_observed=" << (validation.frame_observed ? 1 : 0) << '\n';
     out << "validation_dynamic_video_observed="
