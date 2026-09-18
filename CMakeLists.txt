@@ -73,6 +73,9 @@ if(CMAKE_DL_LIBS)
   target_link_libraries(jojo_core PUBLIC ${CMAKE_DL_LIBS})
 endif()
 
+add_executable(jojo_ps1_commercial_probe src/tools/ps1_commercial_probe.cpp)
+target_link_libraries(jojo_ps1_commercial_probe PRIVATE jojo_core)
+
 if(WIN32)
   add_library(jojo_win32_input_host STATIC src/platform/windows/controller_win32.cpp)
   target_compile_definitions(jojo_win32_input_host PRIVATE UNICODE _UNICODE _WIN32_WINNT=0x0A00 WINVER=0x0A00)
