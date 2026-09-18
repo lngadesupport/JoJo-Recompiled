@@ -11,6 +11,12 @@ constexpr std::uint32_t kCdStatus = kCdBase + 0u;
 constexpr std::uint32_t kCdCommandResponse = kCdBase + 1u;
 constexpr std::uint32_t kCdParameterData = kCdBase + 2u;
 constexpr std::uint32_t kCdInterrupt = kCdBase + 3u;
+constexpr std::uint8_t kStatMotor = 1u << 1u;
+constexpr std::uint8_t kStatRead = 1u << 5u;
+constexpr std::uint8_t kStatSeek = 1u << 6u;
+constexpr std::uint8_t kStatPlay = 1u << 7u;
+constexpr std::uint8_t kStatActivityMask =
+    static_cast<std::uint8_t>(kStatRead | kStatSeek | kStatPlay);
 constexpr std::uint64_t kFnvOffset = 14695981039346656037ull;
 constexpr std::uint64_t kFnvPrime = 1099511628211ull;
 constexpr std::uint32_t kCdCommandCompletionCycles = 33869u;
@@ -165,6 +171,9 @@ void Ps1CdromController::step(std::uint32_t cpu_cycles) noexcept {
         return;
     }
 
+    if (pending.apply_response_to_status) {
+        status_byte_ = pending.response;
+    }
     if (!push_response(pending.response)) {
         return;
     }
@@ -263,6 +272,8 @@ std::uint64_t Ps1CdromController::diagnostic_state_hash() const noexcept {
         for (const auto value : pending.data) hash_byte(hash, value);
         hash_byte(hash, static_cast<std::uint8_t>(
             pending.advance_lba ? 1u : 0u));
+        hash_byte(hash, static_cast<std::uint8_t>(
+            pending.apply_response_to_status ? 1u : 0u));
     }
     hash_u64(hash, command_count_);
     hash_u64(hash, recent_commands_.size());
@@ -352,11 +363,15 @@ R3000aBusResult Ps1CdromController::execute_command(std::uint8_t command) noexce
                 return {R3000aBusStatus::unsupported, 0u};
             }
             data_.clear();
+            const auto reading_status = static_cast<std::uint8_t>(
+                (status_byte_ & ~kStatActivityMask) |
+                kStatMotor | kStatRead);
             deferred_responses_.push_back(DeferredResponse{
                 0x01u,
-                status_byte_,
+                reading_status,
                 kCdSectorCycles,
                 std::move(sector.value),
+                true,
                 true,
             });
             if (!push_response(status_byte_)) return {R3000aBusStatus::unsupported, 0u};
@@ -364,20 +379,57 @@ R3000aBusResult Ps1CdromController::execute_command(std::uint8_t command) noexce
             return {R3000aBusStatus::ok, 0u};
         }
 
-        case 0x07u: // MotorOn/Standby
-        case 0x08u: // Stop
-        case 0x09u: // Pause
+        case 0x07u: { // MotorOn
             data_.clear();
+            const auto completed_status = static_cast<std::uint8_t>(
+                (status_byte_ & ~kStatActivityMask) | kStatMotor);
             deferred_responses_.push_back(DeferredResponse{
                 0x02u,
-                status_byte_,
+                completed_status,
                 kCdCommandCompletionCycles,
                 {},
                 false,
+                true,
             });
             if (!push_response(status_byte_)) return {R3000aBusStatus::unsupported, 0u};
             interrupt_flags_ = 0x03u;
             return {R3000aBusStatus::ok, 0u};
+        }
+
+        case 0x08u: { // Stop
+            data_.clear();
+            status_byte_ = static_cast<std::uint8_t>(
+                status_byte_ & ~kStatActivityMask);
+            deferred_responses_.push_back(DeferredResponse{
+                0x02u,
+                static_cast<std::uint8_t>(status_byte_ & ~kStatMotor),
+                kCdCommandCompletionCycles,
+                {},
+                false,
+                true,
+            });
+            if (!push_response(status_byte_)) return {R3000aBusStatus::unsupported, 0u};
+            interrupt_flags_ = 0x03u;
+            return {R3000aBusStatus::ok, 0u};
+        }
+
+        case 0x09u: { // Pause
+            data_.clear();
+            const auto completed_status = static_cast<std::uint8_t>(
+                (status_byte_ & ~kStatActivityMask) |
+                (status_byte_ & kStatMotor));
+            deferred_responses_.push_back(DeferredResponse{
+                0x02u,
+                completed_status,
+                kCdCommandCompletionCycles,
+                {},
+                false,
+                true,
+            });
+            if (!push_response(status_byte_)) return {R3000aBusStatus::unsupported, 0u};
+            interrupt_flags_ = 0x03u;
+            return {R3000aBusStatus::ok, 0u};
+        }
 
         case 0x0Bu: // Mute
             muted_ = true;
@@ -409,10 +461,11 @@ R3000aBusResult Ps1CdromController::execute_command(std::uint8_t command) noexce
             last_unsupported_command_.reset();
             deferred_responses_.push_back(DeferredResponse{
                 0x02u,
-                status_byte_,
+                kStatMotor,
                 kCdCommandCompletionCycles,
                 {},
                 false,
+                true,
             });
             if (!push_response(status_byte_)) return {R3000aBusStatus::unsupported, 0u};
             interrupt_flags_ = 0x03u;
