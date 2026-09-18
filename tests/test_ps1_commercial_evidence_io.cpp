@@ -60,6 +60,12 @@ int main() {
     report.gpu_nonzero_min_y = 8u;
     report.gpu_nonzero_max_x = 703u;
     report.gpu_nonzero_max_y = 255u;
+    report.spu_control = 0xC001u;
+    report.spu_status = 0x0041u;
+    report.spu_transfer_control = 0x0004u;
+    report.spu_transfer_current_address = 0x12340u;
+    report.spu_keyed_on_voice_count = 3u;
+    report.spu_nonzero_sound_ram_bytes = 4567u;
     report.boot.stop_reason = jojo::Ps1BootStopReason::bios_call_unimplemented;
     report.boot.execution_steps = 457u;
     report.boot.instructions_retired = 456u;
@@ -160,6 +166,12 @@ int main() {
     CHECK(text.find("gpu_nonzero_min_y=8") != std::string::npos);
     CHECK(text.find("gpu_nonzero_max_x=703") != std::string::npos);
     CHECK(text.find("gpu_nonzero_max_y=255") != std::string::npos);
+    CHECK(text.find("spu_control=0x0000c001") != std::string::npos);
+    CHECK(text.find("spu_status=0x00000041") != std::string::npos);
+    CHECK(text.find("spu_transfer_control=0x00000004") != std::string::npos);
+    CHECK(text.find("spu_transfer_current_address=74560") != std::string::npos);
+    CHECK(text.find("spu_keyed_on_voice_count=3") != std::string::npos);
+    CHECK(text.find("spu_nonzero_sound_ram_bytes=4567") != std::string::npos);
     CHECK(text.find("validation_frame_observed=1") != std::string::npos);
     CHECK(text.find("validation_dynamic_video_observed=1") != std::string::npos);
     CHECK(text.find("validation_controller_poll_observed=1") != std::string::npos);
