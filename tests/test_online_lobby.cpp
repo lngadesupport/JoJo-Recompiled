@@ -62,6 +62,31 @@ void test_create_lobby_validation_and_host_flow() {
     CHECK(model.ready);
 }
 
+void test_peer_state_chat_and_start_are_synchronized_in_model() {
+    jojo::OnlineLobbyModel model{};
+    CHECK(jojo::online_set_remote_player_name(model, "RIVAL"));
+    CHECK(model.remote_player_name == "RIVAL");
+
+    jojo::online_set_remote_ready(model, true);
+    CHECK(model.remote_ready);
+
+    CHECK(jojo::online_append_chat(model, "RIVAL", "READY?"));
+    CHECK(model.chat_messages.size() == 1u);
+    if (!model.chat_messages.empty()) {
+        CHECK(model.chat_messages.front().sender == "RIVAL");
+        CHECK(model.chat_messages.front().text == "READY?");
+    }
+
+    jojo::online_request_start(model);
+    CHECK(model.start_requested);
+
+    jojo::online_reset_peer_state(model);
+    CHECK(model.remote_player_name == "OPPONENT");
+    CHECK(!model.remote_ready);
+    CHECK(!model.start_requested);
+    CHECK(model.chat_messages.empty());
+}
+
 void test_invalid_fields_are_rejected() {
     jojo::OnlineLobbyModel model{};
     CHECK(!jojo::set_online_player_name(model, ""));
@@ -82,6 +107,7 @@ int main() {
     test_home_and_matchmaking_flow();
     test_public_room_selection_and_join();
     test_create_lobby_validation_and_host_flow();
+    test_peer_state_chat_and_start_are_synchronized_in_model();
     test_invalid_fields_are_rejected();
 
     if (failures) {
