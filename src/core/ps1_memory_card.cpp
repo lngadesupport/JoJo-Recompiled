@@ -247,6 +247,10 @@ bool Ps1MemoryCard::dirty() const noexcept {
     return dirty_;
 }
 
+bool Ps1MemoryCard::has_backing_path() const noexcept {
+    return !backing_path_.empty();
+}
+
 std::uint64_t Ps1MemoryCard::content_hash() const noexcept {
     return content_hash_;
 }

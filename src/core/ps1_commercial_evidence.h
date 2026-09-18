@@ -62,6 +62,10 @@ public:
     void set_pad_buttons(
         std::uint32_t port,
         std::uint16_t active_low_buttons) noexcept;
+    [[nodiscard]] Result<void> load_or_create_memory_card(
+        std::uint32_t port,
+        const std::filesystem::path& path);
+    [[nodiscard]] Result<void> flush_memory_cards();
 
 private:
     Ps1DiscSession disc_{};

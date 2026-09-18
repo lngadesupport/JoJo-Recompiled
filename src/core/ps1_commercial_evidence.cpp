@@ -136,4 +136,32 @@ void Ps1CommercialEvidenceRunner::set_pad_buttons(
         active_low_buttons);
 }
 
+Result<void> Ps1CommercialEvidenceRunner::load_or_create_memory_card(
+    std::uint32_t port,
+    const std::filesystem::path& path) {
+    if (port >= 2u) {
+        return Result<void>::failure(
+            ErrorCode::invalid_argument,
+            "PS1 memory-card port must be 0 or 1");
+    }
+    auto loaded = Ps1MemoryCard::load_or_create(path);
+    if (!loaded) {
+        return Result<void>::failure(loaded.error, loaded.detail);
+    }
+    runtime_.bus().hardware_services().sio0().memory_card(port) =
+        std::move(loaded.value);
+    return Result<void>::success();
+}
+
+Result<void> Ps1CommercialEvidenceRunner::flush_memory_cards() {
+    auto& sio0 = runtime_.bus().hardware_services().sio0();
+    for (std::uint32_t port = 0u; port < 2u; ++port) {
+        auto& card = sio0.memory_card(port);
+        if (!card.has_backing_path()) continue;
+        auto flushed = card.flush();
+        if (!flushed) return flushed;
+    }
+    return Result<void>::success();
+}
+
 } // namespace jojo

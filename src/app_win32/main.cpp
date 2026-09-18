@@ -312,6 +312,19 @@ void run_checkpoint(){
 
     apply_current_input(runner.value);
 
+    const auto save_root=app_root()/L"saves";
+    for(std::uint32_t port=0u;port<2u;++port){
+        const auto card_path=save_root/
+            (port==0u?L"card1.mcr":L"card2.mcr");
+        const auto card=runner.value.load_or_create_memory_card(port,card_path);
+        if(!card){
+            status=L"Memory Card PS1 inválido: "+wide(card.detail);
+            add_log(L"Save não foi sobrescrito.");
+            InvalidateRect(win,nullptr,FALSE);
+            return;
+        }
+    }
+
     jojo::Ps1CommercialEvidenceOptions options{};
     options.boot.instruction_budget=250000u;
     options.max_execution_segments=16u;
@@ -321,6 +334,10 @@ void run_checkpoint(){
     options.boot.stagnation_instruction_limit=50000u;
 
     const auto report=runner.value.run(options);
+    const auto cards_flushed=runner.value.flush_memory_cards();
+    if(!cards_flushed){
+        add_log(L"Aviso: falha ao salvar Memory Card: "+wide(cards_flushed.detail));
+    }
     auto audio_samples=runner.value.drain_audio_samples();
     if(!audio_samples.empty()){
         if(!game_audio_host){

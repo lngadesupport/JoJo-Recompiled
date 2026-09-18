@@ -37,6 +37,7 @@ public:
     [[nodiscard]] std::uint8_t byte(std::size_t offset) const noexcept;
     [[nodiscard]] std::uint8_t flag_byte() const noexcept;
     [[nodiscard]] bool dirty() const noexcept;
+    [[nodiscard]] bool has_backing_path() const noexcept;
     [[nodiscard]] std::uint64_t content_hash() const noexcept;
 
 private:
