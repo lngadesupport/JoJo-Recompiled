@@ -144,6 +144,10 @@ LauncherUiAction map_online_action(OnlineUiAction action) noexcept {
             return LauncherUiAction::online_cancel_matchmaking;
         case OnlineUiAction::leave_lobby:
             return LauncherUiAction::online_leave_lobby;
+        case OnlineUiAction::ready_changed:
+            return LauncherUiAction::online_ready_changed;
+        case OnlineUiAction::send_chat_message:
+            return LauncherUiAction::online_send_chat;
         case OnlineUiAction::start_lobby_game:
             return LauncherUiAction::online_start_lobby_game;
     }
