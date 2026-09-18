@@ -348,7 +348,9 @@ LRESULT CALLBACK game_proc(HWND h,UINT m,WPARAM w,LPARAM l){
         if(game_presenter && !game_frame.rgba8.empty()){
             const auto presented=game_presenter->present(
                 game_frame,
-                app_settings.graphics.vsync);
+                app_settings.graphics.vsync,
+                app_settings.graphics.texture_filter,
+                app_settings.graphics.msaa);
             (void)presented;
         }
         return 0;
