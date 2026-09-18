@@ -290,7 +290,7 @@ void draw_online_home(Gdiplus::Graphics& g, const OnlineLobbyModel& model) {
 }
 
 void draw_public_servers(Gdiplus::Graphics& g, const OnlineLobbyModel& model) {
-    draw_text(g, L"PUBLIC SERVERS", 520.0f, 70.0f, 560.0f, 70.0f, 54.0f, kWhite, true,
+    draw_text(g, L"LAN / DIRECT SERVERS", 520.0f, 70.0f, 560.0f, 70.0f, 54.0f, kWhite, true,
               Gdiplus::StringAlignmentCenter);
 
     const float x = 540.0f;
@@ -326,7 +326,7 @@ void draw_public_servers(Gdiplus::Graphics& g, const OnlineLobbyModel& model) {
     }
 
     if (model.rooms.empty()) {
-        draw_text(g, L"NO PUBLIC ROOMS", x, y + 190.0f, w, 80.0f, 27.0f, kMuted, true,
+        draw_text(g, L"NO LAN LOBBIES FOUND", x, y + 190.0f, w, 80.0f, 27.0f, kMuted, true,
                   Gdiplus::StringAlignmentCenter);
     }
 
