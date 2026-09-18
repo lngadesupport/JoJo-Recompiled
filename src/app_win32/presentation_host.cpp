@@ -663,7 +663,9 @@ Result<void> D3d11Ps1Presenter::resize_to_client() {
     return recreate_render_target();
 }
 
-Result<void> D3d11Ps1Presenter::present(const Ps1DisplayFrame& frame) {
+Result<void> D3d11Ps1Presenter::present(
+    const Ps1DisplayFrame& frame,
+    bool vsync) {
     const auto resized = resize_to_client();
     if (!resized) return resized;
 
@@ -676,7 +678,7 @@ Result<void> D3d11Ps1Presenter::present(const Ps1DisplayFrame& frame) {
         back_buffer_height_);
     if (!blitted) return blitted;
 
-    const HRESULT hr = swap_chain_->Present(0u, 0u);
+    const HRESULT hr = swap_chain_->Present(vsync ? 1u : 0u, 0u);
     if (FAILED(hr)) {
         return Result<void>::failure(
             ErrorCode::backend_unavailable,
