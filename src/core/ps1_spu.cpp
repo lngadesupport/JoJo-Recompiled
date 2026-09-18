@@ -160,6 +160,7 @@ void Ps1Spu::key_on(bool high, std::uint16_t mask) noexcept {
             (static_cast<std::uint32_t>(voice_state.start_address) * 8u) %
             static_cast<std::uint32_t>(sound_ram_size);
         voice_runtime_[i] = VoiceRuntime{};
+        voice_runtime_[i].envelope_phase = EnvelopePhase::attack;
         endx_flags_ &= ~(1u << i);
     }
 }
@@ -173,6 +174,8 @@ void Ps1Spu::key_off(bool high, std::uint16_t mask) noexcept {
         if ((expanded & (1u << i)) == 0u) continue;
         voices_[i].keyed_on = false;
         voices_[i].releasing = true;
+        voice_runtime_[i].envelope_phase = EnvelopePhase::release;
+        voice_runtime_[i].envelope_counter = 0u;
     }
 }
 
@@ -379,15 +382,16 @@ bool Ps1Spu::advance_voice_sample(std::size_t voice_index) noexcept {
                 static_cast<std::uint32_t>(sound_ram_size);
             if ((flags & 0x02u) == 0u) {
                 voice_state.keyed_on = false;
-                voice_state.releasing = true;
+                voice_state.releasing = false;
                 voice_state.adsr_volume = 0u;
+                runtime.envelope_phase = EnvelopePhase::off;
                 runtime.current_sample = 0;
                 return false;
             }
         }
     }
 
-    if (!voice_state.keyed_on) {
+    if (!voice_state.keyed_on && !voice_state.releasing) {
         runtime.current_sample = 0;
         return false;
     }
@@ -399,6 +403,117 @@ bool Ps1Spu::advance_voice_sample(std::size_t voice_index) noexcept {
     runtime.current_sample =
         runtime.decoded.samples[runtime.sample_index++];
     return true;
+}
+
+
+void Ps1Spu::apply_envelope_rate(
+    Ps1SpuVoiceState& voice_state,
+    VoiceRuntime& runtime,
+    std::uint32_t shift,
+    std::uint32_t step_value,
+    bool exponential,
+    bool decreasing) noexcept {
+    shift = std::min<std::uint32_t>(shift, 31u);
+    step_value = std::min<std::uint32_t>(step_value, 3u);
+
+    if (shift == 31u && (decreasing || step_value == 3u)) {
+        return;
+    }
+
+    std::int32_t step = 7 - static_cast<std::int32_t>(step_value);
+    if (decreasing) step = ~step;
+    const auto left_shift = shift < 11u ? (11u - shift) : 0u;
+    step <<= left_shift;
+
+    std::uint32_t counter_increment =
+        0x8000u >> (shift > 11u ? (shift - 11u) : 0u);
+    counter_increment = std::max<std::uint32_t>(counter_increment, 1u);
+
+    auto level = static_cast<std::int32_t>(
+        std::min<std::uint32_t>(voice_state.adsr_volume, 0x7FFFu));
+
+    if (exponential && !decreasing && level > 0x6000) {
+        if (shift < 10u) {
+            step >>= 2u;
+        } else if (shift >= 11u) {
+            counter_increment = std::max<std::uint32_t>(
+                counter_increment >> 2u, 1u);
+        } else {
+            step >>= 1u;
+        }
+    } else if (exponential && decreasing) {
+        step = static_cast<std::int32_t>(
+            (static_cast<std::int64_t>(step) * level) / 0x8000);
+    }
+
+    runtime.envelope_counter += counter_increment;
+    if (runtime.envelope_counter < 0x8000u) return;
+    runtime.envelope_counter -= 0x8000u;
+
+    level += step;
+    level = std::clamp<std::int32_t>(level, 0, 0x7FFF);
+    voice_state.adsr_volume = static_cast<std::uint16_t>(level);
+}
+
+void Ps1Spu::step_envelope(std::size_t voice_index) noexcept {
+    if (voice_index >= voices_.size()) return;
+    auto& voice_state = voices_[voice_index];
+    auto& runtime = voice_runtime_[voice_index];
+
+    switch (runtime.envelope_phase) {
+        case EnvelopePhase::off:
+            return;
+        case EnvelopePhase::attack: {
+            const bool exponential = (voice_state.adsr1 & 0x8000u) != 0u;
+            const auto shift = (voice_state.adsr1 >> 10u) & 0x1Fu;
+            const auto step_value = (voice_state.adsr1 >> 8u) & 0x03u;
+            apply_envelope_rate(
+                voice_state, runtime, shift, step_value, exponential, false);
+            if (voice_state.adsr_volume >= 0x7FFFu) {
+                voice_state.adsr_volume = 0x7FFFu;
+                runtime.envelope_phase = EnvelopePhase::decay;
+                runtime.envelope_counter = 0u;
+            }
+            return;
+        }
+        case EnvelopePhase::decay: {
+            const auto shift = (voice_state.adsr1 >> 4u) & 0x0Fu;
+            const auto sustain_target = static_cast<std::uint16_t>(
+                std::min<std::uint32_t>(
+                    ((voice_state.adsr1 & 0x0Fu) + 1u) * 0x800u,
+                    0x7FFFu));
+            apply_envelope_rate(
+                voice_state, runtime, shift, 0u, true, true);
+            if (voice_state.adsr_volume <= sustain_target) {
+                voice_state.adsr_volume = sustain_target;
+                runtime.envelope_phase = EnvelopePhase::sustain;
+                runtime.envelope_counter = 0u;
+            }
+            return;
+        }
+        case EnvelopePhase::sustain: {
+            const bool exponential = (voice_state.adsr2 & 0x8000u) != 0u;
+            const bool decreasing = (voice_state.adsr2 & 0x4000u) != 0u;
+            const auto shift = (voice_state.adsr2 >> 8u) & 0x1Fu;
+            const auto step_value = (voice_state.adsr2 >> 6u) & 0x03u;
+            apply_envelope_rate(
+                voice_state, runtime, shift, step_value, exponential, decreasing);
+            return;
+        }
+        case EnvelopePhase::release: {
+            const bool exponential = (voice_state.adsr2 & 0x0020u) != 0u;
+            const auto shift = voice_state.adsr2 & 0x001Fu;
+            apply_envelope_rate(
+                voice_state, runtime, shift, 0u, exponential, true);
+            if (voice_state.adsr_volume == 0u) {
+                voice_state.keyed_on = false;
+                voice_state.releasing = false;
+                runtime.envelope_phase = EnvelopePhase::off;
+                runtime.current_sample = 0;
+            }
+            return;
+        }
+    }
 }
 
 std::int32_t Ps1Spu::fixed_volume_gain(std::uint16_t value) noexcept {
@@ -425,12 +540,16 @@ void Ps1Spu::mix_sample_frame() noexcept {
         for (std::size_t i = 0u; i < voices_.size(); ++i) {
             auto& voice_state = voices_[i];
             auto& runtime = voice_runtime_[i];
-            if (!voice_state.keyed_on || voice_state.pitch == 0u) continue;
+            if (!voice_state.keyed_on && !voice_state.releasing) continue;
+
+            step_envelope(i);
+            if (!voice_state.keyed_on && !voice_state.releasing) continue;
+            if (voice_state.pitch == 0u) continue;
 
             runtime.pitch_accumulator +=
                 std::min<std::uint32_t>(voice_state.pitch, 0x4000u);
             while (runtime.pitch_accumulator >= 0x1000u &&
-                   voice_state.keyed_on) {
+                   (voice_state.keyed_on || voice_state.releasing)) {
                 runtime.pitch_accumulator -= 0x1000u;
                 (void)advance_voice_sample(i);
             }
@@ -562,6 +681,8 @@ std::uint64_t Ps1Spu::diagnostic_state_hash() const noexcept {
         hash_bool(hash, runtime.block_loaded);
         hash_u32(hash, runtime.pitch_accumulator);
         hash_u32(hash, static_cast<std::uint32_t>(runtime.current_sample));
+        hash_byte(hash, static_cast<std::uint8_t>(runtime.envelope_phase));
+        hash_u32(hash, runtime.envelope_counter);
     }
     hash_u32(hash, sample_cycle_accumulator_);
     for (unsigned shift = 0u; shift < 64u; shift += 8u) {

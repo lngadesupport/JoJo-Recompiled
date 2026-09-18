@@ -66,6 +66,14 @@ public:
     [[nodiscard]] std::uint64_t diagnostic_state_hash() const noexcept;
 
 private:
+    enum class EnvelopePhase : std::uint8_t {
+        off,
+        attack,
+        decay,
+        sustain,
+        release,
+    };
+
     struct VoiceRuntime {
         Ps1SpuAdpcmHistory history{};
         Ps1SpuDecodedBlock decoded{};
@@ -73,6 +81,8 @@ private:
         bool block_loaded{};
         std::uint32_t pitch_accumulator{};
         std::int32_t current_sample{};
+        EnvelopePhase envelope_phase{EnvelopePhase::off};
+        std::uint32_t envelope_counter{};
     };
 
     [[nodiscard]] bool decode_voice_register(
@@ -93,6 +103,14 @@ private:
     [[nodiscard]] bool decode_voice_block(std::size_t voice_index) noexcept;
     [[nodiscard]] bool advance_voice_sample(std::size_t voice_index) noexcept;
     void mix_sample_frame() noexcept;
+    void step_envelope(std::size_t voice_index) noexcept;
+    void apply_envelope_rate(
+        Ps1SpuVoiceState& voice_state,
+        VoiceRuntime& runtime,
+        std::uint32_t shift,
+        std::uint32_t step_value,
+        bool exponential,
+        bool decreasing) noexcept;
     [[nodiscard]] static std::int32_t fixed_volume_gain(std::uint16_t value) noexcept;
     [[nodiscard]] static std::int32_t apply_gain(
         std::int32_t sample,
