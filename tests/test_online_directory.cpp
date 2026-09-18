@@ -134,6 +134,8 @@ void test_matchmaking_pairs_only_compatible_queue() {
               jojo::OnlineMatchQueue::ranked);
         CHECK(a_result.match->remote_player_name == "POLNAREFF");
         CHECK(c_result.match->remote_player_name == "JOTARO");
+        CHECK(a_result.match->local_is_host);
+        CHECK(!c_result.match->local_is_host);
         CHECK(a_result.match->remote_endpoint.port == 30003u);
         CHECK(c_result.match->remote_endpoint.port == 30001u);
     }
