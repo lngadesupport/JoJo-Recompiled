@@ -511,6 +511,21 @@ public:
             if (state_ != DirectSessionState::connected) continue;
             refresh_peer_liveness(now_ms);
 
+            if (is_application_control(packet.kind)) {
+                NetworkPacket acknowledge{};
+                acknowledge.kind = NetworkPacketKind::pong;
+                acknowledge.sequence = next_sequence_++;
+                acknowledge.ack = packet.sequence;
+                acknowledge.timestamp_ms = packet.timestamp_ms;
+                const auto acknowledged = send_control_packet(acknowledge);
+                if (!acknowledged) {
+                    return Result<std::vector<NetworkPacket>>::failure(
+                        acknowledged.error, acknowledged.detail);
+                }
+                delivered.push_back(packet);
+                continue;
+            }
+
             if (packet.kind == NetworkPacketKind::ping) {
                 NetworkPacket pong{};
                 pong.kind = NetworkPacketKind::pong;
@@ -562,6 +577,38 @@ public:
         }
 
         return Result<std::vector<NetworkPacket>>::success(std::move(delivered));
+    }
+
+    [[nodiscard]] Result<void> send_reliable_control(
+        NetworkPacketKind kind,
+        std::span<const std::uint8_t> payload,
+        std::uint64_t now_ms) {
+        if (state_ != DirectSessionState::connected || !remote_ || !reliability_) {
+            return Result<void>::failure(
+                ErrorCode::invalid_argument,
+                "direct-session reliable control requires connection");
+        }
+        if (!is_application_control(kind)) {
+            return Result<void>::failure(
+                ErrorCode::invalid_argument,
+                "direct-session reliable control kind is not application-owned");
+        }
+
+        NetworkPacket packet{};
+        packet.kind = kind;
+        packet.sequence = next_sequence_++;
+        packet.timestamp_ms = now_ms;
+        packet.payload.assign(payload.begin(), payload.end());
+
+        const auto tracked = reliability_->track(packet, now_ms);
+        if (!tracked) return tracked;
+
+        const auto sent = send_control_packet(packet);
+        if (!sent) {
+            reliability_->acknowledge(packet.sequence);
+            return sent;
+        }
+        return Result<void>::success();
     }
 
     [[nodiscard]] Result<void> send(const NetworkPacket& packet,
