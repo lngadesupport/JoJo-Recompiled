@@ -17,6 +17,7 @@ enum class OnlineUiAction {
     refresh_public_rooms,
     host_room,
     connect_selected_room,
+    connect_direct,
     begin_matchmaking,
     cancel_matchmaking,
     leave_lobby,
@@ -54,6 +55,7 @@ private:
         player_name,
         lobby_name,
         password,
+        direct_endpoint,
         chat,
     };
 
