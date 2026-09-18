@@ -9,10 +9,12 @@ constexpr std::uint32_t kBiosA0 = 0x000000A0u;
 constexpr std::uint32_t kBiosB0 = 0x000000B0u;
 constexpr std::uint32_t kBiosC0 = 0x000000C0u;
 constexpr std::uint32_t kA0InitHeap = 0x00000039u;
+constexpr std::uint32_t kA0FlushCache = 0x00000044u;
 constexpr std::uint32_t kA0RemoveIso9660 = 0x00000056u;
 constexpr std::uint32_t kA0RemoveIso9660Alias = 0x00000072u;
 constexpr std::uint32_t kB0ResetEntryInt = 0x00000018u;
 constexpr std::uint32_t kB0HookEntryInt = 0x00000019u;
+constexpr std::uint32_t kB0GetC0Table = 0x00000056u;
 constexpr std::uint32_t kB0ChangeClearPad = 0x0000005Bu;
 constexpr std::uint32_t kC0ChangeClearRCnt = 0x0000000Au;
 constexpr std::uint32_t kSysEnterCriticalSection = 0x00000001u;
@@ -82,6 +84,13 @@ Ps1HleBiosDispatchStatus Ps1HleBios::dispatch(
         return Ps1HleBiosDispatchStatus::handled;
     }
 
+    if (table_physical == kBiosA0 && selector == kA0FlushCache) {
+        // Guest writes are immediately coherent in the HLE bus and the x64
+        // cache fingerprints guest opcodes, so no host cache flush is needed.
+        return_from_bios_call(cpu);
+        return Ps1HleBiosDispatchStatus::handled;
+    }
+
     if (table_physical == kBiosA0 &&
         (selector == kA0RemoveIso9660 || selector == kA0RemoveIso9660Alias)) {
         iso9660_removed_ = true;
@@ -99,6 +108,12 @@ Ps1HleBiosDispatchStatus Ps1HleBios::dispatch(
 
     if (table_physical == kBiosB0 && selector == kB0HookEntryInt) {
         interrupt_hook_address_ = cpu.gpr[4];
+        return_from_bios_call(cpu);
+        return Ps1HleBiosDispatchStatus::handled;
+    }
+
+    if (table_physical == kBiosB0 && selector == kB0GetC0Table) {
+        cpu.gpr[2] = kPs1HleC0TableAddress;
         return_from_bios_call(cpu);
         return Ps1HleBiosDispatchStatus::handled;
     }
