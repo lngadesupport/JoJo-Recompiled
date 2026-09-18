@@ -84,6 +84,9 @@ void test_runner_promotes_visible_gpu_output_to_commercial_frame(const fs::path&
     CHECK(report.boot.stop_reason == jojo::Ps1BootStopReason::commercial_frame_presented);
     CHECK(report.boot.presented_frames == 1u);
     CHECK(report.first_frame.has_value());
+    CHECK(report.session_gpu_gp0_word_count >= 4u);
+    CHECK(report.session_gpu_gp1_command_count >= 2u);
+    CHECK(report.session_vram_write_count >= 1u);
 
     const auto visible_frame = runner.value.display_frame();
     CHECK(visible_frame.width == 320u);
@@ -214,6 +217,7 @@ void test_runner_attaches_direct_disc_to_runtime_cdrom(const fs::path& temp) {
     CHECK(report.frontier == jojo::Ps1CommercialFrontierClass::execution_budget);
     CHECK(report.boot.stop_reason == jojo::Ps1BootStopReason::execution_budget_exhausted);
     CHECK(report.boot.instructions_retired == 20u);
+    CHECK(report.session_cdrom_command_count >= 2u);
     CHECK(!report.boot.unsupported_access.has_value());
 }
 
