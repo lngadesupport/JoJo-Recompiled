@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <string_view>
@@ -121,11 +122,13 @@ std::vector<std::uint8_t> encode_list_request(
 
 std::vector<std::uint8_t> encode_room_publish(
     std::string_view name,
+    std::string_view owner,
     std::string_view region,
     std::string_view revision,
     std::uint16_t gameplay_port,
     std::uint8_t players,
-    std::uint8_t max_players) {
+    std::uint8_t max_players,
+    bool in_game) {
     if (gameplay_port == 0u ||
         max_players < 2u ||
         max_players > 8u ||
@@ -136,7 +139,9 @@ std::vector<std::uint8_t> encode_room_publish(
     append_u16(out, gameplay_port);
     out.push_back(players);
     out.push_back(max_players);
+    out.push_back(static_cast<std::uint8_t>(in_game ? 1u : 0u));
     if (!append_text(out, name, 40u) ||
+        !append_text(out, owner, 24u) ||
         !append_text(out, region, 48u) ||
         !append_text(out, revision, 64u)) {
         return {};
@@ -153,8 +158,10 @@ std::vector<std::uint8_t> encode_list_item(
     append_u16(out, room.gameplay_endpoint.port);
     out.push_back(room.players);
     out.push_back(room.max_players);
+    out.push_back(static_cast<std::uint8_t>(room.in_game ? 1u : 0u));
     if (!append_text(out, room.id, 64u) ||
         !append_text(out, room.name, 40u) ||
+        !append_text(out, room.owner, 24u) ||
         !append_text(out, room.region, 48u) ||
         !append_text(out, room.game_revision, 64u)) {
         return {};
@@ -226,14 +233,16 @@ Result<OnlineDirectoryClient> OnlineDirectoryClient::create(
 
 Result<void> OnlineDirectoryClient::publish_room(
     std::string_view name,
+    std::string_view owner,
     std::string_view region,
     std::string_view game_revision,
     std::uint16_t gameplay_port,
     std::uint8_t players,
-    std::uint8_t max_players) {
+    std::uint8_t max_players,
+    bool in_game) {
     const auto packet = encode_room_publish(
-        name, region, game_revision, gameplay_port,
-        players, max_players);
+        name, owner, region, game_revision, gameplay_port,
+        players, max_players, in_game);
     if (packet.empty()) {
         return Result<void>::failure(
             ErrorCode::invalid_argument,
@@ -253,6 +262,9 @@ Result<void> OnlineDirectoryClient::request_rooms(
             "invalid online directory room filter");
     }
     pending_rooms_.clear();
+    room_request_started_ms_ = static_cast<std::uint64_t>(
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now().time_since_epoch()).count());
     return transport_.send_datagram(directory_, packet);
 }
 
@@ -295,12 +307,24 @@ OnlineDirectoryClient::poll() {
         if (kind == MessageKind::list_done) {
             result.room_list_complete = true;
             result.rooms = pending_rooms_;
+            if (room_request_started_ms_) {
+                const auto now = static_cast<std::uint64_t>(
+                    std::chrono::duration_cast<std::chrono::milliseconds>(
+                        std::chrono::steady_clock::now().time_since_epoch()).count());
+                const auto rtt = static_cast<std::uint32_t>(
+                    std::min<std::uint64_t>(
+                        now - *room_request_started_ms_, 9999u));
+                for (auto& room : result.rooms) {
+                    room.directory_ping_ms = rtt;
+                }
+                room_request_started_ms_.reset();
+            }
             continue;
         }
 
         if (kind == MessageKind::list_item) {
             const auto& bytes = incoming.value->bytes;
-            if (offset + 8u > bytes.size()) continue;
+            if (offset + 9u > bytes.size()) continue;
 
             OnlineDirectoryRoom room{};
             for (std::size_t i = 0u; i < 4u; ++i) {
@@ -314,9 +338,11 @@ OnlineDirectoryClient::poll() {
             }
             room.players = bytes[offset++];
             room.max_players = bytes[offset++];
+            room.in_game = bytes[offset++] != 0u;
 
             if (!read_text(bytes, offset, room.id, 64u) ||
                 !read_text(bytes, offset, room.name, 40u) ||
+                !read_text(bytes, offset, room.owner, 24u) ||
                 !read_text(bytes, offset, room.region, 48u) ||
                 !read_text(
                     bytes, offset, room.game_revision, 64u) ||
@@ -411,19 +437,23 @@ Result<void> OnlineDirectoryServer::poll(
             std::uint16_t gameplay_port = 0u;
             if (!read_u16(
                     datagram.bytes, offset, gameplay_port) ||
-                offset + 2u > datagram.bytes.size()) {
+                offset + 3u > datagram.bytes.size()) {
                 continue;
             }
             const auto players = datagram.bytes[offset++];
             const auto max_players = datagram.bytes[offset++];
+            const bool in_game = datagram.bytes[offset++] != 0u;
 
             OnlineDirectoryRoom room{};
             room.gameplay_endpoint = datagram.source;
             room.gameplay_endpoint.port = gameplay_port;
             room.players = players;
             room.max_players = max_players;
+            room.in_game = in_game;
             if (!read_text(
                     datagram.bytes, offset, room.name, 40u) ||
+                !read_text(
+                    datagram.bytes, offset, room.owner, 24u) ||
                 !read_text(
                     datagram.bytes, offset, room.region, 48u) ||
                 !read_text(
