@@ -313,6 +313,23 @@ std::vector<std::int16_t> Ps1CommercialEvidenceRunner::drain_audio_samples() {
     return runtime_.bus().hardware_services().spu().drain_audio_samples();
 }
 
+Ps1BootRuntimeState Ps1CommercialEvidenceRunner::save_runtime_state() const {
+    return runtime_.save_state();
+}
+
+Result<void> Ps1CommercialEvidenceRunner::load_runtime_state(
+    const Ps1BootRuntimeState& state) {
+    auto restored = runtime_.load_state(state);
+    if (!restored) return restored;
+    runtime_.bus().hardware_services().attach_disc(&disc_);
+    return Result<void>::success();
+}
+
+std::uint64_t
+Ps1CommercialEvidenceRunner::diagnostic_state_hash() const noexcept {
+    return runtime_.diagnostic_state_hash();
+}
+
 void Ps1CommercialEvidenceRunner::set_pad_buttons(
     std::uint32_t port,
     std::uint16_t active_low_buttons) noexcept {
