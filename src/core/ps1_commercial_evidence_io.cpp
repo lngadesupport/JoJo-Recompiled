@@ -39,6 +39,15 @@ std::string optional_u8(const std::optional<std::uint8_t>& value) {
     return value ? std::to_string(static_cast<unsigned>(*value)) : "none";
 }
 
+std::string optional_hex8(const std::optional<std::uint8_t>& value) {
+    if (!value) return "none";
+    std::ostringstream out;
+    out << "0x" << std::hex << std::nouppercase
+        << std::setfill('0') << std::setw(2)
+        << static_cast<unsigned>(*value);
+    return out.str();
+}
+
 std::string fallback_name(Ps1BiosFallback fallback) {
     switch (fallback) {
         case Ps1BiosFallback::return_zero: return "return_zero";
@@ -98,6 +107,10 @@ std::string format_ps1_commercial_evidence_report(
     out << "dma_transfer_count=" << report.boot.dma_transfer_count << '\n';
     out << "gpu_gp0_command_count=" << report.boot.gpu_gp0_command_count << '\n';
     out << "gpu_gp1_command_count=" << report.boot.gpu_gp1_command_count << '\n';
+    out << "unsupported_gpu_gp0_command="
+        << optional_hex8(report.boot.unsupported_gpu_gp0_command) << '\n';
+    out << "unsupported_gpu_gp1_command="
+        << optional_hex8(report.boot.unsupported_gpu_gp1_command) << '\n';
     out << "vram_write_count=" << report.boot.vram_write_count << '\n';
     out << "presented_frames=" << report.boot.presented_frames << '\n';
     if (report.first_frame) {
