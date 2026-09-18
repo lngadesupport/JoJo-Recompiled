@@ -689,6 +689,8 @@ std::uint64_t Ps1HardwareServices::diagnostic_state_hash() const noexcept {
     }
     hash_u64(hash, completed_dma_transfer_count_);
     hash_u64(hash, vblank_count_);
+    hash_u64(hash, cdrom_.diagnostic_state_hash());
+    hash_u64(hash, gpu_.diagnostic_state_hash());
     hash_u64(hash, spu_.diagnostic_state_hash());
     hash_u64(hash, sio0_.diagnostic_state_hash());
     hash_bool(hash, sio0_irq_line_);
