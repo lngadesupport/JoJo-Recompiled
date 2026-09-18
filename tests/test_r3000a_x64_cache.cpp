@@ -101,6 +101,21 @@ void test_direct_instruction_cache_rejects_unsupported_opcode() {
     CHECK(cache.stats().entries == 0u);
 }
 
+
+void test_resident_cache_evicts_when_capacity_is_reached() {
+    jojo::R3000aX64BlockCache cache(2u);
+    const auto op0 = test_mips::i(0x0Fu, 0u, 8u, 0x1111u);
+    const auto op1 = test_mips::i(0x0Fu, 0u, 8u, 0x2222u);
+    const auto op2 = test_mips::i(0x0Fu, 0u, 8u, 0x3333u);
+    CHECK(cache.get_or_compile_instruction(0x80010000u, op0));
+    CHECK(cache.get_or_compile_instruction(0x80010004u, op1));
+    CHECK(cache.get_or_compile_instruction(0x80010008u, op2));
+    const auto stats = cache.stats();
+    CHECK(stats.entries == 2u);
+    CHECK(stats.compilations == 3u);
+    CHECK(stats.evictions == 1u);
+}
+
 void test_unsupported_block_is_not_cached() {
     jojo::R3000aX64BlockCache cache;
     const std::array<std::uint32_t, 1> words{
@@ -122,6 +137,7 @@ int main() {
     test_direct_instruction_cache_reuses_pc_and_opcode();
     test_direct_instruction_cache_invalidates_changed_opcode();
     test_direct_instruction_cache_rejects_unsupported_opcode();
+    test_resident_cache_evicts_when_capacity_is_reached();
     test_unsupported_block_is_not_cached();
     return failures ? 1 : 0;
 }
