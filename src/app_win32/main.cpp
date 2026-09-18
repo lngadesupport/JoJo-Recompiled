@@ -5,6 +5,7 @@
 #include "core/ps1_commercial_evidence_io.h"
 #include "core/ps1_disc_session.h"
 #include "core/settings.h"
+#include "presentation_host.h"
 #include <windows.h>
 #include <knownfolders.h>
 #include <shellapi.h>
@@ -14,6 +15,7 @@
 #include <filesystem>
 #include <optional>
 #include <string>
+#include <utility>
 #include <string_view>
 
 namespace jojo::win32 {
@@ -58,9 +60,11 @@ constexpr int ID_VALIDATE_SOURCE = 1003;
 constexpr int ID_RUN_CHECKPOINT = 1006;
 constexpr COLORREF BG=RGB(13,8,22), PANEL=RGB(35,21,53), TEXT=RGB(248,244,252), MUTED=RGB(185,169,198);
 constexpr COLORREF PURPLE=RGB(119,73,196), MAGENTA=RGB(220,64,166), GOLD=RGB(235,193,83);
-HWND win{}, source_box{}, source_btn{}, validate_btn{}, checkpoint_btn{};
+HWND win{}, source_box{}, source_btn{}, validate_btn{}, checkpoint_btn{}, game_window{};
 HFONT title_font{}, body_font{}, small_font{}, button_font{};
 HBRUSH edit_brush{};
+std::optional<jojo::D3d11Ps1Presenter> game_presenter{};
+jojo::Ps1DisplayFrame game_frame{};
 fs::path settings_path, binding_path, executable_root;
 jojo::AppSettings app_settings{};
 jojo::Ps1DiscOpenOptions open_options{};
@@ -210,6 +214,73 @@ void validate_source(){
     InvalidateRect(win,nullptr,FALSE);
 }
 
+LRESULT CALLBACK game_proc(HWND h,UINT m,WPARAM w,LPARAM l){
+    switch(m){
+    case WM_PAINT:{
+        PAINTSTRUCT ps{};
+        BeginPaint(h,&ps);
+        EndPaint(h,&ps);
+        if(game_presenter && !game_frame.rgba8.empty()){
+            const auto presented=game_presenter->present(game_frame);
+            (void)presented;
+        }
+        return 0;
+    }
+    case WM_SIZE:
+        if(w!=SIZE_MINIMIZED && game_presenter && !game_frame.rgba8.empty()){
+            const auto presented=game_presenter->present(game_frame);
+            (void)presented;
+        }
+        return 0;
+    case WM_CLOSE:
+        DestroyWindow(h);
+        return 0;
+    case WM_DESTROY:
+        if(h==game_window){
+            game_presenter.reset();
+            game_frame={};
+            game_window=nullptr;
+        }
+        return 0;
+    }
+    return DefWindowProcW(h,m,w,l);
+}
+
+bool show_game_frame(jojo::Ps1DisplayFrame frame){
+    if(frame.width==0u || frame.height==0u || frame.rgba8.empty()) return false;
+
+    if(!game_window){
+        game_window=CreateWindowExW(
+            0,
+            L"JOJORecompiledGameWindow",
+            L"JOJO Recompiled — Game Output",
+            WS_OVERLAPPEDWINDOW,
+            CW_USEDEFAULT,
+            CW_USEDEFAULT,
+            960,
+            720,
+            win,
+            nullptr,
+            GetModuleHandleW(nullptr),
+            nullptr);
+        if(!game_window) return false;
+
+        auto presenter=jojo::D3d11Ps1Presenter::create(game_window);
+        if(!presenter){
+            DestroyWindow(game_window);
+            game_window=nullptr;
+            return false;
+        }
+        game_presenter=std::move(presenter.value);
+    }
+
+    game_frame=std::move(frame);
+    ShowWindow(game_window,SW_SHOWNORMAL);
+    UpdateWindow(game_window);
+    const auto presented=game_presenter->present(game_frame);
+    return static_cast<bool>(presented);
+}
+
 void run_checkpoint(){
     if(!validated || source.empty()) return;
 
@@ -230,6 +301,13 @@ void run_checkpoint(){
     options.boot.stagnation_instruction_limit=50000u;
 
     const auto report=runner.value.run(options);
+    if(report.first_frame){
+        if(show_game_frame(runner.value.display_frame())){
+            add_log(L"Primeiro frame PS1 apresentado na janela de jogo.");
+        }else{
+            add_log(L"Aviso: frame PS1 detectado, mas a apresentação D3D11 falhou.");
+        }
+    }
     const auto saved=jojo::save_ps1_commercial_evidence_report_atomic(report_path,report);
     const auto frontier_name=std::string(jojo::ps1_commercial_frontier_class_name(report.frontier));
     if(!saved){
@@ -326,12 +404,25 @@ int WINAPI wWinMain(HINSTANCE inst,HINSTANCE,PWSTR,int show){
     else if(!startup) status=L"Autodetecção de Data/ROM falhou: "+wide(startup.detail);
 
     make_fonts();edit_brush=CreateSolidBrush(PANEL);
+
+    WNDCLASSEXW game_class{};
+    game_class.cbSize=sizeof(game_class);
+    game_class.lpfnWndProc=game_proc;
+    game_class.hInstance=inst;
+    game_class.hCursor=LoadCursorW(nullptr,IDC_ARROW);
+    game_class.hIcon=LoadIconW(nullptr,IDI_APPLICATION);
+    game_class.lpszClassName=L"JOJORecompiledGameWindow";
+    if(!RegisterClassExW(&game_class)){CoUninitialize();return 3;}
+
     WNDCLASSEXW c{};c.cbSize=sizeof(c);c.lpfnWndProc=proc;c.hInstance=inst;c.hCursor=LoadCursorW(nullptr,IDC_ARROW);c.hIcon=LoadIconW(nullptr,IDI_APPLICATION);c.lpszClassName=L"JOJORecompiledWindow";
     if(!RegisterClassExW(&c)){CoUninitialize();return 3;}
     win=CreateWindowExW(0,c.lpszClassName,L"JOJO Recompiled",WS_OVERLAPPED|WS_CAPTION|WS_SYSMENU|WS_MINIMIZEBOX,CW_USEDEFAULT,CW_USEDEFAULT,1018,880,nullptr,nullptr,inst,nullptr);
     if(!win){CoUninitialize();return 4;}
     ShowWindow(win,show);UpdateWindow(win);
     MSG msg{};while(GetMessageW(&msg,nullptr,0,0)>0){TranslateMessage(&msg);DispatchMessageW(&msg);}
+    if(game_window && IsWindow(game_window)) DestroyWindow(game_window);
+    game_presenter.reset();
+    game_frame={};
     if(title_font)DeleteObject(title_font);if(body_font)DeleteObject(body_font);if(small_font)DeleteObject(small_font);if(edit_brush)DeleteObject(edit_brush);CoUninitialize();return static_cast<int>(msg.wParam);
 }
 #endif
