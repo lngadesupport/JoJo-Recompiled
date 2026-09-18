@@ -8,6 +8,7 @@
 #include <deque>
 #include <optional>
 #include <span>
+#include <vector>
 
 namespace jojo {
 
@@ -23,6 +24,7 @@ public:
 
     [[nodiscard]] R3000aBusResult read8(std::uint32_t physical) noexcept;
     [[nodiscard]] R3000aBusResult write8(std::uint32_t physical, std::uint8_t value) noexcept;
+    void step(std::uint32_t cpu_cycles) noexcept;
 
     [[nodiscard]] std::size_t response_bytes_available() const noexcept;
     [[nodiscard]] std::size_t data_bytes_available() const noexcept;
@@ -31,11 +33,20 @@ public:
     [[nodiscard]] std::uint64_t command_count() const noexcept;
     [[nodiscard]] std::uint8_t request_register() const noexcept;
     [[nodiscard]] bool irq_pending() const noexcept;
+    [[nodiscard]] std::size_t deferred_response_count() const noexcept;
     [[nodiscard]] std::uint64_t diagnostic_state_hash() const noexcept;
     [[nodiscard]] const std::deque<Ps1CdromCommandEvent>& recent_commands() const noexcept;
     [[nodiscard]] const std::optional<std::uint8_t>& last_unsupported_command() const noexcept;
 
 private:
+    struct DeferredResponse {
+        std::uint8_t interrupt_code{};
+        std::uint8_t response{};
+        std::uint32_t delay_cycles{};
+        std::vector<std::uint8_t> data{};
+        bool advance_lba{};
+    };
+
     static constexpr std::size_t parameter_capacity = 16u;
     static constexpr std::size_t response_capacity = 16u;
     static constexpr std::size_t data_capacity = 2048u;
@@ -55,6 +66,7 @@ private:
     std::deque<std::uint8_t> parameters_{};
     std::deque<std::uint8_t> responses_{};
     std::deque<std::uint8_t> data_{};
+    std::deque<DeferredResponse> deferred_responses_{};
     std::uint64_t command_count_{};
     std::deque<Ps1CdromCommandEvent> recent_commands_{};
     std::optional<std::uint8_t> last_unsupported_command_{};
