@@ -203,6 +203,8 @@ Ps1BootReport Ps1BootRuntime::run(const Ps1BootOptions& options) noexcept {
                 event.command,
                 event.index,
                 event.status,
+                event.lba,
+                event.mode,
             });
         }
         report.gpu_gp0_command_count =

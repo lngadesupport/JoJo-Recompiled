@@ -321,6 +321,8 @@ std::string format_ps1_commercial_evidence_report(
         out << "cdrom_event_" << i << "_command=" << static_cast<unsigned>(event.command) << '\n';
         out << "cdrom_event_" << i << "_index=" << static_cast<unsigned>(event.index) << '\n';
         out << "cdrom_event_" << i << "_status=" << static_cast<unsigned>(event.status) << '\n';
+        out << "cdrom_event_" << i << "_lba=" << event.lba << '\n';
+        out << "cdrom_event_" << i << "_mode=" << static_cast<unsigned>(event.mode) << '\n';
     }
 
     if (report.boot.unsupported_access) {

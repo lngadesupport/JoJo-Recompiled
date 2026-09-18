@@ -116,7 +116,7 @@ int main() {
     report.boot.recent_trace.push_back({0x80010000u, 0x24080001u});
     report.boot.recent_bios_calls.push_back({0x8001000Cu, 0x000000A0u, 0x33u, 1u, 2u, 3u, 4u, 0x80010014u});
     report.boot.recent_mmio.push_back({0x80010100u, 0x1F801810u, 32u, true, 0xE1000400u, false});
-    report.boot.recent_cdrom_commands.push_back({0x06u, 0u, 0x02u});
+    report.boot.recent_cdrom_commands.push_back({0x06u, 0u, 0x02u, 12345u, 0x80u});
     report.boot.unsupported_access = jojo::Ps1UnsupportedAccess{0xBF801810u, 0x1F801810u, 32u, true, 0xE1000400u};
     report.diagnostic_decisions.push_back({0xA0u, 0x33u, jojo::Ps1BiosFallback::return_zero});
 
@@ -204,6 +204,8 @@ int main() {
     CHECK(text.find("bios_event_0_selector=0x00000033") != std::string::npos);
     CHECK(text.find("mmio_event_0_address=0x1f801810") != std::string::npos);
     CHECK(text.find("cdrom_event_0_command=6") != std::string::npos);
+    CHECK(text.find("cdrom_event_0_lba=12345") != std::string::npos);
+    CHECK(text.find("cdrom_event_0_mode=128") != std::string::npos);
     CHECK(text.find("dma_transfer_count=4") != std::string::npos);
     CHECK(text.find("gpu_gp0_command_count=7") != std::string::npos);
     CHECK(text.find("unsupported_gpu_gp0_command=0xfe") != std::string::npos);

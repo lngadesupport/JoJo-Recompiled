@@ -337,6 +337,8 @@ std::uint64_t Ps1CdromController::diagnostic_state_hash() const noexcept {
         hash_byte(hash, event.command);
         hash_byte(hash, event.index);
         hash_byte(hash, event.status);
+        hash_u64(hash, event.lba);
+        hash_byte(hash, event.mode);
     }
     hash_byte(
         hash,
@@ -391,6 +393,8 @@ R3000aBusResult Ps1CdromController::execute_command(std::uint8_t command) noexce
         command,
         index_,
         status_byte_,
+        current_lba_,
+        mode_,
     });
 
     switch (command) {

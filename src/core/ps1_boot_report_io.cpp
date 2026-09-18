@@ -180,12 +180,16 @@ std::string format_ps1_boot_report(const Ps1BootReport& report) {
     if (report.recent_cdrom_commands.empty()) {
         out << "cdrom_last_command=none\n"
             << "cdrom_last_index=none\n"
-            << "cdrom_last_status=none\n";
+            << "cdrom_last_status=none\n"
+            << "cdrom_last_lba=none\n"
+            << "cdrom_last_mode=none\n";
     } else {
         const auto& cdrom = report.recent_cdrom_commands.back();
         out << "cdrom_last_command=" << static_cast<unsigned>(cdrom.command) << '\n';
         out << "cdrom_last_index=" << static_cast<unsigned>(cdrom.index) << '\n';
         out << "cdrom_last_status=" << static_cast<unsigned>(cdrom.status) << '\n';
+        out << "cdrom_last_lba=" << cdrom.lba << '\n';
+        out << "cdrom_last_mode=" << static_cast<unsigned>(cdrom.mode) << '\n';
     }
 
     if (report.cpu_diagnostic) {

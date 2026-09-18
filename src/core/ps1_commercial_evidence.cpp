@@ -437,6 +437,8 @@ Ps1CommercialEvidenceRunner::recent_cdrom_commands() const {
             event.command,
             event.index,
             event.status,
+            event.lba,
+            event.mode,
         });
     }
     return out;

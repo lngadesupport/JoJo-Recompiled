@@ -17,6 +17,8 @@ struct Ps1CdromCommandEvent {
     std::uint8_t command{};
     std::uint8_t index{};
     std::uint8_t status{};
+    std::uint64_t lba{};
+    std::uint8_t mode{};
 };
 
 class Ps1CdromController {
