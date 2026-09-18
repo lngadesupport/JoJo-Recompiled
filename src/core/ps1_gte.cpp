@@ -12,6 +12,9 @@ constexpr std::uint32_t kFlagError = 1u << 31u;
 constexpr std::uint32_t kFlagErrorInputs = 0x7F87E000u;
 constexpr std::uint32_t kFlagDivideOverflow = 1u << 17u;
 constexpr std::uint32_t kFlagSzOtzSaturated = 1u << 18u;
+constexpr std::uint32_t kFlagColorRSaturated = 1u << 21u;
+constexpr std::uint32_t kFlagColorGSaturated = 1u << 20u;
+constexpr std::uint32_t kFlagColorBSaturated = 1u << 19u;
 constexpr std::uint32_t kFlagSxSaturated = 1u << 14u;
 constexpr std::uint32_t kFlagSySaturated = 1u << 13u;
 constexpr std::uint32_t kFlagIr0Saturated = 1u << 12u;
@@ -355,6 +358,306 @@ void execute_rtps(R3000aGte& gte, std::uint32_t raw, bool triple) noexcept {
     update_error_flag(gte);
 }
 
+
+unsigned command_shift(std::uint32_t raw) noexcept {
+    return ((raw >> 19u) & 1u) != 0u ? 12u : 0u;
+}
+
+bool command_lm(std::uint32_t raw) noexcept {
+    return ((raw >> 10u) & 1u) != 0u;
+}
+
+std::uint8_t rgb_component(std::uint32_t packed, unsigned index) noexcept {
+    return static_cast<std::uint8_t>((packed >> (index * 8u)) & 0xFFu);
+}
+
+std::uint8_t saturate_rgb(
+    R3000aGte& gte,
+    unsigned index,
+    std::int64_t value) noexcept {
+    constexpr std::uint32_t flags[3]{
+        kFlagColorRSaturated,
+        kFlagColorGSaturated,
+        kFlagColorBSaturated,
+    };
+    if (value < 0) {
+        gte.control[31] |= flags[index];
+        return 0u;
+    }
+    if (value > 255) {
+        gte.control[31] |= flags[index];
+        return 255u;
+    }
+    return static_cast<std::uint8_t>(value);
+}
+
+void push_color_fifo(R3000aGte& gte) noexcept {
+    const auto red = saturate_rgb(
+        gte, 0u, arithmetic_shift_right(signed32(gte.data[25]), 4u));
+    const auto green = saturate_rgb(
+        gte, 1u, arithmetic_shift_right(signed32(gte.data[26]), 4u));
+    const auto blue = saturate_rgb(
+        gte, 2u, arithmetic_shift_right(signed32(gte.data[27]), 4u));
+    const auto code = gte.data[6] & 0xFF000000u;
+
+    gte.data[20] = gte.data[21];
+    gte.data[21] = gte.data[22];
+    gte.data[22] =
+        code |
+        static_cast<std::uint32_t>(red) |
+        (static_cast<std::uint32_t>(green) << 8u) |
+        (static_cast<std::uint32_t>(blue) << 16u);
+}
+
+void multiply_matrix_vector_into_ir(
+    R3000aGte& gte,
+    unsigned matrix_base,
+    const std::int16_t (&vector)[3],
+    std::optional<unsigned> translation_base,
+    unsigned shift,
+    bool lm) noexcept {
+    std::int16_t matrix[3][3]{};
+    matrix_from_control(gte, matrix_base, matrix);
+
+    for (unsigned row = 0u; row < 3u; ++row) {
+        std::int64_t raw =
+            static_cast<std::int64_t>(matrix[row][0]) * vector[0] +
+            static_cast<std::int64_t>(matrix[row][1]) * vector[1] +
+            static_cast<std::int64_t>(matrix[row][2]) * vector[2];
+        if (translation_base) {
+            raw += static_cast<std::int64_t>(
+                       signed32(gte.control[*translation_base + row])) *
+                   0x1000;
+        }
+        store_mac_ir(gte, row + 1u, raw, shift, lm);
+    }
+}
+
+void light_vector(
+    R3000aGte& gte,
+    unsigned vector_index,
+    unsigned shift,
+    bool lm) noexcept {
+    std::int16_t vector[3]{};
+    vector_from_data(gte, vector_index, vector);
+    multiply_matrix_vector_into_ir(gte, 8u, vector, std::nullopt, shift, lm);
+}
+
+void color_matrix_from_ir(
+    R3000aGte& gte,
+    unsigned shift,
+    bool lm) noexcept {
+    std::int16_t vector[3]{
+        signed16(gte.data[9]),
+        signed16(gte.data[10]),
+        signed16(gte.data[11]),
+    };
+    multiply_matrix_vector_into_ir(gte, 16u, vector, 13u, shift, lm);
+}
+
+void primary_color_modulate(
+    R3000aGte& gte,
+    unsigned shift,
+    bool lm) noexcept {
+    const auto rgba = gte.data[6];
+    for (unsigned i = 0u; i < 3u; ++i) {
+        const auto ir = static_cast<std::int64_t>(signed16(gte.data[9u + i]));
+        const auto raw =
+            static_cast<std::int64_t>(rgb_component(rgba, i)) * ir * 16;
+        store_mac_ir(gte, i + 1u, raw, shift, lm);
+    }
+}
+
+void depth_cue_from_base(
+    R3000aGte& gte,
+    const std::int64_t (&base_raw)[3],
+    unsigned shift,
+    bool lm) noexcept {
+    const auto ir0 = static_cast<std::int64_t>(
+        static_cast<std::uint16_t>(gte.data[8]));
+
+    std::int64_t interpolation[3]{};
+    for (unsigned i = 0u; i < 3u; ++i) {
+        const auto far_raw =
+            static_cast<std::int64_t>(signed32(gte.control[21u + i])) *
+            0x1000;
+        const auto difference =
+            arithmetic_shift_right(far_raw - base_raw[i], shift);
+        store_ir(gte, i + 1u, difference, false);
+        interpolation[i] =
+            static_cast<std::int64_t>(signed16(gte.data[9u + i]));
+    }
+
+    for (unsigned i = 0u; i < 3u; ++i) {
+        const auto combined =
+            interpolation[i] * ir0 + base_raw[i];
+        store_mac_ir(gte, i + 1u, combined, shift, lm);
+    }
+}
+
+void execute_dpcs_like(
+    R3000aGte& gte,
+    std::uint32_t raw,
+    std::uint32_t packed_rgb) noexcept {
+    const auto shift = command_shift(raw);
+    const auto lm = command_lm(raw);
+    std::int64_t base[3]{};
+    for (unsigned i = 0u; i < 3u; ++i) {
+        base[i] =
+            static_cast<std::int64_t>(rgb_component(packed_rgb, i)) << 16u;
+    }
+    depth_cue_from_base(gte, base, shift, lm);
+    push_color_fifo(gte);
+}
+
+void execute_intpl(R3000aGte& gte, std::uint32_t raw) noexcept {
+    const auto shift = command_shift(raw);
+    const auto lm = command_lm(raw);
+    clear_flags(gte);
+    std::int64_t base[3]{};
+    for (unsigned i = 0u; i < 3u; ++i) {
+        base[i] =
+            static_cast<std::int64_t>(signed16(gte.data[9u + i])) << 12u;
+    }
+    depth_cue_from_base(gte, base, shift, lm);
+    push_color_fifo(gte);
+    update_error_flag(gte);
+}
+
+void execute_dpcs(R3000aGte& gte, std::uint32_t raw) noexcept {
+    clear_flags(gte);
+    execute_dpcs_like(gte, raw, gte.data[6]);
+    update_error_flag(gte);
+}
+
+void execute_dpct(R3000aGte& gte, std::uint32_t raw) noexcept {
+    clear_flags(gte);
+    for (unsigned i = 0u; i < 3u; ++i) {
+        execute_dpcs_like(gte, raw, gte.data[20]);
+    }
+    update_error_flag(gte);
+}
+
+void execute_gpf_gpl(
+    R3000aGte& gte,
+    std::uint32_t raw,
+    bool add_previous_mac) noexcept {
+    const auto shift = command_shift(raw);
+    const auto lm = command_lm(raw);
+    clear_flags(gte);
+    const auto ir0 = static_cast<std::int64_t>(
+        static_cast<std::uint16_t>(gte.data[8]));
+
+    for (unsigned i = 0u; i < 3u; ++i) {
+        std::int64_t base = 0;
+        if (add_previous_mac) {
+            base = static_cast<std::int64_t>(signed32(gte.data[25u + i]));
+            if (shift != 0u) base <<= shift;
+        }
+        const auto ir =
+            static_cast<std::int64_t>(signed16(gte.data[9u + i]));
+        store_mac_ir(gte, i + 1u, base + ir * ir0, shift, lm);
+    }
+    push_color_fifo(gte);
+    update_error_flag(gte);
+}
+
+void execute_dcpl(R3000aGte& gte, std::uint32_t raw) noexcept {
+    const auto shift = command_shift(raw);
+    const auto lm = command_lm(raw);
+    clear_flags(gte);
+
+    std::int64_t base[3]{};
+    for (unsigned i = 0u; i < 3u; ++i) {
+        base[i] =
+            static_cast<std::int64_t>(rgb_component(gte.data[6], i)) *
+            static_cast<std::int64_t>(signed16(gte.data[9u + i])) *
+            16;
+    }
+    depth_cue_from_base(gte, base, shift, lm);
+    push_color_fifo(gte);
+    update_error_flag(gte);
+}
+
+void execute_color_pipeline(
+    R3000aGte& gte,
+    std::uint32_t raw,
+    unsigned vector_index,
+    bool use_light,
+    bool modulate_primary,
+    bool depth_cue) noexcept {
+    const auto shift = command_shift(raw);
+    const auto lm = command_lm(raw);
+
+    if (use_light) light_vector(gte, vector_index, shift, lm);
+    color_matrix_from_ir(gte, shift, lm);
+
+    if (!modulate_primary && !depth_cue) {
+        push_color_fifo(gte);
+        return;
+    }
+
+    std::int64_t base[3]{};
+    if (modulate_primary) {
+        for (unsigned i = 0u; i < 3u; ++i) {
+            base[i] =
+                static_cast<std::int64_t>(rgb_component(gte.data[6], i)) *
+                static_cast<std::int64_t>(signed16(gte.data[9u + i])) *
+                16;
+        }
+    } else {
+        for (unsigned i = 0u; i < 3u; ++i) {
+            base[i] =
+                static_cast<std::int64_t>(signed32(gte.data[25u + i]));
+            if (shift != 0u) base[i] <<= shift;
+        }
+    }
+
+    if (depth_cue) {
+        depth_cue_from_base(gte, base, shift, lm);
+    } else {
+        for (unsigned i = 0u; i < 3u; ++i) {
+            store_mac_ir(gte, i + 1u, base[i], shift, lm);
+        }
+    }
+    push_color_fifo(gte);
+}
+
+void execute_ncs_family(
+    R3000aGte& gte,
+    std::uint32_t raw,
+    bool triple,
+    bool modulate_primary,
+    bool depth_cue) noexcept {
+    clear_flags(gte);
+    const unsigned count = triple ? 3u : 1u;
+    for (unsigned vector_index = 0u; vector_index < count; ++vector_index) {
+        execute_color_pipeline(
+            gte,
+            raw,
+            vector_index,
+            true,
+            modulate_primary,
+            depth_cue);
+    }
+    update_error_flag(gte);
+}
+
+void execute_cc_cdp(
+    R3000aGte& gte,
+    std::uint32_t raw,
+    bool depth_cue) noexcept {
+    clear_flags(gte);
+    execute_color_pipeline(
+        gte,
+        raw,
+        3u,
+        false,
+        true,
+        depth_cue);
+    update_error_flag(gte);
+}
+
 std::uint32_t packed_irgb(const R3000aGte& gte) noexcept {
     const auto component = [&](unsigned index) {
         const auto value = static_cast<std::int32_t>(signed16(gte.data[index]));
@@ -464,10 +767,43 @@ Ps1GteCommandStatus execute_ps1_gte_command(
         case 0x0Cu:
             execute_op(gte, raw);
             return Ps1GteCommandStatus::ok;
+        case 0x10u:
+            execute_dpcs(gte, raw);
+            return Ps1GteCommandStatus::ok;
+        case 0x11u:
+            execute_intpl(gte, raw);
+            return Ps1GteCommandStatus::ok;
         case 0x12u:
             return execute_mvmva(gte, raw);
+        case 0x13u:
+            execute_ncs_family(gte, raw, false, true, true);
+            return Ps1GteCommandStatus::ok;
+        case 0x14u:
+            execute_cc_cdp(gte, raw, true);
+            return Ps1GteCommandStatus::ok;
+        case 0x16u:
+            execute_ncs_family(gte, raw, true, true, true);
+            return Ps1GteCommandStatus::ok;
+        case 0x1Bu:
+            execute_ncs_family(gte, raw, false, true, false);
+            return Ps1GteCommandStatus::ok;
+        case 0x1Cu:
+            execute_cc_cdp(gte, raw, false);
+            return Ps1GteCommandStatus::ok;
+        case 0x1Eu:
+            execute_ncs_family(gte, raw, false, false, false);
+            return Ps1GteCommandStatus::ok;
+        case 0x20u:
+            execute_ncs_family(gte, raw, true, false, false);
+            return Ps1GteCommandStatus::ok;
         case 0x28u:
             execute_sqr(gte, raw);
+            return Ps1GteCommandStatus::ok;
+        case 0x29u:
+            execute_dcpl(gte, raw);
+            return Ps1GteCommandStatus::ok;
+        case 0x2Au:
+            execute_dpct(gte, raw);
             return Ps1GteCommandStatus::ok;
         case 0x2Du:
             execute_avsz(gte, false);
@@ -477,6 +813,15 @@ Ps1GteCommandStatus execute_ps1_gte_command(
             return Ps1GteCommandStatus::ok;
         case 0x30u:
             execute_rtps(gte, raw, true);
+            return Ps1GteCommandStatus::ok;
+        case 0x3Du:
+            execute_gpf_gpl(gte, raw, false);
+            return Ps1GteCommandStatus::ok;
+        case 0x3Eu:
+            execute_gpf_gpl(gte, raw, true);
+            return Ps1GteCommandStatus::ok;
+        case 0x3Fu:
+            execute_ncs_family(gte, raw, true, true, false);
             return Ps1GteCommandStatus::ok;
         default:
             return Ps1GteCommandStatus::unsupported;
