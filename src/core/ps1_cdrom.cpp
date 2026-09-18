@@ -11,6 +11,26 @@ constexpr std::uint32_t kCdStatus = kCdBase + 0u;
 constexpr std::uint32_t kCdCommandResponse = kCdBase + 1u;
 constexpr std::uint32_t kCdParameterData = kCdBase + 2u;
 constexpr std::uint32_t kCdInterrupt = kCdBase + 3u;
+constexpr std::uint64_t kFnvOffset = 14695981039346656037ull;
+constexpr std::uint64_t kFnvPrime = 1099511628211ull;
+
+void hash_byte(std::uint64_t& hash, std::uint8_t value) noexcept {
+    hash ^= value;
+    hash *= kFnvPrime;
+}
+
+void hash_u64(std::uint64_t& hash, std::uint64_t value) noexcept {
+    for (unsigned shift = 0u; shift < 64u; shift += 8u) {
+        hash_byte(hash, static_cast<std::uint8_t>(value >> shift));
+    }
+}
+
+void hash_bytes(
+    std::uint64_t& hash,
+    const std::deque<std::uint8_t>& values) noexcept {
+    hash_u64(hash, values.size());
+    for (const auto value : values) hash_byte(hash, value);
+}
 
 bool bcd_to_binary(std::uint8_t bcd, std::uint32_t& out) noexcept {
     const auto hi = static_cast<std::uint32_t>(bcd >> 4u);
@@ -131,6 +151,34 @@ std::uint64_t Ps1CdromController::command_count() const noexcept {
 
 std::uint8_t Ps1CdromController::request_register() const noexcept {
     return request_register_;
+}
+
+std::uint64_t Ps1CdromController::diagnostic_state_hash() const noexcept {
+    std::uint64_t hash = kFnvOffset;
+    hash_byte(hash, index_);
+    hash_byte(hash, interrupt_enable_);
+    hash_byte(hash, interrupt_flags_);
+    hash_byte(hash, request_register_);
+    hash_byte(hash, status_byte_);
+    hash_u64(hash, current_lba_);
+    hash_bytes(hash, parameters_);
+    hash_bytes(hash, responses_);
+    hash_bytes(hash, data_);
+    hash_u64(hash, command_count_);
+    hash_u64(hash, recent_commands_.size());
+    for (const auto& event : recent_commands_) {
+        hash_byte(hash, event.command);
+        hash_byte(hash, event.index);
+        hash_byte(hash, event.status);
+    }
+    hash_byte(
+        hash,
+        static_cast<std::uint8_t>(
+            last_unsupported_command_.has_value() ? 1u : 0u));
+    if (last_unsupported_command_) {
+        hash_byte(hash, *last_unsupported_command_);
+    }
+    return hash;
 }
 
 const std::deque<Ps1CdromCommandEvent>&
