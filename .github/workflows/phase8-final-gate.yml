@@ -10,6 +10,21 @@ permissions:
   contents: read
 
 jobs:
+  linux-commercial-probe-artifact:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure Release
+        run: cmake -S . -B build-probe -DCMAKE_BUILD_TYPE=Release
+      - name: Build commercial probe
+        run: cmake --build build-probe --target jojo_ps1_commercial_probe -j2
+      - name: Upload commercial probe
+        uses: actions/upload-artifact@v4
+        with:
+          name: JOJO-Phase8-Linux-Commercial-Probe
+          path: build-probe/jojo_ps1_commercial_probe
+          if-no-files-found: error
+
   linux-release-full:
     runs-on: ubuntu-24.04
     steps:
