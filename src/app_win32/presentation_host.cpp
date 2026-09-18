@@ -145,6 +145,47 @@ D3d11PresentationQuality make_d3d11_presentation_quality(
     return quality;
 }
 
+D3D11_VIEWPORT make_d3d11_aspect_viewport(
+    std::uint32_t target_width,
+    std::uint32_t target_height,
+    AspectRatio aspect_ratio) noexcept {
+    D3D11_VIEWPORT viewport{};
+    if (target_width == 0u || target_height == 0u) {
+        return viewport;
+    }
+
+    const double target_aspect =
+        aspect_ratio_value(aspect_ratio);
+    if (!(target_aspect > 0.0)) {
+        return viewport;
+    }
+
+    const double output_aspect =
+        static_cast<double>(target_width) /
+        static_cast<double>(target_height);
+
+    double width = static_cast<double>(target_width);
+    double height = static_cast<double>(target_height);
+    double x = 0.0;
+    double y = 0.0;
+
+    if (output_aspect > target_aspect) {
+        width = height * target_aspect;
+        x = (static_cast<double>(target_width) - width) * 0.5;
+    } else if (output_aspect < target_aspect) {
+        height = width / target_aspect;
+        y = (static_cast<double>(target_height) - height) * 0.5;
+    }
+
+    viewport.TopLeftX = static_cast<float>(x);
+    viewport.TopLeftY = static_cast<float>(y);
+    viewport.Width = static_cast<float>(width);
+    viewport.Height = static_cast<float>(height);
+    viewport.MinDepth = 0.0f;
+    viewport.MaxDepth = 1.0f;
+    return viewport;
+}
+
 Result<Win32WindowPlan> make_win32_window_plan(
     const PresentationPlan& presentation,
     RECT monitor_bounds,
@@ -953,7 +994,8 @@ Result<void> D3d11Ps1Presenter::update_sampler(
 Result<void> D3d11Ps1Presenter::draw_frame(
     const Ps1DisplayFrame& frame,
     TextureFilter texture_filter,
-    Msaa anti_aliasing) {
+    Msaa anti_aliasing,
+    AspectRatio aspect_ratio) {
     if (!context_ || !render_target_ ||
         !vertex_shader_ || !pixel_shader_ ||
         !pixel_constants_) {
@@ -1005,14 +1047,11 @@ Result<void> D3d11Ps1Presenter::draw_frame(
     const float clear[4]{0.0f, 0.0f, 0.0f, 1.0f};
     context_->ClearRenderTargetView(render_target_.Get(), clear);
 
-    const D3D11_VIEWPORT viewport{
-        0.0f,
-        0.0f,
-        static_cast<float>(back_buffer_width_),
-        static_cast<float>(back_buffer_height_),
-        0.0f,
-        1.0f,
-    };
+    const D3D11_VIEWPORT viewport =
+        make_d3d11_aspect_viewport(
+            back_buffer_width_,
+            back_buffer_height_,
+            aspect_ratio);
 
     ID3D11RenderTargetView* target = render_target_.Get();
     ID3D11ShaderResourceView* srv = source_srv_.Get();
@@ -1040,12 +1079,17 @@ Result<void> D3d11Ps1Presenter::present(
     const Ps1DisplayFrame& frame,
     bool vsync,
     TextureFilter texture_filter,
-    Msaa anti_aliasing) {
+    Msaa anti_aliasing,
+    AspectRatio aspect_ratio) {
     const auto resized = resize_to_client();
     if (!resized) return resized;
 
     const auto drawn =
-        draw_frame(frame, texture_filter, anti_aliasing);
+        draw_frame(
+            frame,
+            texture_filter,
+            anti_aliasing,
+            aspect_ratio);
     if (!drawn) return drawn;
 
     const HRESULT hr = swap_chain_->Present(
