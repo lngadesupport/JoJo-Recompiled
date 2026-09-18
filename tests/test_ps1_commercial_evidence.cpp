@@ -75,7 +75,8 @@ void test_runner_promotes_visible_gpu_output_to_commercial_frame(const fs::path&
     if (!runner) return;
 
     jojo::Ps1CommercialEvidenceOptions options{};
-    options.boot.instruction_budget = 40u;
+    options.boot.instruction_budget = 4u;
+    options.max_execution_segments = 16u;
     const auto report = runner.value.run(options);
 
     CHECK(report.frontier == jojo::Ps1CommercialFrontierClass::commercial_frame_presented);
