@@ -15,6 +15,9 @@ constexpr std::uint32_t kB0ResetEntryInt = 0x00000018u;
 constexpr std::uint32_t kB0HookEntryInt = 0x00000019u;
 constexpr std::uint32_t kB0ChangeClearPad = 0x0000005Bu;
 constexpr std::uint32_t kC0ChangeClearRCnt = 0x0000000Au;
+constexpr std::uint32_t kSysEnterCriticalSection = 0x00000001u;
+constexpr std::uint32_t kSysExitCriticalSection = 0x00000002u;
+constexpr std::uint32_t kCriticalStatusMask = (1u << 0u) | (1u << 10u);
 constexpr std::uint64_t kFnvOffset = 14695981039346656037ull;
 constexpr std::uint64_t kFnvPrime = 1099511628211ull;
 
@@ -22,6 +25,21 @@ void return_from_bios_call(R3000aState& cpu) noexcept {
     cpu.pc = cpu.gpr[31];
     cpu.next_pc = cpu.pc + 4u;
     cpu.delay_slot = {};
+    cpu.gpr[0] = 0u;
+}
+
+void retire_pending_load(R3000aState& cpu) noexcept {
+    if (!cpu.pending_load.valid) return;
+    if (cpu.pending_load.reg != 0u) {
+        cpu.gpr[cpu.pending_load.reg] = cpu.pending_load.value;
+    }
+    cpu.pending_load = {};
+}
+
+void return_from_syscall(R3000aState& cpu) noexcept {
+    retire_pending_load(cpu);
+    cpu.pc = cpu.next_pc;
+    cpu.next_pc += 4u;
     cpu.gpr[0] = 0u;
 }
 
@@ -100,6 +118,31 @@ Ps1HleBiosDispatchStatus Ps1HleBios::dispatch(
         root_counter_auto_ack_enabled_[index] = cpu.gpr[5] != 0u;
         cpu.gpr[2] = previous ? 1u : 0u;
         return_from_bios_call(cpu);
+        return Ps1HleBiosDispatchStatus::handled;
+    }
+
+    return Ps1HleBiosDispatchStatus::unimplemented;
+}
+
+Ps1HleBiosDispatchStatus Ps1HleBios::dispatch_syscall(
+    R3000aState& cpu,
+    std::uint32_t selector) noexcept {
+    if (cpu.delay_slot.active) {
+        return Ps1HleBiosDispatchStatus::unimplemented;
+    }
+
+    if (selector == kSysEnterCriticalSection) {
+        const bool was_enabled =
+            (cpu.cop0.status & kCriticalStatusMask) == kCriticalStatusMask;
+        cpu.cop0.status &= ~kCriticalStatusMask;
+        cpu.gpr[2] = was_enabled ? 1u : 0u;
+        return_from_syscall(cpu);
+        return Ps1HleBiosDispatchStatus::handled;
+    }
+
+    if (selector == kSysExitCriticalSection) {
+        cpu.cop0.status |= kCriticalStatusMask;
+        return_from_syscall(cpu);
         return Ps1HleBiosDispatchStatus::handled;
     }
 
