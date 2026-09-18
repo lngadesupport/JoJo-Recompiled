@@ -59,6 +59,9 @@ public:
     [[nodiscard]] std::vector<std::int16_t> drain_audio_samples();
     [[nodiscard]] std::uint64_t generated_sample_frames() const noexcept;
     [[nodiscard]] std::uint64_t nonzero_sample_count() const noexcept;
+    [[nodiscard]] std::uint16_t control() const noexcept;
+    [[nodiscard]] std::uint16_t status() const noexcept;
+    [[nodiscard]] std::uint16_t transfer_control() const noexcept;
 
     [[nodiscard]] const Ps1SpuVoiceState& voice(std::size_t index) const noexcept;
     [[nodiscard]] std::uint32_t endx_flags() const noexcept;
