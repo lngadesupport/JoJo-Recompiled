@@ -28,6 +28,44 @@ int main() {
     CHECK(gpu.write_gp0(0x00000000u).status == jojo::R3000aBusStatus::ok);
     CHECK(gpu.gp0_word_count() == 6u);
 
+    // GP0(20h): flat-shaded opaque triangle rasterizes into VRAM.
+    {
+        jojo::Ps1GpuIngress poly_gpu;
+        CHECK(poly_gpu.write_gp0(0x200000F8u).status == jojo::R3000aBusStatus::ok);
+        CHECK(poly_gpu.write_gp0((10u << 16u) | 10u).status == jojo::R3000aBusStatus::ok);
+        CHECK(poly_gpu.write_gp0((10u << 16u) | 14u).status == jojo::R3000aBusStatus::ok);
+        CHECK(poly_gpu.write_gp0((14u << 16u) | 10u).status == jojo::R3000aBusStatus::ok);
+
+        CHECK(poly_gpu.vram_pixel(10u, 10u) == 0x001Fu);
+        CHECK(poly_gpu.vram_pixel(11u, 11u) == 0x001Fu);
+        CHECK(poly_gpu.vram_pixel(13u, 13u) == 0u);
+        CHECK(poly_gpu.vram_write_count() > 0u);
+    }
+
+    // GP0(25h): raw-textured triangle samples 15-bit texture VRAM.
+    {
+        jojo::Ps1GpuIngress poly_gpu;
+        CHECK(poly_gpu.write_gp0(0xA0000000u).status == jojo::R3000aBusStatus::ok);
+        CHECK(poly_gpu.write_gp0((0u << 16u) | 64u).status == jojo::R3000aBusStatus::ok);
+        CHECK(poly_gpu.write_gp0((2u << 16u) | 2u).status == jojo::R3000aBusStatus::ok);
+        CHECK(poly_gpu.write_gp0(0x03E0001Fu).status == jojo::R3000aBusStatus::ok);
+        CHECK(poly_gpu.write_gp0(0x7FFF7C00u).status == jojo::R3000aBusStatus::ok);
+
+        CHECK(poly_gpu.write_gp0(0x25FFFFFFu).status == jojo::R3000aBusStatus::ok);
+        CHECK(poly_gpu.write_gp0((20u << 16u) | 20u).status == jojo::R3000aBusStatus::ok);
+        CHECK(poly_gpu.write_gp0(0x00000000u).status == jojo::R3000aBusStatus::ok);
+        CHECK(poly_gpu.write_gp0((20u << 16u) | 22u).status == jojo::R3000aBusStatus::ok);
+        CHECK(poly_gpu.write_gp0((0x0101u << 16u) | 0x0001u).status ==
+              jojo::R3000aBusStatus::ok);
+        CHECK(poly_gpu.write_gp0((22u << 16u) | 20u).status == jojo::R3000aBusStatus::ok);
+        CHECK(poly_gpu.write_gp0(0x00000100u).status == jojo::R3000aBusStatus::ok);
+
+        CHECK(poly_gpu.vram_pixel(20u, 20u) == 0x001Fu);
+        CHECK(poly_gpu.vram_pixel(21u, 20u) == 0x03E0u);
+        CHECK(poly_gpu.vram_pixel(20u, 21u) == 0x7C00u);
+        CHECK(poly_gpu.vram_write_count() >= 3u);
+    }
+
     // GP0(80h): VRAM -> VRAM copy. Source pixels are copied from a
     // snapshot so overlapping rectangles do not self-feed while writing.
     {
