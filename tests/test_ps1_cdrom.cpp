@@ -149,6 +149,49 @@ int main() {
     CHECK(cd.write8(0x1F801800u, 0x00u).status ==
           jojo::R3000aBusStatus::ok);
 
+    // Setfilter/Setmode/Getparam preserve the PS1 CD parameter contract.
+    CHECK(cd.write8(0x1F801802u, 0x03u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(cd.write8(0x1F801802u, 0x07u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(cd.write8(0x1F801801u, 0x0Du).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(cd.read8(0x1F801801u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(cd.write8(0x1F801800u, 0x01u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(cd.write8(0x1F801803u, 0x07u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(cd.write8(0x1F801800u, 0x00u).status ==
+          jojo::R3000aBusStatus::ok);
+
+    CHECK(cd.write8(0x1F801802u, 0x80u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(cd.write8(0x1F801801u, 0x0Eu).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(cd.read8(0x1F801801u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(cd.write8(0x1F801800u, 0x01u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(cd.write8(0x1F801803u, 0x07u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(cd.write8(0x1F801800u, 0x00u).status ==
+          jojo::R3000aBusStatus::ok);
+
+    CHECK(cd.write8(0x1F801801u, 0x0Fu).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(cd.read8(0x1F801801u).value == 0x02u);
+    CHECK(cd.read8(0x1F801801u).value == 0x80u);
+    CHECK(cd.read8(0x1F801801u).value == 0x00u);
+    CHECK(cd.read8(0x1F801801u).value == 0x03u);
+    CHECK(cd.read8(0x1F801801u).value == 0x07u);
+    CHECK(cd.write8(0x1F801800u, 0x01u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(cd.write8(0x1F801803u, 0x07u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(cd.write8(0x1F801800u, 0x00u).status ==
+          jojo::R3000aBusStatus::ok);
+
     // Setloc to logical sector 25: absolute MSF is 00:02:25 (150-frame lead-in + 25).
     CHECK(cd.write8(0x1F801802u, 0x00u).status == jojo::R3000aBusStatus::ok);
     CHECK(cd.write8(0x1F801802u, 0x02u).status == jojo::R3000aBusStatus::ok);
