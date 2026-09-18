@@ -31,6 +31,7 @@ add_library(jojo_core STATIC
   src/core/ps1_hardware_services.cpp
   src/core/ps1_cdrom.cpp
   src/core/ps1_gpu_ingress.cpp
+  src/core/ps1_spu.cpp
   src/core/ps1_gte.cpp
   src/core/ps1_display_frame.cpp
   src/core/ps1_executable_loader.cpp

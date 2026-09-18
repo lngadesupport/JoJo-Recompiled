@@ -24,6 +24,8 @@ constexpr std::uint32_t kDmaSyncMask = 3u << 9u;
 constexpr std::uint32_t kDmaStepDecrement = 1u << 1u;
 constexpr std::uint32_t kDmaChopping = 1u << 8u;
 constexpr std::uint32_t kTimerBase = 0x1F801100u;
+constexpr std::uint32_t kSpuBase = Ps1Spu::mmio_base;
+constexpr std::uint32_t kSpuEnd = Ps1Spu::mmio_end;
 constexpr std::uint32_t kTimerStride = 0x10u;
 constexpr std::uint32_t kTimerCounterOffset = 0x0u;
 constexpr std::uint32_t kTimerModeOffset = 0x4u;
@@ -76,7 +78,13 @@ bool dma_channel_enabled(std::uint32_t dpcr, std::uint32_t channel) noexcept {
 bool supported_dma_device_direction(std::uint32_t channel, bool from_ram) noexcept {
     if (channel == 2u) return from_ram;
     if (channel == 3u) return !from_ram;
+    if (channel == 4u) return true;
     return false;
+}
+
+bool is_spu_halfword(std::uint32_t physical) noexcept {
+    return physical >= kSpuBase && physical <= kSpuEnd &&
+           (physical & 1u) == 0u;
 }
 
 void hash_byte(std::uint64_t& hash, std::uint8_t value) noexcept {
@@ -119,6 +127,9 @@ R3000aBusResult Ps1HardwareServices::read8(std::uint32_t physical) noexcept {
 }
 
 R3000aBusResult Ps1HardwareServices::read16(std::uint32_t physical) noexcept {
+    if (is_spu_halfword(physical)) {
+        return spu_.read16(physical);
+    }
     if (physical == kInterruptStatusAddress) {
         return {R3000aBusStatus::ok, interrupt_status_};
     }
@@ -138,6 +149,13 @@ R3000aBusResult Ps1HardwareServices::read16(std::uint32_t physical) noexcept {
 }
 
 R3000aBusResult Ps1HardwareServices::read32(std::uint32_t physical) noexcept {
+    if (is_spu_halfword(physical) && physical + 2u <= kSpuEnd) {
+        const auto low = spu_.read16(physical);
+        if (low.status != R3000aBusStatus::ok) return low;
+        const auto high = spu_.read16(physical + 2u);
+        if (high.status != R3000aBusStatus::ok) return high;
+        return {R3000aBusStatus::ok, low.value | (high.value << 16u)};
+    }
     if (physical == 0x1F801810u) {
         return gpu_.read_gp0();
     }
@@ -172,6 +190,9 @@ R3000aBusResult Ps1HardwareServices::write8(std::uint32_t physical,
 
 R3000aBusResult Ps1HardwareServices::write16(std::uint32_t physical,
                                              std::uint16_t value) noexcept {
+    if (is_spu_halfword(physical)) {
+        return spu_.write16(physical, value);
+    }
     if (physical == kInterruptStatusAddress) {
         interrupt_status_ = static_cast<std::uint16_t>(
             interrupt_status_ & value & interrupt_valid_bits);
@@ -209,6 +230,15 @@ R3000aBusResult Ps1HardwareServices::write16(std::uint32_t physical,
 
 R3000aBusResult Ps1HardwareServices::write32(std::uint32_t physical,
                                              std::uint32_t value) noexcept {
+    if (is_spu_halfword(physical) && physical + 2u <= kSpuEnd) {
+        const auto low = spu_.write16(
+            physical,
+            static_cast<std::uint16_t>(value));
+        if (low.status != R3000aBusStatus::ok) return low;
+        return spu_.write16(
+            physical + 2u,
+            static_cast<std::uint16_t>(value >> 16u));
+    }
     if (physical == 0x1F801810u) return gpu_.write_gp0(value);
     if (physical == 0x1F801814u) return gpu_.write_gp1(value);
     if (physical == kDmaControlAddress) {
@@ -353,6 +383,32 @@ bool Ps1HardwareServices::execute_pending_dma(
         return false;
     }
 
+    if (request.channel == 4u) {
+        std::vector<std::uint32_t> words(request.words, 0u);
+        if (request.from_ram) {
+            for (std::size_t i = 0; i < request.words; ++i) {
+                const auto offset = start + i * 4u;
+                words[i] =
+                    static_cast<std::uint32_t>(main_ram[offset + 0u]) |
+                    (static_cast<std::uint32_t>(main_ram[offset + 1u]) << 8u) |
+                    (static_cast<std::uint32_t>(main_ram[offset + 2u]) << 16u) |
+                    (static_cast<std::uint32_t>(main_ram[offset + 3u]) << 24u);
+            }
+            if (!spu_.dma_write_words(words)) return false;
+        } else {
+            if (!spu_.dma_read_words(words)) return false;
+            for (std::size_t i = 0; i < request.words; ++i) {
+                const auto value = words[i];
+                const auto offset = start + i * 4u;
+                main_ram[offset + 0u] = static_cast<std::uint8_t>(value);
+                main_ram[offset + 1u] = static_cast<std::uint8_t>(value >> 8u);
+                main_ram[offset + 2u] = static_cast<std::uint8_t>(value >> 16u);
+                main_ram[offset + 3u] = static_cast<std::uint8_t>(value >> 24u);
+            }
+        }
+        return complete_dma_transfer(4u);
+    }
+
     if (request.channel == 2u && request.from_ram) {
         auto candidate = gpu_;
         for (std::size_t i = 0; i < request.words; ++i) {
@@ -433,6 +489,14 @@ const Ps1GpuIngress& Ps1HardwareServices::gpu() const noexcept {
     return gpu_;
 }
 
+Ps1Spu& Ps1HardwareServices::spu() noexcept {
+    return spu_;
+}
+
+const Ps1Spu& Ps1HardwareServices::spu() const noexcept {
+    return spu_;
+}
+
 std::uint64_t Ps1HardwareServices::diagnostic_state_hash() const noexcept {
     std::uint64_t hash = kFnvOffset;
     hash_u16(hash, interrupt_status_);
@@ -458,6 +522,7 @@ std::uint64_t Ps1HardwareServices::diagnostic_state_hash() const noexcept {
         hash_bool(hash, pending_dma_transfer_->from_ram);
     }
     hash_u64(hash, completed_dma_transfer_count_);
+    hash_u64(hash, spu_.diagnostic_state_hash());
     return hash;
 }
 

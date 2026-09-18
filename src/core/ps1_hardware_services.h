@@ -2,6 +2,7 @@
 
 #include "core/ps1_cdrom.h"
 #include "core/ps1_gpu_ingress.h"
+#include "core/ps1_spu.h"
 #include "core/r3000a_bus.h"
 
 #include <array>
@@ -67,6 +68,8 @@ public:
     [[nodiscard]] std::uint64_t gpu_gp1_command_count() const noexcept;
     [[nodiscard]] std::uint64_t gpu_vram_write_count() const noexcept;
     [[nodiscard]] const Ps1GpuIngress& gpu() const noexcept;
+    [[nodiscard]] Ps1Spu& spu() noexcept;
+    [[nodiscard]] const Ps1Spu& spu() const noexcept;
 
     [[nodiscard]] std::uint64_t diagnostic_state_hash() const noexcept;
 
@@ -84,6 +87,7 @@ private:
     std::uint64_t completed_dma_transfer_count_{};
     Ps1CdromController cdrom_{};
     Ps1GpuIngress gpu_{};
+    Ps1Spu spu_{};
 };
 
 } // namespace jojo
