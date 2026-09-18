@@ -107,6 +107,8 @@ void online_set_rooms(
     OnlineLobbyModel& model);
 [[nodiscard]] Result<void> online_enter_joined_lobby(
     OnlineLobbyModel& model);
+void online_enter_direct_lobby(
+    OnlineLobbyModel& model) noexcept;
 void online_set_connecting(
     OnlineLobbyModel& model,
     std::string status);
