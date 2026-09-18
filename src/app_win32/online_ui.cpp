@@ -461,9 +461,19 @@ void OnlineUi::paint(
     Gdiplus::Graphics g(dc);
     g.SetSmoothingMode(Gdiplus::SmoothingModeHighQuality);
     g.SetTextRenderingHint(Gdiplus::TextRenderingHintClearTypeGridFit);
-    g.ScaleTransform(
-        static_cast<float>(cw) / kUiWidth,
-        static_cast<float>(ch) / kUiHeight);
+
+    Gdiplus::SolidBrush letterbox(kBg);
+    g.FillRectangle(&letterbox, 0, 0, cw, ch);
+
+    const float scale=std::min(
+        static_cast<float>(cw)/kUiWidth,
+        static_cast<float>(ch)/kUiHeight);
+    const float offset_x=
+        (static_cast<float>(cw)-kUiWidth*scale)*0.5f;
+    const float offset_y=
+        (static_cast<float>(ch)-kUiHeight*scale)*0.5f;
+    g.TranslateTransform(offset_x,offset_y);
+    g.ScaleTransform(scale,scale);
 
     draw_background(g);
 
@@ -498,8 +508,18 @@ OnlineUiAction OnlineUi::mouse_up(
     const LONG ch = client.bottom - client.top;
     if (cw <= 0 || ch <= 0) return OnlineUiAction::none;
 
-    const float x = static_cast<float>(p.x) * kUiWidth / static_cast<float>(cw);
-    const float y = static_cast<float>(p.y) * kUiHeight / static_cast<float>(ch);
+    const float scale=std::min(
+        static_cast<float>(cw)/kUiWidth,
+        static_cast<float>(ch)/kUiHeight);
+    const float offset_x=
+        (static_cast<float>(cw)-kUiWidth*scale)*0.5f;
+    const float offset_y=
+        (static_cast<float>(ch)-kUiHeight*scale)*0.5f;
+    const float x=(static_cast<float>(p.x)-offset_x)/scale;
+    const float y=(static_cast<float>(p.y)-offset_y)/scale;
+    if(x<0.0f||y<0.0f||x>kUiWidth||y>kUiHeight){
+        return OnlineUiAction::none;
+    }
 
     if (model.screen == OnlineLobbyScreen::home) {
         if (inside(x, y, 375, 140, 710, 186)) {
