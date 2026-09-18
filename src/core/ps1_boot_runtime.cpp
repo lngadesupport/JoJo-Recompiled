@@ -321,6 +321,7 @@ Ps1BootReport Ps1BootRuntime::run(const Ps1BootOptions& options) noexcept {
                 static_cast<std::uint64_t>(native_text_end_);
 
         if (native_x64_enabled_ &&
+            cpu_.external_interrupt_pending == 0u &&
             pc_in_native_text &&
             observed_opcode.status == R3000aBusStatus::ok) {
             const auto compiled =
@@ -354,6 +355,7 @@ Ps1BootReport Ps1BootRuntime::run(const Ps1BootOptions& options) noexcept {
             }
         }
 
+        const auto cpu_before_step = cpu_;
         const auto step = step_r3000a(cpu_, bus_);
         if (step.status == R3000aStepStatus::retired) {
             ++report.execution_steps;
@@ -386,12 +388,37 @@ Ps1BootReport Ps1BootRuntime::run(const Ps1BootOptions& options) noexcept {
 
         if (step.status == R3000aStepStatus::exception) {
             ++report.execution_steps;
-            if (step.diagnostic.exception_code == R3000aExceptionCode::interrupt) {
-                ++report.interrupts_accepted;
-            }
             bus_.hardware_services().step(1u);
             cpu_.external_interrupt_pending =
                 bus_.hardware_services().interrupt_pending() ? 0x04u : 0u;
+
+            if (step.diagnostic.exception_code ==
+                R3000aExceptionCode::interrupt) {
+                ++report.interrupts_accepted;
+
+                // step_r3000a has already retired any pending load and entered
+                // the architectural exception vector. Build the thread state
+                // that B(17h) ReturnFromException must restore, while retaining
+                // the post-exception GPR result of that retired load.
+                auto resume_state = cpu_;
+                resume_state.pc = cpu_before_step.pc;
+                resume_state.next_pc = cpu_before_step.next_pc;
+                resume_state.pending_load = {};
+                resume_state.delay_slot = cpu_before_step.delay_slot;
+                resume_state.cop0.status =
+                    cpu_before_step.cop0.status;
+                resume_state.external_interrupt_pending =
+                    cpu_.external_interrupt_pending;
+
+                const auto hooked =
+                    bios_.begin_interrupt_hook(
+                        cpu_, resume_state, bus_);
+                if (hooked ==
+                    Ps1HleBiosDispatchStatus::handled) {
+                    instructions_since_progress = 0u;
+                    continue;
+                }
+            }
         }
 
         report.cpu_diagnostic = step.diagnostic;
