@@ -71,6 +71,9 @@ private:
         int direction) noexcept;
 
     TextField text_field_{TextField::none};
+    bool name_keyboard_open_{false};
+    std::size_t keyboard_row_{0};
+    std::size_t keyboard_column_{0};
     std::size_t selected_row_{0};
     std::size_t selected_room_row_{0};
     std::wstring chat_draft_{};
