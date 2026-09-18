@@ -194,6 +194,8 @@ std::wstring choose_image(){
     d->Release(); return out;
 }
 
+void stop_game_runtime(const jojo::Ps1BootReport* final_boot=nullptr);
+
 void validate_source(){
     if(game_runner) return;
     if(source.empty()){
@@ -252,6 +254,7 @@ LRESULT CALLBACK game_proc(HWND h,UINT m,WPARAM w,LPARAM l){
         }
         return 0;
     case WM_CLOSE:
+        if(game_runner) stop_game_runtime(nullptr);
         DestroyWindow(h);
         return 0;
     case WM_DESTROY:
@@ -311,7 +314,7 @@ void apply_current_input(jojo::Ps1CommercialEvidenceRunner& runner){
     }
 }
 
-void stop_game_runtime(const jojo::Ps1BootReport* final_boot=nullptr){
+void stop_game_runtime(const jojo::Ps1BootReport* final_boot){
     if(!game_runner) return;
 
     if(win) KillTimer(win,ID_GAME_TIMER);
