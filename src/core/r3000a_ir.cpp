@@ -1,7 +1,7 @@
 #include "core/r3000a_ir.h"
 
 #include <algorithm>
-#include <limits>
+#include <utility>
 
 namespace jojo {
 namespace {
@@ -35,7 +35,7 @@ std::uint32_t branch_target(
     std::uint16_t immediate) noexcept {
     const auto signed_imm = static_cast<std::int32_t>(
         static_cast<std::int16_t>(immediate));
-    const auto displacement = static_cast<std::uint32_t>(signed_imm << 2);
+    const auto displacement = static_cast<std::uint32_t>(signed_imm * 4);
     return pc + 4u + displacement;
 }
 
