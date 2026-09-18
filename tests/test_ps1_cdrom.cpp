@@ -85,8 +85,9 @@ int main() {
     CHECK(cd.write8(0x1F801800u, 0x01u).status ==
           jojo::R3000aBusStatus::ok);
     CHECK((cd.read8(0x1F801803u).value & 0x07u) == 0x02u);
-    CHECK(cd.read8(0x1F801801u).status ==
-          jojo::R3000aBusStatus::ok);
+    const auto init_complete_status = cd.read8(0x1F801801u);
+    CHECK(init_complete_status.status == jojo::R3000aBusStatus::ok);
+    CHECK((init_complete_status.value & 0x02u) != 0u);
     CHECK(cd.write8(0x1F801803u, 0x07u).status ==
           jojo::R3000aBusStatus::ok);
     CHECK(cd.write8(0x1F801800u, 0x00u).status ==
@@ -133,8 +134,9 @@ int main() {
     CHECK(cd.data_bytes_available() == 2048u);
     CHECK(cd.write8(0x1F801800u, 0x01u).status == jojo::R3000aBusStatus::ok);
     CHECK((cd.read8(0x1F801803u).value & 0x07u) == 0x01u);
-    CHECK(cd.read8(0x1F801801u).status ==
-          jojo::R3000aBusStatus::ok);
+    const auto read_complete_status = cd.read8(0x1F801801u);
+    CHECK(read_complete_status.status == jojo::R3000aBusStatus::ok);
+    CHECK((read_complete_status.value & 0x22u) == 0x22u);
     CHECK(cd.write8(0x1F801803u, 0x07u).status == jojo::R3000aBusStatus::ok);
     CHECK(cd.write8(0x1F801800u, 0x00u).status == jojo::R3000aBusStatus::ok);
     std::vector<std::uint32_t> words(512u, 0u);
