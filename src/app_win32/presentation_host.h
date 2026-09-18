@@ -102,6 +102,7 @@ private:
     [[nodiscard]] Result<void> update_source_texture(
         const Ps1DisplayFrame& frame);
     [[nodiscard]] Result<void> update_sampler(TextureFilter texture_filter);
+    [[nodiscard]] Result<void> ensure_msaa_target(UINT requested_samples);
     [[nodiscard]] Result<void> draw_frame(
         const Ps1DisplayFrame& frame,
         TextureFilter texture_filter,
@@ -112,7 +113,10 @@ private:
     Microsoft::WRL::ComPtr<ID3D11Device> device_{};
     Microsoft::WRL::ComPtr<ID3D11DeviceContext> context_{};
     Microsoft::WRL::ComPtr<IDXGISwapChain> swap_chain_{};
+    Microsoft::WRL::ComPtr<ID3D11Texture2D> back_buffer_{};
     Microsoft::WRL::ComPtr<ID3D11RenderTargetView> render_target_{};
+    Microsoft::WRL::ComPtr<ID3D11Texture2D> msaa_texture_{};
+    Microsoft::WRL::ComPtr<ID3D11RenderTargetView> msaa_render_target_{};
     Microsoft::WRL::ComPtr<ID3D11Texture2D> source_texture_{};
     Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> source_srv_{};
     Microsoft::WRL::ComPtr<ID3D11VertexShader> vertex_shader_{};
@@ -121,6 +125,7 @@ private:
     Microsoft::WRL::ComPtr<ID3D11Buffer> pixel_constants_{};
     TextureFilter active_texture_filter_{TextureFilter::off};
     bool sampler_initialized_{};
+    UINT active_msaa_samples_{1u};
     std::uint32_t source_width_{};
     std::uint32_t source_height_{};
     std::uint32_t back_buffer_width_{};
