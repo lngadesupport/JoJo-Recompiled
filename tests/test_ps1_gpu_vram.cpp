@@ -61,7 +61,7 @@ int main() {
         CHECK(draw_gpu.write_gp0(0xE5000000u | 1u | (1u << 11u)).status ==
               jojo::R3000aBusStatus::ok); // offset = (+1,+1)
 
-        CHECK(draw_gpu.write_gp0(0x6000F800u).status == jojo::R3000aBusStatus::ok);
+        CHECK(draw_gpu.write_gp0(0x600000F8u).status == jojo::R3000aBusStatus::ok);
         CHECK(draw_gpu.write_gp0((20u << 16u) | 10u).status == jojo::R3000aBusStatus::ok);
         CHECK(draw_gpu.write_gp0((3u << 16u) | 4u).status == jojo::R3000aBusStatus::ok);
 

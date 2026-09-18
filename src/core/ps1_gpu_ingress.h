@@ -42,6 +42,8 @@ private:
         command,
         fill_rectangle_position,
         fill_rectangle_size,
+        monochrome_rectangle_position,
+        monochrome_rectangle_size,
         vram_copy_source,
         vram_copy_destination,
         vram_copy_size,
@@ -54,6 +56,7 @@ private:
     void reset_display_state() noexcept;
     void write_transfer_pixel(std::uint16_t pixel) noexcept;
     void fill_rectangle(std::uint32_t width, std::uint32_t height) noexcept;
+    void draw_monochrome_rectangle(std::uint32_t width, std::uint32_t height) noexcept;
     void copy_vram_rectangle(std::uint32_t width, std::uint32_t height) noexcept;
     void apply_display_mode(std::uint32_t parameter) noexcept;
 
@@ -69,6 +72,15 @@ private:
     std::uint16_t fill_color_{};
     std::uint32_t fill_x_{};
     std::uint32_t fill_y_{};
+    std::uint16_t draw_color_{};
+    std::int32_t draw_x_{};
+    std::int32_t draw_y_{};
+    std::uint32_t draw_area_left_{};
+    std::uint32_t draw_area_top_{};
+    std::uint32_t draw_area_right_{vram_width - 1u};
+    std::uint32_t draw_area_bottom_{vram_height - 1u};
+    std::int32_t draw_offset_x_{};
+    std::int32_t draw_offset_y_{};
     std::uint32_t copy_source_x_{};
     std::uint32_t copy_source_y_{};
     std::uint32_t copy_destination_x_{};

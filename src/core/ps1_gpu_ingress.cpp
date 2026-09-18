@@ -11,6 +11,17 @@ std::uint32_t normalize_transfer_height(std::uint32_t raw) noexcept {
     return ((raw - 1u) & 0x1FFu) + 1u;
 }
 
+std::int32_t sign_extend11(std::uint32_t value) noexcept {
+    value &= 0x7FFu;
+    return (value & 0x400u) != 0u
+        ? static_cast<std::int32_t>(value | 0xFFFFF800u)
+        : static_cast<std::int32_t>(value);
+}
+
+std::int32_t sign_extend16_coord(std::uint32_t value) noexcept {
+    return static_cast<std::int16_t>(static_cast<std::uint16_t>(value));
+}
+
 std::uint16_t color24_to_bgr555(std::uint32_t value) noexcept {
     const auto red = static_cast<std::uint16_t>((value >> 3u) & 0x1Fu);
     const auto green = static_cast<std::uint16_t>((value >> 11u) & 0x1Fu);
@@ -35,6 +46,9 @@ void Ps1GpuIngress::reset_command_buffer() noexcept {
     fill_color_ = 0u;
     fill_x_ = 0u;
     fill_y_ = 0u;
+    draw_color_ = 0u;
+    draw_x_ = 0;
+    draw_y_ = 0;
     copy_source_x_ = 0u;
     copy_source_y_ = 0u;
     copy_destination_x_ = 0u;
@@ -86,6 +100,30 @@ void Ps1GpuIngress::fill_rectangle(std::uint32_t width, std::uint32_t height) no
     }
 }
 
+void Ps1GpuIngress::draw_monochrome_rectangle(
+    std::uint32_t width,
+    std::uint32_t height) noexcept {
+    for (std::uint32_t local_y = 0u; local_y < height; ++local_y) {
+        const auto y = draw_y_ + draw_offset_y_ + static_cast<std::int32_t>(local_y);
+        if (y < 0 || y >= static_cast<std::int32_t>(vram_height) ||
+            y < static_cast<std::int32_t>(draw_area_top_) ||
+            y > static_cast<std::int32_t>(draw_area_bottom_)) {
+            continue;
+        }
+        for (std::uint32_t local_x = 0u; local_x < width; ++local_x) {
+            const auto x = draw_x_ + draw_offset_x_ + static_cast<std::int32_t>(local_x);
+            if (x < 0 || x >= static_cast<std::int32_t>(vram_width) ||
+                x < static_cast<std::int32_t>(draw_area_left_) ||
+                x > static_cast<std::int32_t>(draw_area_right_)) {
+                continue;
+            }
+            vram_[static_cast<std::size_t>(y) * vram_width +
+                  static_cast<std::uint32_t>(x)] = draw_color_;
+            ++vram_write_count_;
+        }
+    }
+}
+
 void Ps1GpuIngress::copy_vram_rectangle(
     std::uint32_t width,
     std::uint32_t height) noexcept {
@@ -127,6 +165,20 @@ R3000aBusResult Ps1GpuIngress::write_gp0(std::uint32_t value) noexcept {
             const auto width = value & 0x3FFu;
             const auto height = (value >> 16u) & 0x1FFu;
             fill_rectangle(width, height);
+            reset_command_buffer();
+            return {R3000aBusStatus::ok, 0u};
+        }
+        case Gp0Mode::monochrome_rectangle_position:
+            ++gp0_word_count_;
+            draw_x_ = sign_extend16_coord(value);
+            draw_y_ = sign_extend16_coord(value >> 16u);
+            gp0_mode_ = Gp0Mode::monochrome_rectangle_size;
+            return {R3000aBusStatus::ok, 0u};
+        case Gp0Mode::monochrome_rectangle_size: {
+            ++gp0_word_count_;
+            const auto width = value & 0xFFFFu;
+            const auto height = (value >> 16u) & 0xFFFFu;
+            draw_monochrome_rectangle(width, height);
             reset_command_buffer();
             return {R3000aBusStatus::ok, 0u};
         }
@@ -182,16 +234,36 @@ R3000aBusResult Ps1GpuIngress::write_gp0(std::uint32_t value) noexcept {
         case 0x1Fu: // IRQ request/control-side event
         case 0xE1u:
         case 0xE2u:
-        case 0xE3u:
-        case 0xE4u:
-        case 0xE5u:
         case 0xE6u:
+            ++gp0_word_count_;
+            return {R3000aBusStatus::ok, 0u};
+        case 0xE3u:
+            draw_area_left_ = value & 0x3FFu;
+            draw_area_top_ = (value >> 10u) & 0x1FFu;
+            ++gp0_word_count_;
+            return {R3000aBusStatus::ok, 0u};
+        case 0xE4u:
+            draw_area_right_ = value & 0x3FFu;
+            draw_area_bottom_ = (value >> 10u) & 0x1FFu;
+            ++gp0_word_count_;
+            return {R3000aBusStatus::ok, 0u};
+        case 0xE5u:
+            draw_offset_x_ = sign_extend11(value);
+            draw_offset_y_ = sign_extend11(value >> 11u);
             ++gp0_word_count_;
             return {R3000aBusStatus::ok, 0u};
         case 0x02u: // Fill rectangle in VRAM
             ++gp0_word_count_;
             fill_color_ = color24_to_bgr555(value & 0x00FFFFFFu);
             gp0_mode_ = Gp0Mode::fill_rectangle_position;
+            return {R3000aBusStatus::ok, 0u};
+        case 0x60u:
+        case 0x61u:
+        case 0x62u:
+        case 0x63u: // Monochrome variable-size rectangle
+            ++gp0_word_count_;
+            draw_color_ = color24_to_bgr555(value & 0x00FFFFFFu);
+            gp0_mode_ = Gp0Mode::monochrome_rectangle_position;
             return {R3000aBusStatus::ok, 0u};
         case 0x80u: // VRAM -> VRAM rectangle copy
             ++gp0_word_count_;
