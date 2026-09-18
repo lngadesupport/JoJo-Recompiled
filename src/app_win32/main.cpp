@@ -1003,8 +1003,14 @@ void handle_launcher_action(jojo::win32::LauncherUiAction action){
         break;
     }
     case jojo::win32::LauncherUiAction::online_cancel_matchmaking:{
+        auto& model=launcher_ui.online_model();
         online_session.reset();
-        jojo::online_cancel_match_search(launcher_ui.online_model());
+        if(model.selected_room &&
+           model.screen==jojo::OnlineLobbyScreen::connecting){
+            jojo::online_open_public_servers(model);
+        }else{
+            jojo::online_cancel_match_search(model);
+        }
         break;
     }
     case jojo::win32::LauncherUiAction::online_leave_lobby:{
