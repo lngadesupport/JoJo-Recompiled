@@ -300,6 +300,7 @@ static void test_gameplay_validation_summary_is_objective() {
     CHECK(!baseline.frame_observed);
     CHECK(!baseline.dynamic_video_observed);
     CHECK(!baseline.controller_poll_observed);
+    CHECK(!baseline.controller_input_observed);
     CHECK(!baseline.audio_non_silent_observed);
     CHECK(!baseline.memory_card_read_observed);
     CHECK(!baseline.memory_card_write_observed);
@@ -310,6 +311,7 @@ static void test_gameplay_validation_summary_is_objective() {
     observed.observed_non_black_frames = 120u;
     observed.frame_change_count = 87u;
     observed.pad_poll_count = {4u, 0u};
+    observed.pad_pressed_poll_count = {2u, 0u};
     observed.spu_sample_frames = 735u;
     observed.spu_nonzero_samples = 12u;
     observed.memory_card_read_sector_count = {1u, 0u};
@@ -320,6 +322,7 @@ static void test_gameplay_validation_summary_is_objective() {
     CHECK(summary.frame_observed);
     CHECK(summary.dynamic_video_observed);
     CHECK(summary.controller_poll_observed);
+    CHECK(summary.controller_input_observed);
     CHECK(summary.audio_non_silent_observed);
     CHECK(summary.memory_card_read_observed);
     CHECK(summary.memory_card_write_observed);
