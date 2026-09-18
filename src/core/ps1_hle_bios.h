@@ -45,6 +45,11 @@ public:
         R3000aState& cpu,
         std::uint32_t selector) noexcept;
 
+    [[nodiscard]] Ps1HleBiosDispatchStatus begin_interrupt_hook(
+        R3000aState& cpu,
+        const R3000aState& resume_state,
+        R3000aBus& bus) noexcept;
+
     [[nodiscard]] std::uint64_t diagnostic_state_hash() const noexcept;
 
     [[nodiscard]] const std::optional<Ps1BiosHeapState>& heap_state() const noexcept;
@@ -64,6 +69,7 @@ public:
 private:
     std::optional<Ps1BiosHeapState> heap_state_{};
     std::optional<std::uint32_t> interrupt_hook_address_{};
+    std::optional<R3000aState> interrupt_resume_state_{};
     std::optional<bool> pad_card_auto_ack_enabled_{};
     bool card_initialized_{};
     bool card_started_{};
