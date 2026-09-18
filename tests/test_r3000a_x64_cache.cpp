@@ -1,0 +1,73 @@
+#include "core/r3000a_x64_cache.h"
+#include "mips_test_encode.h"
+
+#include <array>
+#include <cstdint>
+#include <iostream>
+
+namespace {
+int failures = 0;
+#define CHECK(x) do { if (!(x)) { std::cerr << __FILE__ << ':' << __LINE__ << " CHECK failed: " #x "\n"; ++failures; } } while (0)
+
+jojo::R3000aIrBlock lift(std::uint32_t immediate) {
+    const std::array<std::uint32_t, 2> words{
+        test_mips::i(0x0Fu, 0u, 8u, 0x1234u),
+        test_mips::i(0x0Du, 8u, 8u, static_cast<std::uint16_t>(immediate)),
+    };
+    const auto block = jojo::lift_r3000a_basic_block(0x80010000u, words);
+    CHECK(block);
+    return block ? block.value : jojo::R3000aIrBlock{};
+}
+
+void test_cache_reuses_identical_block() {
+    jojo::R3000aX64BlockCache cache;
+    const auto block = lift(0x00F0u);
+    const auto first = cache.get_or_compile(block);
+    const auto second = cache.get_or_compile(block);
+    CHECK(first);
+    CHECK(second);
+    if (first && second) CHECK(first.value == second.value);
+    const auto stats = cache.stats();
+    CHECK(stats.entries == 1u);
+    CHECK(stats.compilations == 1u);
+    CHECK(stats.reuses == 1u);
+    CHECK(stats.invalidations == 0u);
+}
+
+void test_cache_invalidates_same_entry_when_guest_code_changes() {
+    jojo::R3000aX64BlockCache cache;
+    const auto first_block = lift(0x00F0u);
+    const auto changed_block = lift(0x00F1u);
+    CHECK(jojo::r3000a_x64_block_fingerprint(first_block) !=
+          jojo::r3000a_x64_block_fingerprint(changed_block));
+
+    CHECK(cache.get_or_compile(first_block));
+    CHECK(cache.get_or_compile(changed_block));
+    const auto stats = cache.stats();
+    CHECK(stats.entries == 1u);
+    CHECK(stats.compilations == 2u);
+    CHECK(stats.reuses == 0u);
+    CHECK(stats.invalidations == 1u);
+}
+
+void test_unsupported_block_is_not_cached() {
+    jojo::R3000aX64BlockCache cache;
+    const std::array<std::uint32_t, 1> words{
+        test_mips::i(0x23u, 8u, 9u, 0u),
+    };
+    const auto block = jojo::lift_r3000a_basic_block(0x80010000u, words);
+    CHECK(block);
+    if (!block) return;
+    const auto compiled = cache.get_or_compile(block.value);
+    CHECK(!compiled);
+    CHECK(cache.stats().entries == 0u);
+    CHECK(cache.stats().compilations == 0u);
+}
+} // namespace
+
+int main() {
+    test_cache_reuses_identical_block();
+    test_cache_invalidates_same_entry_when_guest_code_changes();
+    test_unsupported_block_is_not_cached();
+    return failures ? 1 : 0;
+}
