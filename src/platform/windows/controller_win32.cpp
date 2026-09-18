@@ -21,9 +21,24 @@ namespace jojo::win32 {
 namespace {
 
 constexpr USHORT hid_usage_page_generic_desktop = 0x01;
+constexpr USHORT hid_usage_page_game_controls = 0x05;
 constexpr USHORT hid_usage_joystick = 0x04;
 constexpr USHORT hid_usage_gamepad = 0x05;
+constexpr USHORT hid_usage_multi_axis_controller = 0x08;
 constexpr USHORT hid_usage_hat_switch = 0x39;
+
+bool is_supported_controller_usage(USHORT usage_page, USHORT usage) noexcept {
+    if (usage_page == hid_usage_page_generic_desktop) {
+        return usage == hid_usage_joystick ||
+               usage == hid_usage_gamepad ||
+               usage == hid_usage_multi_axis_controller;
+    }
+
+    // Some arcade encoders expose their top-level collection on the HID
+    // Game Controls page instead of Generic Desktop. Keep this broad on
+    // purpose: button/value decoding below remains descriptor-driven.
+    return usage_page == hid_usage_page_game_controls;
+}
 
 std::wstring lower(std::wstring value) {
     for (auto& c : value) c = static_cast<wchar_t>(std::towlower(c));
@@ -82,8 +97,7 @@ std::string hid_display_name(const std::wstring& path) {
 
 bool is_controller_usage(const RID_DEVICE_INFO& info) noexcept {
     return info.dwType == RIM_TYPEHID &&
-           info.hid.usUsagePage == hid_usage_page_generic_desktop &&
-           (info.hid.usUsage == hid_usage_joystick || info.hid.usUsage == hid_usage_gamepad);
+           is_supported_controller_usage(info.hid.usUsagePage, info.hid.usUsage);
 }
 
 void add_xinput(std::vector<InputDeviceInfo>& out) {
@@ -342,16 +356,24 @@ Result<void> Win32InputHost::register_raw_input(HWND window) {
     if (!window) {
         return Result<void>::failure(ErrorCode::invalid_argument, "Raw Input requires a valid window handle");
     }
-    constexpr DWORD flags = RIDEV_INPUTSINK | RIDEV_DEVNOTIFY;
+    constexpr DWORD flags =
+        RIDEV_INPUTSINK | RIDEV_DEVNOTIFY | RIDEV_PAGEONLY;
     RAWINPUTDEVICE devices[2]{};
+
+    // Register whole HID pages rather than only Gamepad/Joystick usages.
+    // This also catches multi-axis devices and arcade/fight-stick encoders
+    // that expose non-standard top-level collections. Mouse/keyboard input
+    // is filtered by handle_raw_input and never enters the controller state.
     devices[0].usUsagePage = hid_usage_page_generic_desktop;
-    devices[0].usUsage = hid_usage_joystick;
+    devices[0].usUsage = 0u;
     devices[0].dwFlags = flags;
     devices[0].hwndTarget = window;
-    devices[1].usUsagePage = hid_usage_page_generic_desktop;
-    devices[1].usUsage = hid_usage_gamepad;
+
+    devices[1].usUsagePage = hid_usage_page_game_controls;
+    devices[1].usUsage = 0u;
     devices[1].dwFlags = flags;
     devices[1].hwndTarget = window;
+
     if (!RegisterRawInputDevices(devices, 2, sizeof(RAWINPUTDEVICE))) {
         return Result<void>::failure(ErrorCode::io_error,
                                      "RegisterRawInputDevices failed with Win32 error " + std::to_string(GetLastError()));
@@ -392,8 +414,7 @@ bool Win32InputHost::handle_raw_input(HRAWINPUT raw_input) {
     auto* preparsed = reinterpret_cast<PHIDP_PREPARSED_DATA>(preparsed_bytes.data());
     HIDP_CAPS caps{};
     if (HidP_GetCaps(preparsed, &caps) != HIDP_STATUS_SUCCESS ||
-        caps.UsagePage != hid_usage_page_generic_desktop ||
-        (caps.Usage != hid_usage_joystick && caps.Usage != hid_usage_gamepad)) {
+        !is_supported_controller_usage(caps.UsagePage, caps.Usage)) {
         return false;
     }
 
