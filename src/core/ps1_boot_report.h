@@ -73,6 +73,8 @@ struct Ps1BootReport {
     std::vector<Ps1CdromCommandSummary> recent_cdrom_commands;
     std::uint64_t gpu_gp0_command_count{};
     std::uint64_t gpu_gp1_command_count{};
+    std::optional<std::uint8_t> unsupported_gpu_gp0_command{};
+    std::optional<std::uint8_t> unsupported_gpu_gp1_command{};
     std::uint64_t vram_write_count{};
     std::uint64_t presented_frames{};
     std::deque<Ps1TraceSample> recent_trace;
