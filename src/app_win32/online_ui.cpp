@@ -164,6 +164,100 @@ void draw_close_button(Gdiplus::Graphics& g, float x, float y) {
               Gdiplus::StringAlignmentCenter);
 }
 
+
+std::string_view keyboard_row_text(std::size_t row) noexcept {
+    static constexpr std::array<std::string_view, 4> rows{
+        "1234567890",
+        "QWERTYUIOP",
+        "ASDFGHJKL",
+        "ZXCVBNM",
+    };
+    return row < rows.size() ? rows[row] : std::string_view{};
+}
+
+std::size_t keyboard_row_length(std::size_t row) noexcept {
+    if (row < 4u) return keyboard_row_text(row).size();
+    return row == 4u ? 3u : 0u;
+}
+
+void draw_name_keyboard(
+    Gdiplus::Graphics& g,
+    const OnlineLobbyModel& model,
+    std::size_t selected_row,
+    std::size_t selected_column) {
+    draw_text(
+        g, L"PLAYER NAME",
+        430.0f, 70.0f, 740.0f, 72.0f,
+        50.0f, kWhite, true,
+        Gdiplus::StringAlignmentCenter);
+
+    draw_text(g, L"ENTER PLAYER NAME", 350.0f, 165.0f, 330.0f, 48.0f, 27.0f, kWhite, true);
+    outline(g, 680.0f, 165.0f, 570.0f, 48.0f, kWhite, 2.0f);
+    draw_text(g, widen(model.player_name), 695.0f, 165.0f, 535.0f, 48.0f, 25.0f, kWhite);
+
+    constexpr float start_x = 350.0f;
+    constexpr float start_y = 285.0f;
+    constexpr float cell_w = 80.0f;
+    constexpr float cell_h = 54.0f;
+    constexpr float gap_x = 8.0f;
+    constexpr float gap_y = 14.0f;
+
+    for (std::size_t row = 0u; row < 4u; ++row) {
+        const auto text = keyboard_row_text(row);
+        const float row_width =
+            static_cast<float>(text.size()) * cell_w +
+            static_cast<float>(text.size() - 1u) * gap_x;
+        const float row_x = (kUiWidth - row_width) * 0.5f;
+        for (std::size_t column = 0u; column < text.size(); ++column) {
+            const float x = row_x + static_cast<float>(column) * (cell_w + gap_x);
+            const float y = start_y + static_cast<float>(row) * (cell_h + gap_y);
+            const bool selected =
+                row == selected_row && column == selected_column;
+            if (selected) {
+                fill(g, x, y, cell_w, cell_h, Gdiplus::Color(90, 0, 100, 255));
+            }
+            outline(g, x, y, cell_w, cell_h, selected ? kBlue : kWhite, selected ? 4.0f : 2.0f);
+            std::wstring label(1u, static_cast<wchar_t>(text[column]));
+            draw_text(
+                g, label, x, y, cell_w, cell_h,
+                26.0f, selected ? kWhite : kMuted, true,
+                Gdiplus::StringAlignmentCenter);
+        }
+    }
+
+    constexpr float action_y = 585.0f;
+    struct ActionKey {
+        const wchar_t* label;
+        float x;
+        float width;
+    };
+    constexpr std::array<ActionKey, 3> actions{{
+        {L"SPACE", 350.0f, 260.0f},
+        {L"BACKSPACE", 630.0f, 300.0f},
+        {L"ACCEPT", 950.0f, 300.0f},
+    }};
+    for (std::size_t column = 0u; column < actions.size(); ++column) {
+        const auto& key = actions[column];
+        const bool selected =
+            selected_row == 4u && selected_column == column;
+        if (selected) {
+            fill(g, key.x, action_y, key.width, 62.0f, Gdiplus::Color(90, 0, 100, 255));
+        }
+        outline(g, key.x, action_y, key.width, 62.0f, selected ? kBlue : kWhite, selected ? 4.0f : 2.0f);
+        draw_text(
+            g, key.label, key.x, action_y, key.width, 62.0f,
+            24.0f, selected ? kWhite : kMuted, true,
+            Gdiplus::StringAlignmentCenter);
+    }
+
+    draw_text(
+        g,
+        L"ARROWS / D-PAD: MOVE     ENTER / A: SELECT     ESC / B: BACK",
+        350.0f, 695.0f, 900.0f, 44.0f,
+        19.0f, kMuted, true,
+        Gdiplus::StringAlignmentCenter);
+}
+
 void draw_online_home(Gdiplus::Graphics& g, const OnlineLobbyModel& model) {
     draw_text(g, L"ONLINE", 1090.0f, 110.0f, 300.0f, 70.0f, 56.0f, kWhite, true,
               Gdiplus::StringAlignmentCenter);
@@ -451,6 +545,9 @@ void draw_lobby(Gdiplus::Graphics& g, const OnlineLobbyModel& model, const std::
 
 void OnlineUi::show_home() noexcept {
     text_field_ = TextField::none;
+    name_keyboard_open_ = false;
+    keyboard_row_ = 0u;
+    keyboard_column_ = 0u;
     selected_row_ = 0u;
     selected_room_row_ = 0u;
 }
@@ -470,6 +567,64 @@ std::string OnlineUi::take_chat_message() {
     chat_draft_.clear();
     text_field_ = TextField::chat;
     return result;
+}
+
+
+void OnlineUi::move_name_keyboard(int dx, int dy) noexcept {
+    int row = static_cast<int>(keyboard_row_);
+    row += dy;
+    if (row < 0) row = 4;
+    if (row > 4) row = 0;
+    keyboard_row_ = static_cast<std::size_t>(row);
+
+    const auto length = keyboard_row_length(keyboard_row_);
+    if (length == 0u) {
+        keyboard_column_ = 0u;
+        return;
+    }
+
+    if (dy != 0) {
+        keyboard_column_ = std::min(keyboard_column_, length - 1u);
+    }
+    if (dx > 0) {
+        keyboard_column_ = (keyboard_column_ + 1u) % length;
+    } else if (dx < 0) {
+        keyboard_column_ =
+            keyboard_column_ == 0u ? length - 1u : keyboard_column_ - 1u;
+    }
+}
+
+void OnlineUi::activate_name_keyboard_key(OnlineLobbyModel& model) {
+    if (keyboard_row_ < 4u) {
+        const auto row = keyboard_row_text(keyboard_row_);
+        if (keyboard_column_ < row.size() && model.player_name.size() < 24u) {
+            model.player_name.push_back(row[keyboard_column_]);
+        }
+        return;
+    }
+
+    switch (keyboard_column_) {
+        case 0u:
+            if (!model.player_name.empty() &&
+                model.player_name.back() != ' ' &&
+                model.player_name.size() < 24u) {
+                model.player_name.push_back(' ');
+            }
+            break;
+        case 1u:
+            if (!model.player_name.empty()) model.player_name.pop_back();
+            break;
+        case 2u:
+            if (valid_online_player_name(model.player_name)) {
+                name_keyboard_open_ = false;
+                text_field_ = TextField::none;
+            } else {
+                model.status = "PLAYER NAME MUST CONTAIN 1-24 CHARACTERS.";
+            }
+            break;
+        default:
+            break;
+    }
 }
 
 void OnlineUi::cycle_region(
@@ -551,7 +706,12 @@ void OnlineUi::paint(
 
     switch (model.screen) {
         case OnlineLobbyScreen::home:
-            draw_online_home(g, model);
+            if (name_keyboard_open_) {
+                draw_name_keyboard(
+                    g, model, keyboard_row_, keyboard_column_);
+            } else {
+                draw_online_home(g, model);
+            }
             break;
         case OnlineLobbyScreen::public_servers:
             draw_public_servers(g, model);
