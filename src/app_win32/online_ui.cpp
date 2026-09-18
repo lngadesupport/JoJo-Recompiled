@@ -321,7 +321,7 @@ void draw_public_servers(Gdiplus::Graphics& g, const OnlineLobbyModel& model) {
         draw_text(g, widen(std::string(online_room_status_name(room.status))),
                   x + 235.0f, row_y, 90.0f, 52.0f, 18.0f,
                   room.status == OnlineRoomStatus::wait ? kGreen :
-                  (room.status == OnlineRoomStatus::version_mismatch ? kGold : kMuted),
+                  (room.status == OnlineRoomStatus::version_mismatch ? kOrange : kMuted),
                   true);
         draw_text(
             g,
