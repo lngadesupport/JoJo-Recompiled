@@ -29,6 +29,8 @@ enum class LauncherUiAction {
     online_begin_matchmaking,
     online_cancel_matchmaking,
     online_leave_lobby,
+    online_ready_changed,
+    online_send_chat,
     online_start_lobby_game,
 };
 
@@ -76,6 +78,9 @@ public:
     [[nodiscard]] GameAction selected_control_action() const noexcept;
     [[nodiscard]] OnlineLobbyModel& online_model() noexcept { return online_model_; }
     [[nodiscard]] const OnlineLobbyModel& online_model() const noexcept { return online_model_; }
+    [[nodiscard]] std::string take_online_chat_message() {
+        return online_ui_.take_chat_message();
+    }
 
 private:
     enum class Screen {
