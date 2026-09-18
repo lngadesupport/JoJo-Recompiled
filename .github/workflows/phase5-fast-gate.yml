@@ -1,0 +1,28 @@
+name: Phase 5 Fast Gate
+
+on:
+  push:
+    branches:
+      - feature/ps1-spu-audio-phase5
+
+permissions:
+  contents: read
+
+jobs:
+  phase5-fast-linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure Release
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+      - name: Build Phase 5 focused targets
+        run: >-
+          cmake --build build --target
+          jojo_ps1_spu_tests
+          jojo_ps1_spu_dma_tests
+          -j2
+      - name: Run Phase 5 focused tests
+        run: >-
+          ctest --test-dir build -R
+          "jojo_ps1_spu(_dma)?_tests"
+          --output-on-failure
