@@ -49,8 +49,16 @@ Result<void> set_online_region(
     return Result<void>::success();
 }
 
+void online_reset_peer_state(OnlineLobbyModel& model) noexcept {
+    model.remote_player_name = "OPPONENT";
+    model.remote_ready = false;
+    model.start_requested = false;
+    model.chat_messages.clear();
+}
+
 void online_open_home(OnlineLobbyModel& model) noexcept {
     model.screen = OnlineLobbyScreen::home;
+    online_reset_peer_state(model);
     model.status.clear();
 }
 
@@ -146,6 +154,7 @@ Result<void> online_enter_host_lobby(
     model.screen = OnlineLobbyScreen::lobby;
     model.local_player_is_host = true;
     model.ready = false;
+    online_reset_peer_state(model);
     model.status = "WAITING FOR PLAYERS";
     return Result<void>::success();
 }
@@ -160,6 +169,7 @@ Result<void> online_enter_joined_lobby(
     model.screen = OnlineLobbyScreen::lobby;
     model.local_player_is_host = false;
     model.ready = false;
+    online_reset_peer_state(model);
     model.status = "CONNECTED TO LOBBY";
     return Result<void>::success();
 }
@@ -175,6 +185,51 @@ void online_set_ready(
     OnlineLobbyModel& model,
     bool ready) noexcept {
     model.ready = ready;
+}
+
+Result<void> online_set_remote_player_name(
+    OnlineLobbyModel& model,
+    std::string name) {
+    if (!valid_online_player_name(name)) {
+        return Result<void>::failure(
+            ErrorCode::invalid_argument,
+            "remote player name must contain 1-24 printable characters");
+    }
+    model.remote_player_name = std::move(name);
+    return Result<void>::success();
+}
+
+void online_set_remote_ready(
+    OnlineLobbyModel& model,
+    bool ready) noexcept {
+    model.remote_ready = ready;
+}
+
+Result<void> online_append_chat(
+    OnlineLobbyModel& model,
+    std::string sender,
+    std::string text) {
+    if (!valid_online_player_name(sender) || !valid_text(text, 120u)) {
+        return Result<void>::failure(
+            ErrorCode::invalid_argument,
+            "online chat sender/message is invalid");
+    }
+    model.chat_messages.push_back(
+        OnlineChatMessage{std::move(sender), std::move(text)});
+    constexpr std::size_t max_messages = 32u;
+    if (model.chat_messages.size() > max_messages) {
+        model.chat_messages.erase(
+            model.chat_messages.begin(),
+            model.chat_messages.begin() +
+                static_cast<std::ptrdiff_t>(
+                    model.chat_messages.size() - max_messages));
+    }
+    return Result<void>::success();
+}
+
+void online_request_start(
+    OnlineLobbyModel& model) noexcept {
+    model.start_requested = true;
 }
 
 } // namespace jojo
