@@ -93,6 +93,14 @@ private:
     std::uint8_t texture_depth_{};
     std::uint8_t texture_u_{};
     std::uint8_t texture_v_{};
+    std::uint8_t texture_window_mask_x_{};
+    std::uint8_t texture_window_mask_y_{};
+    std::uint8_t texture_window_offset_x_{};
+    std::uint8_t texture_window_offset_y_{};
+    bool texture_x_flip_{};
+    bool texture_y_flip_{};
+    std::uint32_t texture_fixed_width_{};
+    std::uint32_t texture_fixed_height_{};
     std::uint32_t texture_clut_x_{};
     std::uint32_t texture_clut_y_{};
     std::uint32_t copy_source_x_{};

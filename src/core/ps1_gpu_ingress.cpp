@@ -22,6 +22,16 @@ std::int32_t sign_extend16_coord(std::uint32_t value) noexcept {
     return static_cast<std::int16_t>(static_cast<std::uint16_t>(value));
 }
 
+std::uint32_t apply_texture_window_axis(
+    std::uint32_t coordinate,
+    std::uint8_t mask,
+    std::uint8_t offset) noexcept {
+    const auto expanded_mask = static_cast<std::uint32_t>(mask) << 3u;
+    const auto expanded_offset =
+        static_cast<std::uint32_t>(offset & mask) << 3u;
+    return ((coordinate & ~expanded_mask) | expanded_offset) & 0xFFu;
+}
+
 std::uint16_t color24_to_bgr555(std::uint32_t value) noexcept {
     const auto red = static_cast<std::uint16_t>((value >> 3u) & 0x1Fu);
     const auto green = static_cast<std::uint16_t>((value >> 11u) & 0x1Fu);
@@ -49,6 +59,8 @@ void Ps1GpuIngress::reset_command_buffer() noexcept {
     draw_color_ = 0u;
     draw_x_ = 0;
     draw_y_ = 0;
+    texture_fixed_width_ = 0u;
+    texture_fixed_height_ = 0u;
     copy_source_x_ = 0u;
     copy_source_y_ = 0u;
     copy_destination_x_ = 0u;
@@ -127,8 +139,14 @@ void Ps1GpuIngress::draw_monochrome_rectangle(
 std::uint16_t Ps1GpuIngress::sample_raw_texture(
     std::uint32_t u,
     std::uint32_t v) const noexcept {
-    u &= 0xFFu;
-    v &= 0xFFu;
+    u = apply_texture_window_axis(
+        u,
+        texture_window_mask_x_,
+        texture_window_offset_x_);
+    v = apply_texture_window_axis(
+        v,
+        texture_window_mask_y_,
+        texture_window_offset_y_);
     const auto source_y = (texture_page_y_ + v) & (vram_height - 1u);
 
     switch (texture_depth_) {
@@ -187,9 +205,13 @@ void Ps1GpuIngress::draw_raw_textured_rectangle(
                 continue;
             }
 
-            const auto texel = sample_raw_texture(
-                static_cast<std::uint32_t>(texture_u_) + local_x,
-                static_cast<std::uint32_t>(texture_v_) + local_y);
+            const auto texture_x = texture_x_flip_
+                ? static_cast<std::uint32_t>(texture_u_) + (width - 1u - local_x)
+                : static_cast<std::uint32_t>(texture_u_) + local_x;
+            const auto texture_y = texture_y_flip_
+                ? static_cast<std::uint32_t>(texture_v_) + (height - 1u - local_y)
+                : static_cast<std::uint32_t>(texture_v_) + local_y;
+            const auto texel = sample_raw_texture(texture_x, texture_y);
             if (texel == 0u) continue;
 
             vram_[static_cast<std::size_t>(y) * vram_width +
@@ -270,7 +292,12 @@ R3000aBusResult Ps1GpuIngress::write_gp0(std::uint32_t value) noexcept {
             const auto clut = static_cast<std::uint16_t>(value >> 16u);
             texture_clut_x_ = static_cast<std::uint32_t>(clut & 0x3Fu) << 4u;
             texture_clut_y_ = static_cast<std::uint32_t>((clut >> 6u) & 0x1FFu);
-            gp0_mode_ = Gp0Mode::textured_rectangle_size;
+            if (texture_fixed_width_ != 0u && texture_fixed_height_ != 0u) {
+                draw_raw_textured_rectangle(texture_fixed_width_, texture_fixed_height_);
+                reset_command_buffer();
+            } else {
+                gp0_mode_ = Gp0Mode::textured_rectangle_size;
+            }
             return {R3000aBusStatus::ok, 0u};
         }
         case Gp0Mode::textured_rectangle_size: {
@@ -336,8 +363,16 @@ R3000aBusResult Ps1GpuIngress::write_gp0(std::uint32_t value) noexcept {
             texture_page_x_ = (value & 0x0Fu) * 64u;
             texture_page_y_ = ((value >> 4u) & 1u) * 256u;
             texture_depth_ = static_cast<std::uint8_t>((value >> 7u) & 3u);
+            texture_x_flip_ = (value & (1u << 12u)) != 0u;
+            texture_y_flip_ = (value & (1u << 13u)) != 0u;
             return {R3000aBusStatus::ok, 0u};
-        case 0xE2u:
+        case 0xE2u: // Texture window
+            texture_window_mask_x_ = static_cast<std::uint8_t>(value & 0x1Fu);
+            texture_window_mask_y_ = static_cast<std::uint8_t>((value >> 5u) & 0x1Fu);
+            texture_window_offset_x_ = static_cast<std::uint8_t>((value >> 10u) & 0x1Fu);
+            texture_window_offset_y_ = static_cast<std::uint8_t>((value >> 15u) & 0x1Fu);
+            ++gp0_word_count_;
+            return {R3000aBusStatus::ok, 0u};
         case 0xE6u:
             ++gp0_word_count_;
             return {R3000aBusStatus::ok, 0u};
@@ -373,6 +408,28 @@ R3000aBusResult Ps1GpuIngress::write_gp0(std::uint32_t value) noexcept {
             if (texture_depth_ > 2u) {
                 last_unsupported_gp0_command_ = command;
                 return {R3000aBusStatus::unsupported, 0u};
+            }
+            texture_fixed_width_ = 0u;
+            texture_fixed_height_ = 0u;
+            ++gp0_word_count_;
+            gp0_mode_ = Gp0Mode::textured_rectangle_position;
+            return {R3000aBusStatus::ok, 0u};
+        case 0x6Du: // Raw-textured 1x1 rectangle
+        case 0x75u: // Raw-textured 8x8 rectangle
+        case 0x7Du: // Raw-textured 16x16 rectangle
+            if (texture_depth_ > 2u) {
+                last_unsupported_gp0_command_ = command;
+                return {R3000aBusStatus::unsupported, 0u};
+            }
+            if (command == 0x6Du) {
+                texture_fixed_width_ = 1u;
+                texture_fixed_height_ = 1u;
+            } else if (command == 0x75u) {
+                texture_fixed_width_ = 8u;
+                texture_fixed_height_ = 8u;
+            } else {
+                texture_fixed_width_ = 16u;
+                texture_fixed_height_ = 16u;
             }
             ++gp0_word_count_;
             gp0_mode_ = Gp0Mode::textured_rectangle_position;
