@@ -110,6 +110,8 @@ static void test_sio0_memory_card_read_and_write_protocol() {
     }
     CHECK(exchange(sio, 0x00u) == checksum);
     CHECK(exchange(sio, 0x00u) == 0x47u);
+    CHECK(sio.memory_card_read_sector_count(0u) == 1u);
+    CHECK(sio.memory_card_write_sector_count(0u) == 0u);
 
     select_port0(sio);
     std::array<std::uint8_t, 128> replacement{};
@@ -130,6 +132,8 @@ static void test_sio0_memory_card_read_and_write_protocol() {
     CHECK(exchange(sio, 0x00u) == 0x5Cu);
     CHECK(exchange(sio, 0x00u) == 0x5Du);
     CHECK(exchange(sio, 0x00u) == 0x47u);
+    CHECK(sio.memory_card_read_sector_count(0u) == 1u);
+    CHECK(sio.memory_card_write_sector_count(0u) == 1u);
 
     const auto written = card.read_sector(3u);
     CHECK(written.has_value());
