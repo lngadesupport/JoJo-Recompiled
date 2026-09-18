@@ -30,7 +30,8 @@ int main(int argc, char** argv) {
     if (argc < 3) {
         std::cerr
             << "usage: jojo_ps1_commercial_probe <source.bin|source.cue|source.iso> "
-               "<report.txt> [segments=128] [instructions_per_segment=500000]\n";
+               "<report.txt> [segments=128] [instructions_per_segment=500000] "
+               "[native_x64=0|1]\n";
         return 2;
     }
 
@@ -39,6 +40,8 @@ int main(int argc, char** argv) {
     const auto max_segments = argc >= 4 ? parse_u32(argv[3], 128u) : 128u;
     const auto segment_budget =
         argc >= 5 ? parse_u64(argv[4], 500000u) : 500000u;
+    const bool native_x64 =
+        argc >= 6 ? parse_u32(argv[5], 0u) != 0u : false;
 
     auto runner = jojo::Ps1CommercialEvidenceRunner::open(source);
     if (!runner) {
@@ -46,6 +49,8 @@ int main(int argc, char** argv) {
         std::cerr << "open_detail=" << runner.detail << "\n";
         return 3;
     }
+
+    runner.value.set_native_x64_enabled(native_x64);
 
     jojo::Ps1CommercialEvidenceOptions options{};
     options.boot.instruction_budget = segment_budget;
@@ -67,6 +72,9 @@ int main(int argc, char** argv) {
     std::cout << "revision_id=" << report.source.revision_id << "\n";
     std::cout << "source_size=" << report.source.source_size << "\n";
     std::cout << "source_hash_fnv1a64=" << report.source.source_hash_fnv1a64 << "\n";
+    std::cout << "native_x64="
+              << (runner.value.native_x64_enabled() ? 1 : 0)
+              << "\n";
     std::cout << "frontier="
               << jojo::ps1_commercial_frontier_class_name(report.frontier)
               << "\n";
