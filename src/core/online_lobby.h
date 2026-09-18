@@ -64,6 +64,7 @@ struct OnlineLobbyModel {
     std::string player_name{"PLAYER"};
     std::string remote_player_name{"OPPONENT"};
     std::string region{"SOUTH AMERICA - ARGENTINA"};
+    std::string direct_connect_endpoint{"127.0.0.1:27886"};
     OnlineMatchQueue queue{OnlineMatchQueue::casual};
     OnlineCreateRoomDraft create_room{};
     std::vector<OnlineRoomInfo> rooms{};
