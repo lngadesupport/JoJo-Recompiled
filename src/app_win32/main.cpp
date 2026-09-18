@@ -918,13 +918,15 @@ void poll_online_directory(){
             ?2u:1u;
         const auto published=online_directory_client->publish_room(
             model.create_room.name,
+            model.player_name,
             model.region,
             model.local_game_revision,
             27886u,
             static_cast<std::uint8_t>(players),
             static_cast<std::uint8_t>(
                 std::clamp<std::uint32_t>(
-                    model.create_room.max_players,2u,8u)));
+                    model.create_room.max_players,2u,8u)),
+            model.start_requested);
         if(!published){
             model.status="GLOBAL DIRECTORY PUBLISH ERROR: "+
                 published.detail;
@@ -948,11 +950,23 @@ void poll_online_directory(){
             jojo::OnlineRoomInfo room{};
             room.id="global:"+remote.id;
             room.name=remote.name;
+            room.owner=remote.owner;
             room.region=remote.region;
             room.players=remote.players;
             room.max_players=remote.max_players;
             room.password_required=false;
-            room.available=remote.players<remote.max_players;
+            room.lan=false;
+            room.ping_ms=remote.directory_ping_ms;
+            room.status=
+                remote.game_revision!=model.local_game_revision
+                    ?jojo::OnlineRoomStatus::version_mismatch
+                    :(remote.in_game
+                        ?jojo::OnlineRoomStatus::in_game
+                        :(remote.players>=remote.max_players
+                            ?jojo::OnlineRoomStatus::full
+                            :jojo::OnlineRoomStatus::wait));
+            room.available=
+                room.status==jojo::OnlineRoomStatus::wait;
             room.connect_endpoint=
                 jojo::format_direct_endpoint(
                     remote.gameplay_endpoint);
@@ -1030,6 +1044,7 @@ void update_lan_host_advertisement(){
 
     jojo::LanLobbyAdvertisement advertisement{};
     advertisement.name=model.create_room.name;
+    advertisement.owner=model.player_name;
     advertisement.region=model.region;
     advertisement.game_revision=model.local_game_revision;
     advertisement.gameplay_port=27886u;
@@ -1042,6 +1057,7 @@ void update_lan_host_advertisement(){
                 model.create_room.max_players,2u,8u));
     advertisement.password_required=
         model.create_room.privacy==jojo::OnlineRoomPrivacy::private_room;
+    advertisement.in_game=model.start_requested;
 
     const auto advertised=
         lan_lobby_discovery->set_host(advertisement);
