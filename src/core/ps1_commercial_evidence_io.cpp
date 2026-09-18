@@ -95,9 +95,13 @@ std::string format_ps1_commercial_evidence_report(
     out << "source_hash_fnv1a64=" << report.source.source_hash_fnv1a64 << '\n';
     out << "revision_id=" << report.source.revision_id << '\n';
     out << "frontier=" << ps1_commercial_frontier_class_name(report.frontier) << '\n';
+    out << "session_termination="
+        << ps1_commercial_session_termination_name(report.session_termination)
+        << '\n';
     out << "stop_reason=" << ps1_boot_stop_reason_name(report.boot.stop_reason) << '\n';
     out << "total_instructions_retired=" << report.total_instructions_retired << '\n';
     out << "execution_segments=" << report.execution_segments << '\n';
+    out << "completed_frames=" << report.completed_frames << '\n';
     out << "pad0_poll_count=" << report.pad_poll_count[0] << '\n';
     out << "pad1_poll_count=" << report.pad_poll_count[1] << '\n';
     out << "memory_card0_read_sector_count="
