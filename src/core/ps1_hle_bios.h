@@ -36,6 +36,9 @@ public:
     [[nodiscard]] const std::optional<Ps1BiosHeapState>& heap_state() const noexcept;
     [[nodiscard]] const std::optional<std::uint32_t>& interrupt_hook_address() const noexcept;
     [[nodiscard]] const std::optional<bool>& pad_card_auto_ack_enabled() const noexcept;
+    [[nodiscard]] bool card_initialized() const noexcept;
+    [[nodiscard]] bool card_started() const noexcept;
+    [[nodiscard]] bool card_pad_enabled() const noexcept;
     [[nodiscard]] std::optional<bool> root_counter_auto_ack_enabled(
         std::uint32_t counter) const noexcept;
     [[nodiscard]] bool iso9660_removed() const noexcept;
@@ -44,6 +47,9 @@ private:
     std::optional<Ps1BiosHeapState> heap_state_{};
     std::optional<std::uint32_t> interrupt_hook_address_{};
     std::optional<bool> pad_card_auto_ack_enabled_{};
+    bool card_initialized_{};
+    bool card_started_{};
+    bool card_pad_enabled_{};
     std::array<std::optional<bool>, 4> root_counter_auto_ack_enabled_{};
     bool iso9660_removed_{};
 };
