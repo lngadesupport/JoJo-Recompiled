@@ -18,6 +18,7 @@ namespace jojo {
 namespace {
 
 static_assert(std::is_standard_layout_v<R3000aState>);
+static_assert(std::is_standard_layout_v<R3000aDelaySlot>);
 
 void emit_u8(std::vector<std::uint8_t>& out, std::uint8_t value) {
     out.push_back(value);
@@ -119,6 +120,48 @@ void emit_mov_state_imm32(
     emit_u8(out, 0x81u);
     emit_u32(out, offset);
     emit_u32(out, value);
+}
+
+void emit_mov_state_imm8(
+    std::vector<std::uint8_t>& out,
+    std::uint32_t offset,
+    std::uint8_t value) {
+    emit_u8(out, 0xC6u);
+    emit_u8(out, 0x81u);
+    emit_u32(out, offset);
+    emit_u8(out, value);
+}
+
+void emit_store_al_state(
+    std::vector<std::uint8_t>& out,
+    std::uint32_t offset) {
+    emit_u8(out, 0x88u);
+    emit_u8(out, 0x81u);
+    emit_u32(out, offset);
+}
+
+constexpr std::uint32_t delay_active_offset() noexcept {
+    return static_cast<std::uint32_t>(
+        offsetof(R3000aState, delay_slot) +
+        offsetof(R3000aDelaySlot, active));
+}
+
+constexpr std::uint32_t delay_branch_pc_offset() noexcept {
+    return static_cast<std::uint32_t>(
+        offsetof(R3000aState, delay_slot) +
+        offsetof(R3000aDelaySlot, branch_pc));
+}
+
+constexpr std::uint32_t delay_taken_offset() noexcept {
+    return static_cast<std::uint32_t>(
+        offsetof(R3000aState, delay_slot) +
+        offsetof(R3000aDelaySlot, taken));
+}
+
+constexpr std::uint32_t delay_target_offset() noexcept {
+    return static_cast<std::uint32_t>(
+        offsetof(R3000aState, delay_slot) +
+        offsetof(R3000aDelaySlot, target));
 }
 
 std::uint32_t sign_extend16(std::uint16_t value) noexcept {
@@ -226,6 +269,195 @@ bool r3000a_op_is_x64_lowerable(MipsOp op) noexcept {
         default:
             return false;
     }
+}
+
+bool r3000a_op_is_x64_direct_lowerable(MipsOp op) noexcept {
+    if (r3000a_op_is_x64_lowerable(op)) return true;
+    switch (op) {
+        case MipsOp::j:
+        case MipsOp::jal:
+        case MipsOp::jr:
+        case MipsOp::jalr:
+        case MipsOp::beq:
+        case MipsOp::bne:
+        case MipsOp::blez:
+        case MipsOp::bgtz:
+        case MipsOp::bltz:
+        case MipsOp::bgez:
+        case MipsOp::bltzal:
+        case MipsOp::bgezal:
+            return true;
+        default:
+            return false;
+    }
+}
+
+Result<R3000aX64Code> emit_r3000a_x64_instruction(
+    std::uint32_t pc,
+    const MipsInstruction& instruction) noexcept {
+    if (r3000a_op_is_x64_lowerable(instruction.op)) {
+        R3000aIrBlock block{};
+        block.entry_pc = pc;
+        block.instructions.push_back(R3000aIrInstruction{
+            pc,
+            instruction,
+            false,
+        });
+        block.terminator = R3000aIrTerminatorKind::fallthrough;
+        block.fallthrough_target = pc + 4u;
+        return emit_r3000a_x64_alu_block(block);
+    }
+
+    if (!r3000a_op_is_x64_direct_lowerable(instruction.op)) {
+        return Result<R3000aX64Code>::failure(
+            ErrorCode::backend_unavailable,
+            "R3000A instruction is not lowered by the direct x64 backend");
+    }
+
+    R3000aX64Code code{};
+    code.entry_pc = pc;
+    code.instruction_count = 1u;
+    auto& out = code.bytes;
+    out.reserve(128u);
+
+    const auto emit_common_delay = [&](std::uint32_t target) {
+        emit_mov_state_imm8(out, delay_active_offset(), 1u);
+        emit_mov_state_imm32(out, delay_branch_pc_offset(), pc);
+        emit_mov_state_imm32(out, delay_target_offset(), target);
+        emit_mov_state_imm32(
+            out,
+            static_cast<std::uint32_t>(offsetof(R3000aState, pc)),
+            pc + 4u);
+    };
+
+    switch (instruction.op) {
+        case MipsOp::j:
+        case MipsOp::jal: {
+            const auto target =
+                ((pc + 4u) & 0xF0000000u) |
+                ((instruction.target & 0x03FFFFFFu) << 2u);
+            emit_common_delay(target);
+            emit_mov_state_imm8(out, delay_taken_offset(), 1u);
+            emit_mov_state_imm32(
+                out,
+                static_cast<std::uint32_t>(offsetof(R3000aState, next_pc)),
+                target);
+            if (instruction.op == MipsOp::jal) {
+                emit_mov_state_imm32(out, gpr_offset(31u), pc + 8u);
+            }
+            break;
+        }
+
+        case MipsOp::jr:
+        case MipsOp::jalr: {
+            emit_mov_state_imm8(out, delay_active_offset(), 1u);
+            emit_mov_state_imm32(out, delay_branch_pc_offset(), pc);
+            emit_mov_state_imm8(out, delay_taken_offset(), 1u);
+            emit_load_eax_gpr(out, instruction.rs);
+            emit_store_eax_state(out, delay_target_offset());
+            emit_store_eax_state(
+                out,
+                static_cast<std::uint32_t>(offsetof(R3000aState, next_pc)));
+            emit_mov_state_imm32(
+                out,
+                static_cast<std::uint32_t>(offsetof(R3000aState, pc)),
+                pc + 4u);
+            if (instruction.op == MipsOp::jalr) {
+                emit_mov_state_imm32(
+                    out,
+                    gpr_offset(instruction.rd),
+                    pc + 8u);
+            }
+            break;
+        }
+
+        case MipsOp::beq:
+        case MipsOp::bne:
+        case MipsOp::blez:
+        case MipsOp::bgtz:
+        case MipsOp::bltz:
+        case MipsOp::bgez:
+        case MipsOp::bltzal:
+        case MipsOp::bgezal: {
+            emit_load_eax_gpr(out, instruction.rs);
+            if (instruction.op == MipsOp::beq ||
+                instruction.op == MipsOp::bne) {
+                emit_load_edx_gpr(out, instruction.rt);
+                emit_u8(out, 0x39u);
+                emit_u8(out, 0xD0u); // cmp eax, edx
+            } else {
+                emit_u8(out, 0x83u);
+                emit_u8(out, 0xF8u);
+                emit_u8(out, 0x00u); // cmp eax, 0
+            }
+
+            std::uint8_t setcc = 0u;
+            switch (instruction.op) {
+                case MipsOp::beq: setcc = 0x94u; break;
+                case MipsOp::bne: setcc = 0x95u; break;
+                case MipsOp::blez: setcc = 0x9Eu; break;
+                case MipsOp::bgtz: setcc = 0x9Fu; break;
+                case MipsOp::bltz:
+                case MipsOp::bltzal: setcc = 0x9Cu; break;
+                case MipsOp::bgez:
+                case MipsOp::bgezal: setcc = 0x9Du; break;
+                default: break;
+            }
+            emit_u8(out, 0x0Fu);
+            emit_u8(out, setcc);
+            emit_u8(out, 0xC0u); // setcc al
+            emit_u8(out, 0x0Fu);
+            emit_u8(out, 0xB6u);
+            emit_u8(out, 0xC0u); // movzx eax, al
+
+            const auto target =
+                pc + 4u + (sign_extend16(instruction.immediate) << 2u);
+            const auto fallthrough = pc + 8u;
+            emit_mov_state_imm8(out, delay_active_offset(), 1u);
+            emit_mov_state_imm32(out, delay_branch_pc_offset(), pc);
+            emit_store_al_state(out, delay_taken_offset());
+            emit_mov_state_imm32(out, delay_target_offset(), target);
+
+            emit_u8(out, 0x69u);
+            emit_u8(out, 0xC0u); // imul eax, eax, delta
+            emit_u32(out, target - fallthrough);
+            emit_u8(out, 0x05u); // add eax, fallthrough
+            emit_u32(out, fallthrough);
+            emit_store_eax_state(
+                out,
+                static_cast<std::uint32_t>(offsetof(R3000aState, next_pc)));
+            emit_mov_state_imm32(
+                out,
+                static_cast<std::uint32_t>(offsetof(R3000aState, pc)),
+                pc + 4u);
+
+            if (instruction.op == MipsOp::bltzal ||
+                instruction.op == MipsOp::bgezal) {
+                emit_mov_state_imm32(out, gpr_offset(31u), pc + 8u);
+            }
+            break;
+        }
+
+        default:
+            return Result<R3000aX64Code>::failure(
+                ErrorCode::backend_unavailable,
+                "R3000A direct x64 control-flow lowering is unavailable");
+    }
+
+    emit_mov_state_imm32(
+        out,
+        static_cast<std::uint32_t>(offsetof(R3000aState, gpr)),
+        0u);
+    emit_mov_eax_imm32(out, 1u);
+    emit_u8(out, 0xC3u);
+
+    const auto materialized = materialize_executable(code);
+    if (!materialized) {
+        return Result<R3000aX64Code>::failure(
+            materialized.error,
+            materialized.detail);
+    }
+    return Result<R3000aX64Code>::success(std::move(code));
 }
 
 Result<R3000aX64Code> emit_r3000a_x64_alu_block(
