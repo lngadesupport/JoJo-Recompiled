@@ -33,6 +33,11 @@ struct R3000aX64ExecutionResult {
 };
 
 [[nodiscard]] bool r3000a_op_is_x64_lowerable(MipsOp op) noexcept;
+[[nodiscard]] bool r3000a_op_is_x64_direct_lowerable(MipsOp op) noexcept;
+
+[[nodiscard]] Result<R3000aX64Code> emit_r3000a_x64_instruction(
+    std::uint32_t pc,
+    const MipsInstruction& instruction) noexcept;
 
 [[nodiscard]] Result<R3000aX64Code> emit_r3000a_x64_alu_block(
     const R3000aIrBlock& block) noexcept;
