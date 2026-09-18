@@ -51,3 +51,22 @@ jobs:
           --output-on-failure
       - name: Run full CTest
         run: ctest --test-dir build-win -C Release --output-on-failure
+      - name: Package validated Windows runtime
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path package/Data/ROM | Out-Null
+          Copy-Item build-win/Release/JOJO-Recompiled.exe package/JOJO-Recompiled.exe
+          @"
+          JOJO Recompiled — Phase 7 validation build
+
+          Put your legally obtained supported JoJo PS1 .bin/.cue/.iso in Data/ROM,
+          or select it from the application. The source image is opened read-only.
+          No game image or proprietary PlayStation BIOS is included in this artifact.
+          "@ | Set-Content -Encoding UTF8 package/Data/ROM/PUT-YOUR-PS1-IMAGE-HERE.txt
+      - name: Upload validated Windows runtime
+        uses: actions/upload-artifact@v4
+        with:
+          name: JOJO-Recompiled-Phase7-Windows-x64
+          path: package
+          if-no-files-found: error
+          retention-days: 14
