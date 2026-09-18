@@ -25,6 +25,23 @@ struct Ps1CommercialFrameEvidence {
 [[nodiscard]] std::optional<Ps1CommercialFrameEvidence>
 make_ps1_commercial_frame_evidence(const Ps1DisplayFrame& frame) noexcept;
 
+class Ps1CommercialFrameProgress {
+public:
+    void observe(const Ps1DisplayFrame& frame) noexcept;
+    void reset() noexcept;
+
+    [[nodiscard]] std::uint64_t observed_non_black_frames() const noexcept;
+    [[nodiscard]] std::uint64_t frame_change_count() const noexcept;
+    [[nodiscard]] const std::optional<Ps1CommercialFrameEvidence>&
+    first_frame() const noexcept;
+
+private:
+    std::uint64_t observed_non_black_frames_{};
+    std::uint64_t frame_change_count_{};
+    std::optional<std::uint64_t> last_frame_hash_{};
+    std::optional<Ps1CommercialFrameEvidence> first_frame_{};
+};
+
 struct Ps1CommercialDiagnosticDecision {
     std::uint32_t bios_table{};
     std::uint32_t bios_selector{};
