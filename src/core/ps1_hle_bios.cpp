@@ -15,6 +15,13 @@ constexpr std::uint32_t kA0RemoveIso9660 = 0x00000056u;
 constexpr std::uint32_t kA0RemoveIso9660Alias = 0x00000072u;
 constexpr std::uint32_t kA0BuInit = 0x00000055u;
 constexpr std::uint32_t kA0BuInitAlias = 0x00000070u;
+constexpr std::uint32_t kB0DeliverEvent = 0x00000007u;
+constexpr std::uint32_t kB0OpenEvent = 0x00000008u;
+constexpr std::uint32_t kB0CloseEvent = 0x00000009u;
+constexpr std::uint32_t kB0WaitEvent = 0x0000000Au;
+constexpr std::uint32_t kB0TestEvent = 0x0000000Bu;
+constexpr std::uint32_t kB0EnableEvent = 0x0000000Cu;
+constexpr std::uint32_t kB0DisableEvent = 0x0000000Du;
 constexpr std::uint32_t kB0ResetEntryInt = 0x00000018u;
 constexpr std::uint32_t kB0HookEntryInt = 0x00000019u;
 constexpr std::uint32_t kB0Write = 0x00000035u;
@@ -28,6 +35,9 @@ constexpr std::uint32_t kC0ChangeClearRCnt = 0x0000000Au;
 constexpr std::uint32_t kSysEnterCriticalSection = 0x00000001u;
 constexpr std::uint32_t kSysExitCriticalSection = 0x00000002u;
 constexpr std::uint32_t kCriticalStatusMask = (1u << 0u) | (1u << 10u);
+constexpr std::uint32_t kEventDescriptorBase = 0xF1000000u;
+constexpr std::uint32_t kEventModeCallback = 0x00001000u;
+constexpr std::uint32_t kEventModeReady = 0x00002000u;
 constexpr std::uint64_t kFnvOffset = 14695981039346656037ull;
 constexpr std::uint64_t kFnvPrime = 1099511628211ull;
 
@@ -118,6 +128,110 @@ Ps1HleBiosDispatchStatus Ps1HleBios::dispatch(
     if (table_physical == kBiosA0 &&
         (selector == kA0RemoveIso9660 || selector == kA0RemoveIso9660Alias)) {
         iso9660_removed_ = true;
+        return_from_bios_call(cpu);
+        return Ps1HleBiosDispatchStatus::handled;
+    }
+
+    if (table_physical == kBiosB0 && selector == kB0OpenEvent) {
+        for (std::size_t i = 0u; i < events_.size(); ++i) {
+            auto& event = events_[i];
+            if (event.allocated) continue;
+            event = Ps1BiosEventState{
+                true,
+                false,
+                false,
+                cpu.gpr[4],
+                cpu.gpr[5],
+                cpu.gpr[6],
+                cpu.gpr[7],
+            };
+            cpu.gpr[2] = kEventDescriptorBase + static_cast<std::uint32_t>(i);
+            return_from_bios_call(cpu);
+            return Ps1HleBiosDispatchStatus::handled;
+        }
+        cpu.gpr[2] = 0xFFFFFFFFu;
+        return_from_bios_call(cpu);
+        return Ps1HleBiosDispatchStatus::handled;
+    }
+
+    const auto decode_event = [this](std::uint32_t descriptor)
+        -> Ps1BiosEventState* {
+        if (descriptor < kEventDescriptorBase) return nullptr;
+        const auto index = descriptor - kEventDescriptorBase;
+        if (index >= events_.size()) return nullptr;
+        auto& event = events_[static_cast<std::size_t>(index)];
+        return event.allocated ? &event : nullptr;
+    };
+
+    if (table_physical == kBiosB0 && selector == kB0CloseEvent) {
+        auto* event = decode_event(cpu.gpr[4]);
+        cpu.gpr[2] = event ? 1u : 0u;
+        if (event) *event = {};
+        return_from_bios_call(cpu);
+        return Ps1HleBiosDispatchStatus::handled;
+    }
+
+    if (table_physical == kBiosB0 && selector == kB0EnableEvent) {
+        auto* event = decode_event(cpu.gpr[4]);
+        cpu.gpr[2] = event ? 1u : 0u;
+        if (event) {
+            event->enabled = true;
+            event->ready = false;
+        }
+        return_from_bios_call(cpu);
+        return Ps1HleBiosDispatchStatus::handled;
+    }
+
+    if (table_physical == kBiosB0 && selector == kB0DisableEvent) {
+        auto* event = decode_event(cpu.gpr[4]);
+        cpu.gpr[2] = event ? 1u : 0u;
+        if (event) {
+            event->enabled = false;
+            event->ready = false;
+        }
+        return_from_bios_call(cpu);
+        return Ps1HleBiosDispatchStatus::handled;
+    }
+
+    if (table_physical == kBiosB0 && selector == kB0TestEvent) {
+        auto* event = decode_event(cpu.gpr[4]);
+        if (!event || !event->enabled || !event->ready) {
+            cpu.gpr[2] = 0u;
+        } else {
+            cpu.gpr[2] = 1u;
+            if (event->mode == kEventModeReady) {
+                event->ready = false;
+            }
+        }
+        return_from_bios_call(cpu);
+        return Ps1HleBiosDispatchStatus::handled;
+    }
+
+    if (table_physical == kBiosB0 && selector == kB0WaitEvent) {
+        auto* event = decode_event(cpu.gpr[4]);
+        if (event && event->enabled && event->ready) {
+            cpu.gpr[2] = 1u;
+            if (event->mode == kEventModeReady) {
+                event->ready = false;
+            }
+            return_from_bios_call(cpu);
+            return Ps1HleBiosDispatchStatus::handled;
+        }
+        return Ps1HleBiosDispatchStatus::unimplemented;
+    }
+
+    if (table_physical == kBiosB0 && selector == kB0DeliverEvent) {
+        for (auto& event : events_) {
+            if (!event.allocated || !event.enabled ||
+                event.event_class != cpu.gpr[4] ||
+                event.spec != cpu.gpr[5]) {
+                continue;
+            }
+            if (event.mode == kEventModeReady) {
+                event.ready = true;
+            }
+        }
+        cpu.gpr[2] = 1u;
         return_from_bios_call(cpu);
         return Ps1HleBiosDispatchStatus::handled;
     }
@@ -233,6 +347,15 @@ std::uint64_t Ps1HleBios::diagnostic_state_hash() const noexcept {
     hash_bool(hash, card_started_);
     hash_bool(hash, card_pad_enabled_);
     hash_bool(hash, backup_unit_initialized_);
+    for (const auto& event : events_) {
+        hash_bool(hash, event.allocated);
+        hash_bool(hash, event.enabled);
+        hash_bool(hash, event.ready);
+        hash_u32(hash, event.event_class);
+        hash_u32(hash, event.spec);
+        hash_u32(hash, event.mode);
+        hash_u32(hash, event.function);
+    }
     for (const auto& state : root_counter_auto_ack_enabled_) {
         hash_optional_bool(hash, state);
     }
@@ -266,6 +389,10 @@ bool Ps1HleBios::card_pad_enabled() const noexcept {
 
 bool Ps1HleBios::backup_unit_initialized() const noexcept {
     return backup_unit_initialized_;
+}
+
+const std::array<Ps1BiosEventState, 16>& Ps1HleBios::events() const noexcept {
+    return events_;
 }
 
 std::optional<bool> Ps1HleBios::root_counter_auto_ack_enabled(
