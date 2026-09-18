@@ -122,6 +122,16 @@ int main() {
     CHECK(!spu.voice(0u).keyed_on);
     CHECK(spu.voice(0u).releasing);
 
+    // ENDX is hardware-owned status, but retail code may write it while
+    // resetting SPU state. Writes must be accepted without forging voice
+    // completion bits.
+    const auto endx_before = spu.endx_flags();
+    CHECK(spu.write16(0x1F801D9Cu, 0x0000u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(spu.write16(0x1F801D9Eu, 0xFFFFu).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(spu.endx_flags() == endx_before);
+
     CHECK(spu.write16(0x1F801DA6u, 0x0020u).status == jojo::R3000aBusStatus::ok);
     CHECK(spu.transfer_current_address() == 0x100u);
     CHECK(spu.write16(0x1F801DA8u, 0xA1B2u).status == jojo::R3000aBusStatus::ok);
