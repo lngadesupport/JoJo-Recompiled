@@ -141,6 +141,41 @@ int main() {
     CHECK(hw.pending_dma_transfer().has_value());
     hw.cancel_pending_dma_transfer();
 
+    // 3F: OTC DMA6 clears a reverse ordering table. Starting at the
+    // highest entry, each word points four bytes backward and the final
+    // entry receives the PS1 linked-list terminator 00FFFFFFh.
+    const std::uint32_t ch6_enable = 1u << (6u * 4u + 3u);
+    CHECK(hw.write32(
+              0x1F8010F0u,
+              ch2_enable | ch3_enable | ch6_enable).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(hw.write32(0x1F8010E0u, 0x0000520Cu).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(hw.write32(0x1F8010E4u, 4u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(hw.write32(0x1F8010E8u, 0x11000002u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(hw.pending_dma_transfer().has_value());
+    if (hw.pending_dma_transfer()) {
+        CHECK(hw.pending_dma_transfer()->channel == 6u);
+        CHECK(!hw.pending_dma_transfer()->from_ram);
+        CHECK(hw.pending_dma_transfer()->sync_mode == 0u);
+        CHECK(hw.pending_dma_transfer()->words == 4u);
+    }
+    CHECK(hw.execute_pending_dma(ram));
+
+    const auto read_word = [&](std::size_t offset) {
+        return static_cast<std::uint32_t>(ram[offset + 0u]) |
+            (static_cast<std::uint32_t>(ram[offset + 1u]) << 8u) |
+            (static_cast<std::uint32_t>(ram[offset + 2u]) << 16u) |
+            (static_cast<std::uint32_t>(ram[offset + 3u]) << 24u);
+    };
+    CHECK(read_word(0x520Cu) == 0x00005208u);
+    CHECK(read_word(0x5208u) == 0x00005204u);
+    CHECK(read_word(0x5204u) == 0x00005200u);
+    CHECK(read_word(0x5200u) == 0x00FFFFFFu);
+    CHECK(!hw.pending_dma_transfer().has_value());
+
     // Direct-disc invariant: hardware activity never mutates the source image.
     CHECK(read_all(iso_path) == before);
 
