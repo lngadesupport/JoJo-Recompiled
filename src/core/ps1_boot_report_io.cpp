@@ -82,6 +82,7 @@ std::string format_ps1_boot_report(const Ps1BootReport& report) {
         << (report.diagnostic_probe_mode ? "jojo-mega-checkpoint-v1" : "jojo-m3a-checkpoint-v1")
         << '\n';
     out << "stop_reason=" << ps1_boot_stop_reason_name(report.stop_reason) << '\n';
+    out << "execution_steps=" << report.execution_steps << '\n';
     out << "instructions_retired=" << report.instructions_retired << '\n';
     out << "native_x64_instructions_retired="
         << report.native_x64_instructions_retired << '\n';
