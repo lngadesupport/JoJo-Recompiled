@@ -42,6 +42,9 @@ private:
         command,
         fill_rectangle_position,
         fill_rectangle_size,
+        vram_copy_source,
+        vram_copy_destination,
+        vram_copy_size,
         cpu_to_vram_destination,
         cpu_to_vram_size,
         cpu_to_vram_payload,
@@ -51,6 +54,7 @@ private:
     void reset_display_state() noexcept;
     void write_transfer_pixel(std::uint16_t pixel) noexcept;
     void fill_rectangle(std::uint32_t width, std::uint32_t height) noexcept;
+    void copy_vram_rectangle(std::uint32_t width, std::uint32_t height) noexcept;
     void apply_display_mode(std::uint32_t parameter) noexcept;
 
     std::uint32_t status_{reset_status};
@@ -65,6 +69,10 @@ private:
     std::uint16_t fill_color_{};
     std::uint32_t fill_x_{};
     std::uint32_t fill_y_{};
+    std::uint32_t copy_source_x_{};
+    std::uint32_t copy_source_y_{};
+    std::uint32_t copy_destination_x_{};
+    std::uint32_t copy_destination_y_{};
     std::uint32_t transfer_x_{};
     std::uint32_t transfer_y_{};
     std::uint32_t transfer_width_{};

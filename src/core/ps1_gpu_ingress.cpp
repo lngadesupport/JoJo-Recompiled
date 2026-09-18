@@ -35,6 +35,10 @@ void Ps1GpuIngress::reset_command_buffer() noexcept {
     fill_color_ = 0u;
     fill_x_ = 0u;
     fill_y_ = 0u;
+    copy_source_x_ = 0u;
+    copy_source_y_ = 0u;
+    copy_destination_x_ = 0u;
+    copy_destination_y_ = 0u;
     transfer_x_ = 0u;
     transfer_y_ = 0u;
     transfer_width_ = 0u;
@@ -82,6 +86,32 @@ void Ps1GpuIngress::fill_rectangle(std::uint32_t width, std::uint32_t height) no
     }
 }
 
+void Ps1GpuIngress::copy_vram_rectangle(
+    std::uint32_t width,
+    std::uint32_t height) noexcept {
+    if (width == 0u || height == 0u) return;
+
+    std::vector<std::uint16_t> source;
+    source.reserve(static_cast<std::size_t>(width) * height);
+    for (std::uint32_t local_y = 0u; local_y < height; ++local_y) {
+        const auto y = (copy_source_y_ + local_y) & (vram_height - 1u);
+        for (std::uint32_t local_x = 0u; local_x < width; ++local_x) {
+            const auto x = (copy_source_x_ + local_x) & (vram_width - 1u);
+            source.push_back(vram_[static_cast<std::size_t>(y) * vram_width + x]);
+        }
+    }
+
+    std::size_t index = 0u;
+    for (std::uint32_t local_y = 0u; local_y < height; ++local_y) {
+        const auto y = (copy_destination_y_ + local_y) & (vram_height - 1u);
+        for (std::uint32_t local_x = 0u; local_x < width; ++local_x) {
+            const auto x = (copy_destination_x_ + local_x) & (vram_width - 1u);
+            vram_[static_cast<std::size_t>(y) * vram_width + x] = source[index++];
+            ++vram_write_count_;
+        }
+    }
+}
+
 R3000aBusResult Ps1GpuIngress::write_gp0(std::uint32_t value) noexcept {
     last_unsupported_gp0_command_.reset();
 
@@ -97,6 +127,26 @@ R3000aBusResult Ps1GpuIngress::write_gp0(std::uint32_t value) noexcept {
             const auto width = value & 0x3FFu;
             const auto height = (value >> 16u) & 0x1FFu;
             fill_rectangle(width, height);
+            reset_command_buffer();
+            return {R3000aBusStatus::ok, 0u};
+        }
+        case Gp0Mode::vram_copy_source:
+            ++gp0_word_count_;
+            copy_source_x_ = value & 0x3FFu;
+            copy_source_y_ = (value >> 16u) & 0x1FFu;
+            gp0_mode_ = Gp0Mode::vram_copy_destination;
+            return {R3000aBusStatus::ok, 0u};
+        case Gp0Mode::vram_copy_destination:
+            ++gp0_word_count_;
+            copy_destination_x_ = value & 0x3FFu;
+            copy_destination_y_ = (value >> 16u) & 0x1FFu;
+            gp0_mode_ = Gp0Mode::vram_copy_size;
+            return {R3000aBusStatus::ok, 0u};
+        case Gp0Mode::vram_copy_size: {
+            ++gp0_word_count_;
+            const auto width = normalize_transfer_width(value & 0xFFFFu);
+            const auto height = normalize_transfer_height((value >> 16u) & 0xFFFFu);
+            copy_vram_rectangle(width, height);
             reset_command_buffer();
             return {R3000aBusStatus::ok, 0u};
         }
@@ -142,6 +192,10 @@ R3000aBusResult Ps1GpuIngress::write_gp0(std::uint32_t value) noexcept {
             ++gp0_word_count_;
             fill_color_ = color24_to_bgr555(value & 0x00FFFFFFu);
             gp0_mode_ = Gp0Mode::fill_rectangle_position;
+            return {R3000aBusStatus::ok, 0u};
+        case 0x80u: // VRAM -> VRAM rectangle copy
+            ++gp0_word_count_;
+            gp0_mode_ = Gp0Mode::vram_copy_source;
             return {R3000aBusStatus::ok, 0u};
         case 0xA0u: // CPU -> VRAM image load
             ++gp0_word_count_;
