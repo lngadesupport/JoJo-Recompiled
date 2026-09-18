@@ -87,6 +87,12 @@ struct Ps1CommercialEvidenceReport {
         Ps1CommercialSessionTermination::bounded_run};
     Ps1BootReport boot{};
     std::uint64_t total_instructions_retired{};
+    std::uint64_t total_native_x64_instructions_retired{};
+    std::uint64_t total_reference_instructions_retired{};
+    std::uint64_t total_native_x64_cache_compilations{};
+    std::uint64_t total_native_x64_cache_reuses{};
+    std::uint64_t total_native_x64_cache_invalidations{};
+    std::uint64_t total_native_x64_cache_evictions{};
     std::uint32_t execution_segments{};
     std::uint64_t completed_frames{};
     std::uint64_t observed_non_black_frames{};
