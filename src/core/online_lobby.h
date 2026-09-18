@@ -63,6 +63,8 @@ struct OnlineLobbyModel {
     OnlineLobbyScreen screen{OnlineLobbyScreen::home};
     std::string player_name{"PLAYER"};
     std::string remote_player_name{"OPPONENT"};
+    std::string local_game_revision{};
+    std::string remote_game_revision{};
     std::string region{"SOUTH AMERICA - ARGENTINA"};
     std::string direct_connect_endpoint{"127.0.0.1:27886"};
     OnlineMatchQueue queue{OnlineMatchQueue::casual};
@@ -121,6 +123,14 @@ void online_set_ready(
 void online_set_remote_ready(
     OnlineLobbyModel& model,
     bool ready) noexcept;
+[[nodiscard]] Result<void> online_set_local_game_revision(
+    OnlineLobbyModel& model,
+    std::string revision);
+[[nodiscard]] Result<void> online_set_remote_game_revision(
+    OnlineLobbyModel& model,
+    std::string revision);
+[[nodiscard]] bool online_game_revision_matches(
+    const OnlineLobbyModel& model) noexcept;
 [[nodiscard]] Result<void> online_append_chat(
     OnlineLobbyModel& model,
     std::string sender,
