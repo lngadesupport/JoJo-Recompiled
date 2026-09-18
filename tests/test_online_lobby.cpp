@@ -29,10 +29,27 @@ void test_home_and_matchmaking_flow() {
 void test_public_room_selection_and_join() {
     jojo::OnlineLobbyModel model{};
     jojo::online_open_public_servers(model);
-    jojo::online_set_rooms(model, {
-        {"room-a", "First Room", "SOUTH AMERICA", 1u, 2u, false, true},
-        {"room-b", "Full Room", "SOUTH AMERICA", 2u, 2u, false, true},
-    });
+    jojo::OnlineRoomInfo first{};
+    first.id = "room-a";
+    first.name = "First Room";
+    first.owner = "PLAYER A";
+    first.region = "SOUTH AMERICA";
+    first.players = 1u;
+    first.max_players = 2u;
+    first.available = true;
+    first.status = jojo::OnlineRoomStatus::wait;
+
+    jojo::OnlineRoomInfo full{};
+    full.id = "room-b";
+    full.name = "Full Room";
+    full.owner = "PLAYER B";
+    full.region = "SOUTH AMERICA";
+    full.players = 2u;
+    full.max_players = 2u;
+    full.available = false;
+    full.status = jojo::OnlineRoomStatus::full;
+
+    jojo::online_set_rooms(model, {first, full});
 
     CHECK(jojo::online_select_room(model, 0u));
     CHECK(model.selected_room && *model.selected_room == 0u);
