@@ -427,10 +427,10 @@ void stop_game_runtime(const jojo::Ps1BootReport* final_boot){
 
     game_runner.reset();
     game_audio_host.reset();
-    game_last_segment.reset();
     game_total_instructions=0u;
     game_execution_segments=0u;
     game_completed_frames=0u;
+    game_frame_progress.reset();
     game_last_segment.reset();
     game_frame_budget.reset();
     if(checkpoint_btn) SetWindowTextW(checkpoint_btn,L"INICIAR JOGO");
