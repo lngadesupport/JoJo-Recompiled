@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - feature/ps1-gameplay-validation-phase7
+  workflow_dispatch:
 
 permissions:
   contents: read
