@@ -19,6 +19,22 @@ int main() {
     CHECK(hw.write16(0x1F801070u, 0x0000u).status == jojo::R3000aBusStatus::ok);
     CHECK(hw.interrupt_status() == 0u);
 
+    // Retail software commonly uses SW/LW on the 16-bit I_STAT/I_MASK
+    // registers. The upper halfword is ignored by the hardware-facing model.
+    CHECK(hw.write32(0x1F801074u, 0xFFFF0001u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(hw.interrupt_mask() == 0x0001u);
+    CHECK(hw.read32(0x1F801074u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(hw.read32(0x1F801074u).value == 0x0001u);
+
+    hw.signal_vblank();
+    CHECK((hw.interrupt_status() & 0x0001u) != 0u);
+    CHECK(hw.write32(0x1F801070u, 0xFFFFFFFEu).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK((hw.interrupt_status() & 0x0001u) == 0u);
+    CHECK(hw.read32(0x1F801070u).value == 0u);
+
     CHECK(hw.write16(0x1F801100u, 0u).status == jojo::R3000aBusStatus::ok);
     CHECK(hw.write16(0x1F801108u, 3u).status == jojo::R3000aBusStatus::ok);
     CHECK(hw.write16(0x1F801104u, 0x0058u).status == jojo::R3000aBusStatus::ok);
