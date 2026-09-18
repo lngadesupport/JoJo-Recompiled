@@ -261,6 +261,9 @@ std::uint64_t Ps1CdromController::diagnostic_state_hash() const noexcept {
     hash_byte(hash, interrupt_flags_);
     hash_byte(hash, request_register_);
     hash_byte(hash, status_byte_);
+    hash_byte(hash, mode_);
+    hash_byte(hash, filter_file_);
+    hash_byte(hash, filter_channel_);
     hash_byte(hash, static_cast<std::uint8_t>(muted_ ? 1u : 0u));
     hash_byte(hash, static_cast<std::uint8_t>(adpcm_muted_ ? 1u : 0u));
     for (const auto value : pending_audio_matrix_) hash_byte(hash, value);
@@ -453,6 +456,45 @@ R3000aBusResult Ps1CdromController::execute_command(std::uint8_t command) noexce
             interrupt_flags_ = 0x03u;
             return {R3000aBusStatus::ok, 0u};
 
+        case 0x0Du: // Setfilter(file, channel)
+            if (parameters_.size() != 2u) {
+                return {R3000aBusStatus::unsupported, 0u};
+            }
+            filter_file_ = parameters_[0];
+            filter_channel_ = parameters_[1];
+            parameters_.clear();
+            if (!push_response(status_byte_)) {
+                return {R3000aBusStatus::unsupported, 0u};
+            }
+            interrupt_flags_ = 0x03u;
+            return {R3000aBusStatus::ok, 0u};
+
+        case 0x0Eu: // Setmode(mode)
+            if (parameters_.size() != 1u) {
+                return {R3000aBusStatus::unsupported, 0u};
+            }
+            mode_ = parameters_.front();
+            parameters_.clear();
+            if (!push_response(status_byte_)) {
+                return {R3000aBusStatus::unsupported, 0u};
+            }
+            interrupt_flags_ = 0x03u;
+            return {R3000aBusStatus::ok, 0u};
+
+        case 0x0Fu: // Getparam
+            if (!parameters_.empty()) {
+                return {R3000aBusStatus::unsupported, 0u};
+            }
+            if (!push_response(status_byte_) ||
+                !push_response(mode_) ||
+                !push_response(0x00u) ||
+                !push_response(filter_file_) ||
+                !push_response(filter_channel_)) {
+                return {R3000aBusStatus::unsupported, 0u};
+            }
+            interrupt_flags_ = 0x03u;
+            return {R3000aBusStatus::ok, 0u};
+
         case 0x13u: // GetTN: title disc has one data track.
             parameters_.clear();
             if (!push_response(status_byte_) ||
@@ -512,6 +554,9 @@ R3000aBusResult Ps1CdromController::execute_command(std::uint8_t command) noexce
             interrupt_enable_ = interrupt_enable;
             interrupt_flags_ = 0u;
             status_byte_ = 0u;
+            mode_ = 0u;
+            filter_file_ = 0u;
+            filter_channel_ = 0u;
             current_lba_ = 0u;
             last_unsupported_command_.reset();
             deferred_responses_.push_back(DeferredResponse{
