@@ -31,6 +31,8 @@ constexpr std::uint32_t kB0StopCard2 = 0x0000004Cu;
 constexpr std::uint32_t kB0GetC0Table = 0x00000056u;
 constexpr std::uint32_t kB0GetB0Table = 0x00000057u;
 constexpr std::uint32_t kB0ChangeClearPad = 0x0000005Bu;
+constexpr std::uint32_t kC0SysEnqIntRP = 0x00000002u;
+constexpr std::uint32_t kC0SysDeqIntRP = 0x00000003u;
 constexpr std::uint32_t kC0ChangeClearRCnt = 0x0000000Au;
 constexpr std::uint32_t kSysEnterCriticalSection = 0x00000001u;
 constexpr std::uint32_t kSysExitCriticalSection = 0x00000002u;
@@ -95,7 +97,8 @@ void hash_optional_bool(std::uint64_t& hash,
 Ps1HleBiosDispatchStatus Ps1HleBios::dispatch(
     R3000aState& cpu,
     std::uint32_t table_physical,
-    std::uint32_t selector) noexcept {
+    std::uint32_t selector,
+    R3000aBus* bus) noexcept {
     if (((table_physical == kBiosA0 && selector == kA0Write) ||
          (table_physical == kBiosB0 && selector == kB0Write)) &&
         (cpu.gpr[4] == 1u || cpu.gpr[4] == 2u)) {
@@ -300,6 +303,54 @@ Ps1HleBiosDispatchStatus Ps1HleBios::dispatch(
         return Ps1HleBiosDispatchStatus::handled;
     }
 
+    if (table_physical == kBiosC0 &&
+        (selector == kC0SysEnqIntRP ||
+         selector == kC0SysDeqIntRP)) {
+        const auto priority = cpu.gpr[4];
+        const auto structure = cpu.gpr[5];
+        if (priority >= interrupt_priority_heads_.size() ||
+            structure == 0u) {
+            return Ps1HleBiosDispatchStatus::unimplemented;
+        }
+
+        auto& head =
+            interrupt_priority_heads_[
+                static_cast<std::size_t>(priority)];
+
+        if (selector == kC0SysEnqIntRP) {
+            if (bus == nullptr) {
+                return Ps1HleBiosDispatchStatus::unimplemented;
+            }
+            const auto next = head.value_or(0u);
+            const auto written = bus->write32(structure, next);
+            if (written.status != R3000aBusStatus::ok) {
+                return Ps1HleBiosDispatchStatus::unimplemented;
+            }
+            head = structure;
+        } else if (head && *head == structure) {
+            if (bus == nullptr) {
+                return Ps1HleBiosDispatchStatus::unimplemented;
+            }
+            const auto next = bus->read32(structure);
+            if (next.status != R3000aBusStatus::ok) {
+                return Ps1HleBiosDispatchStatus::unimplemented;
+            }
+            if (next.value == 0u) head.reset();
+            else head = next.value;
+        } else if (!head) {
+            // BIOS-owned default priority-chain elements are not materialized
+            // in the clean-room runtime. The commercial title removes one
+            // such priority-2 element before installing its own handlers.
+            // Treat that removal as complete while preserving guest memory.
+        } else {
+            // Real BIOS C(03h) is bugged beyond the first chain element.
+            // Preserve the modeled chain rather than fabricating traversal.
+        }
+
+        return_from_bios_call(cpu);
+        return Ps1HleBiosDispatchStatus::handled;
+    }
+
     if (table_physical == kBiosC0 && selector == kC0ChangeClearRCnt) {
         if (cpu.gpr[4] >= root_counter_auto_ack_enabled_.size()) {
             return Ps1HleBiosDispatchStatus::unimplemented;
@@ -365,6 +416,9 @@ std::uint64_t Ps1HleBios::diagnostic_state_hash() const noexcept {
     for (const auto& state : root_counter_auto_ack_enabled_) {
         hash_optional_bool(hash, state);
     }
+    for (const auto& head : interrupt_priority_heads_) {
+        hash_optional_u32(hash, head);
+    }
     hash_bool(hash, iso9660_removed_);
     return hash;
 }
@@ -411,6 +465,16 @@ std::optional<bool> Ps1HleBios::root_counter_auto_ack_enabled(
 
 bool Ps1HleBios::iso9660_removed() const noexcept {
     return iso9660_removed_;
+}
+
+std::optional<std::uint32_t>
+Ps1HleBios::interrupt_priority_head(
+    std::uint32_t priority) const noexcept {
+    if (priority >= interrupt_priority_heads_.size()) {
+        return std::nullopt;
+    }
+    return interrupt_priority_heads_[
+        static_cast<std::size_t>(priority)];
 }
 
 } // namespace jojo
