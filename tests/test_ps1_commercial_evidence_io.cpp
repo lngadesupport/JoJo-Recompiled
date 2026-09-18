@@ -19,8 +19,10 @@ int main() {
     report.source.source_hash_fnv1a64 = "b8b5dbf79cdb9fcf";
     report.source.revision_id = "jojo-usa-observed-b8b5dbf79cdb9fcf";
     report.frontier = jojo::Ps1CommercialFrontierClass::bios_call;
+    report.session_termination = jojo::Ps1CommercialSessionTermination::manual_stop;
     report.total_instructions_retired = 123456u;
     report.execution_segments = 3u;
+    report.completed_frames = 600u;
     report.pad_poll_count = {11u, 7u};
     report.memory_card_read_sector_count = {3u, 1u};
     report.memory_card_write_sector_count = {2u, 0u};
@@ -72,9 +74,11 @@ int main() {
     CHECK(text.find("source_hash_fnv1a64=b8b5dbf79cdb9fcf") != std::string::npos);
     CHECK(text.find("revision_id=jojo-usa-observed-b8b5dbf79cdb9fcf") != std::string::npos);
     CHECK(text.find("frontier=bios_call") != std::string::npos);
+    CHECK(text.find("session_termination=manual_stop") != std::string::npos);
     CHECK(text.find("stop_reason=bios_call_unimplemented") != std::string::npos);
     CHECK(text.find("total_instructions_retired=123456") != std::string::npos);
     CHECK(text.find("execution_segments=3") != std::string::npos);
+    CHECK(text.find("completed_frames=600") != std::string::npos);
     CHECK(text.find("pad0_poll_count=11") != std::string::npos);
     CHECK(text.find("pad1_poll_count=7") != std::string::npos);
     CHECK(text.find("memory_card0_read_sector_count=3") != std::string::npos);
