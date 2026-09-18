@@ -6,6 +6,7 @@
 
 #include <new>
 #include <set>
+#include <span>
 #include <utility>
 
 namespace jojo {
@@ -230,6 +231,29 @@ Ps1BootReport Ps1BootRuntime::run(const Ps1BootOptions& options) noexcept {
     std::set<std::uint64_t> observed_bios_dependencies;
     std::set<std::uint64_t> observed_mmio_dependencies;
 
+    const auto pump_hardware = [&]() noexcept {
+        auto& hardware = bus_.hardware_services();
+        hardware.step(1u);
+
+        if (hardware.pending_dma_transfer()) {
+            const auto channel =
+                hardware.pending_dma_transfer()->channel;
+            const bool completed =
+                hardware.execute_pending_dma(
+                    std::span<std::uint8_t>(
+                        bus_.main_ram_data(),
+                        Ps1MemoryBus::main_ram_size));
+            if (completed && channel == 4u) {
+                // PsyQ waits on the BIOS SPU hardware event after DMA4.
+                // Spec 20h is the command-completed notification.
+                bios_.deliver_event(0xF0000009u, 0x00000020u);
+            }
+        }
+
+        cpu_.external_interrupt_pending =
+            hardware.interrupt_pending() ? 0x04u : 0u;
+    };
+
     while (report.execution_steps < options.instruction_budget) {
         report.last_pc = cpu_.pc;
 
@@ -317,9 +341,7 @@ Ps1BootReport Ps1BootRuntime::run(const Ps1BootOptions& options) noexcept {
             if (syscall_status == Ps1HleBiosDispatchStatus::handled) {
                 ++report.execution_steps;
                 ++instructions_since_progress;
-                bus_.hardware_services().step(1u);
-                cpu_.external_interrupt_pending =
-                    bus_.hardware_services().interrupt_pending() ? 0x04u : 0u;
+                pump_hardware();
                 if (options.stagnation_instruction_limit != 0u &&
                     instructions_since_progress >=
                         options.stagnation_instruction_limit) {
@@ -355,9 +377,7 @@ Ps1BootReport Ps1BootRuntime::run(const Ps1BootOptions& options) noexcept {
                     ++report.instructions_retired;
                     ++report.native_x64_instructions_retired;
                     ++instructions_since_progress;
-                    bus_.hardware_services().step(1u);
-                    cpu_.external_interrupt_pending =
-                        bus_.hardware_services().interrupt_pending() ? 0x04u : 0u;
+                    pump_hardware();
                     if (options.stagnation_instruction_limit != 0u &&
                         instructions_since_progress >=
                             options.stagnation_instruction_limit) {
@@ -378,9 +398,7 @@ Ps1BootReport Ps1BootRuntime::run(const Ps1BootOptions& options) noexcept {
             ++report.instructions_retired;
             ++report.reference_instructions_retired;
             ++instructions_since_progress;
-            bus_.hardware_services().step(1u);
-            cpu_.external_interrupt_pending =
-                bus_.hardware_services().interrupt_pending() ? 0x04u : 0u;
+            pump_hardware();
             if (const auto& probe = bus_.last_diagnostic_mmio_probe(); probe) {
                 ++report.speculative_mmio_count;
                 record_recent_mmio(report, Ps1MmioSummary{
@@ -404,9 +422,7 @@ Ps1BootReport Ps1BootRuntime::run(const Ps1BootOptions& options) noexcept {
 
         if (step.status == R3000aStepStatus::exception) {
             ++report.execution_steps;
-            bus_.hardware_services().step(1u);
-            cpu_.external_interrupt_pending =
-                bus_.hardware_services().interrupt_pending() ? 0x04u : 0u;
+            pump_hardware();
 
             if (step.diagnostic.exception_code ==
                 R3000aExceptionCode::interrupt) {
