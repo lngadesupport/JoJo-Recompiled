@@ -52,6 +52,7 @@ private:
         std::uint32_t delay_cycles{};
         std::vector<std::uint8_t> data{};
         bool advance_lba{};
+        bool apply_response_to_status{};
     };
 
     static constexpr std::size_t parameter_capacity = 16u;
