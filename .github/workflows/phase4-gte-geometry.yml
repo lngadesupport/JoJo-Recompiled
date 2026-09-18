@@ -1,0 +1,21 @@
+name: Phase 4 GTE Geometry
+
+on:
+  push:
+    branches:
+      - feature/ps1-gpu-gte-first-frame-phase4
+
+permissions:
+  contents: read
+
+jobs:
+  gte-geometry-linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+      - name: Build focused GTE geometry tests
+        run: cmake --build build --target jojo_ps1_gte_tests -j2
+      - name: Run focused GTE geometry tests
+        run: ctest --test-dir build -R '^jojo_ps1_gte_tests$' --output-on-failure
