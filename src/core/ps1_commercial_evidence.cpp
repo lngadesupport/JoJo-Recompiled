@@ -196,6 +196,62 @@ Ps1CommercialEvidenceReport Ps1CommercialEvidenceRunner::run(
         report.session_vblank_count = counters.vblank_count;
         report.spu_sample_frames = counters.spu_sample_frames;
         report.spu_nonzero_samples = counters.spu_nonzero_samples;
+
+        const auto& gpu =
+            runtime_.bus().hardware_services().gpu();
+        report.gpu_display = gpu.display_state();
+        report.gpu_nonzero_vram_words = 0u;
+        report.gpu_display_region_nonzero_words = 0u;
+        report.gpu_nonzero_bounds_valid = false;
+
+        for (std::uint32_t y = 0u;
+             y < Ps1GpuIngress::vram_height;
+             ++y) {
+            for (std::uint32_t x = 0u;
+                 x < Ps1GpuIngress::vram_width;
+                 ++x) {
+                if (gpu.vram_pixel(x, y) == 0u) continue;
+                ++report.gpu_nonzero_vram_words;
+                if (!report.gpu_nonzero_bounds_valid) {
+                    report.gpu_nonzero_bounds_valid = true;
+                    report.gpu_nonzero_min_x = x;
+                    report.gpu_nonzero_max_x = x;
+                    report.gpu_nonzero_min_y = y;
+                    report.gpu_nonzero_max_y = y;
+                } else {
+                    report.gpu_nonzero_min_x =
+                        std::min(report.gpu_nonzero_min_x, x);
+                    report.gpu_nonzero_max_x =
+                        std::max(report.gpu_nonzero_max_x, x);
+                    report.gpu_nonzero_min_y =
+                        std::min(report.gpu_nonzero_min_y, y);
+                    report.gpu_nonzero_max_y =
+                        std::max(report.gpu_nonzero_max_y, y);
+                }
+            }
+        }
+
+        if (report.gpu_display.width != 0u &&
+            report.gpu_display.height != 0u) {
+            for (std::uint32_t y = 0u;
+                 y < report.gpu_display.height;
+                 ++y) {
+                const auto source_y =
+                    (report.gpu_display.start_y + y) &
+                    (Ps1GpuIngress::vram_height - 1u);
+                for (std::uint32_t x = 0u;
+                     x < report.gpu_display.width;
+                     ++x) {
+                    const auto source_x =
+                        (report.gpu_display.start_x + x) &
+                        (Ps1GpuIngress::vram_width - 1u);
+                    if (gpu.vram_pixel(source_x, source_y) != 0u) {
+                        ++report.gpu_display_region_nonzero_words;
+                    }
+                }
+            }
+        }
+
         report.boot.recent_cdrom_commands = recent_cdrom_commands();
         return report;
     };
