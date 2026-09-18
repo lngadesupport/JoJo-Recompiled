@@ -211,6 +211,53 @@ int main() {
     CHECK(cd.write8(0x1F801800u, 0x00u).status ==
           jojo::R3000aBusStatus::ok);
 
+    // Setfilter/Setmode/Getparam preserve retail drive parameters.
+    CHECK(cd.write8(0x1F801802u, 0x12u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(cd.write8(0x1F801802u, 0x34u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(cd.write8(0x1F801801u, 0x0Du).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(cd.filter_file() == 0x12u);
+    CHECK(cd.filter_channel() == 0x34u);
+    CHECK(cd.read8(0x1F801801u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(cd.write8(0x1F801800u, 0x01u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(cd.write8(0x1F801803u, 0x07u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(cd.write8(0x1F801800u, 0x00u).status ==
+          jojo::R3000aBusStatus::ok);
+
+    CHECK(cd.write8(0x1F801802u, 0xC8u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(cd.write8(0x1F801801u, 0x0Eu).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(cd.mode() == 0xC8u);
+    CHECK(cd.read8(0x1F801801u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(cd.write8(0x1F801800u, 0x01u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(cd.write8(0x1F801803u, 0x07u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(cd.write8(0x1F801800u, 0x00u).status ==
+          jojo::R3000aBusStatus::ok);
+
+    CHECK(cd.write8(0x1F801801u, 0x0Fu).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(cd.response_bytes_available() == 5u);
+    CHECK(cd.read8(0x1F801801u).value == 0u);
+    CHECK(cd.read8(0x1F801801u).value == 0xC8u);
+    CHECK(cd.read8(0x1F801801u).value == 0u);
+    CHECK(cd.read8(0x1F801801u).value == 0x12u);
+    CHECK(cd.read8(0x1F801801u).value == 0x34u);
+    CHECK(cd.write8(0x1F801800u, 0x01u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(cd.write8(0x1F801803u, 0x07u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(cd.write8(0x1F801800u, 0x00u).status ==
+          jojo::R3000aBusStatus::ok);
+
     // Unknown commands remain explicit; they are never guessed successful.
     const auto commands_before_unknown = cd.command_count();
     CHECK(cd.write8(0x1F801801u, 0x7Fu).status == jojo::R3000aBusStatus::unsupported);
