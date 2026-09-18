@@ -117,6 +117,7 @@ bool supported_dma_device_direction(std::uint32_t channel, bool from_ram) noexce
     if (channel == 2u) return from_ram;
     if (channel == 3u) return !from_ram;
     if (channel == 4u) return true;
+    if (channel == 6u) return !from_ram;
     return false;
 }
 
@@ -420,9 +421,12 @@ R3000aBusResult Ps1HardwareServices::write32(std::uint32_t physical,
         }
         const auto sync_mode =
             static_cast<std::uint32_t>((value & kDmaSyncMask) >> 9u);
+        const bool decrement = (value & kDmaStepDecrement) != 0u;
         if (sync_mode > 2u ||
-            (value & kDmaStepDecrement) != 0u ||
             (value & kDmaChopping) != 0u) {
+            return {R3000aBusStatus::unsupported, 0u};
+        }
+        if (decrement && dma_channel_index != 6u) {
             return {R3000aBusStatus::unsupported, 0u};
         }
         if (sync_mode == 0u && (value & kDmaTrigger) == 0u) {
@@ -438,6 +442,10 @@ R3000aBusResult Ps1HardwareServices::write32(std::uint32_t physical,
         }
         if (sync_mode == 2u &&
             (dma_channel_index != 2u || !from_ram)) {
+            return {R3000aBusStatus::unsupported, 0u};
+        }
+        if (dma_channel_index == 6u &&
+            (sync_mode != 0u || !decrement || from_ram)) {
             return {R3000aBusStatus::unsupported, 0u};
         }
 
@@ -628,6 +636,40 @@ bool Ps1HardwareServices::execute_pending_dma(
 
         gpu_ = candidate;
         return complete_dma_transfer(2u);
+    }
+
+    if (request.channel == 6u &&
+        !request.from_ram &&
+        request.sync_mode == 0u) {
+        if (request.words == 0u || main_ram.size() < 4u) {
+            return false;
+        }
+        const auto start =
+            static_cast<std::size_t>(request.madr & 0x00FFFFFCu);
+        const auto backward_bytes =
+            (static_cast<std::size_t>(request.words) - 1u) * 4u;
+        if (start + 4u > main_ram.size() ||
+            backward_bytes > start) {
+            return false;
+        }
+
+        for (std::size_t i = 0u; i < request.words; ++i) {
+            const auto address = start - i * 4u;
+            const std::uint32_t value =
+                (i + 1u == request.words)
+                    ? 0x00FFFFFFu
+                    : static_cast<std::uint32_t>(
+                        (address - 4u) & 0x00FFFFFFu);
+            main_ram[address + 0u] =
+                static_cast<std::uint8_t>(value);
+            main_ram[address + 1u] =
+                static_cast<std::uint8_t>(value >> 8u);
+            main_ram[address + 2u] =
+                static_cast<std::uint8_t>(value >> 16u);
+            main_ram[address + 3u] =
+                static_cast<std::uint8_t>(value >> 24u);
+        }
+        return complete_dma_transfer(6u);
     }
 
     const auto start = static_cast<std::size_t>(request.madr);
