@@ -272,7 +272,8 @@ Ps1BootReport Ps1BootRuntime::run(const Ps1BootOptions& options) noexcept {
                 }
             }
 
-            const auto bios_status = bios_.dispatch(cpu_, *physical_pc, cpu_.gpr[9]);
+            const auto bios_status =
+                bios_.dispatch(cpu_, *physical_pc, cpu_.gpr[9], &bus_);
             if (bios_status == Ps1HleBiosDispatchStatus::handled) {
                 diagnostic_bios_frontier_pending_ = false;
                 continue;
