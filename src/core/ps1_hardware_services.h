@@ -84,6 +84,18 @@ private:
     static constexpr std::uint16_t interrupt_valid_bits = 0x07FFu;
     static constexpr std::uint16_t timer_supported_mode_mask = 0x03FFu;
 
+    std::array<std::uint32_t, 9> memory_control_{{
+        0x1F000000u,
+        0x1F802000u,
+        0x0013243Fu,
+        0x00003022u,
+        0x0013243Fu,
+        0x200931E1u,
+        0x00020843u,
+        0x00070777u,
+        0x00031125u,
+    }};
+    std::uint32_t ram_size_{0x00000B88u};
     std::uint16_t interrupt_status_{};
     std::uint16_t interrupt_mask_{};
     std::array<Ps1RootCounterState, 3> timers_{};
