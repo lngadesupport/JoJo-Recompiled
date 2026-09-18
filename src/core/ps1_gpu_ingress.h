@@ -80,7 +80,7 @@ private:
         bool gouraud) noexcept;
     void fill_rectangle(std::uint32_t width, std::uint32_t height) noexcept;
     void draw_monochrome_rectangle(std::uint32_t width, std::uint32_t height) noexcept;
-    void draw_raw_textured_rectangle(std::uint32_t width, std::uint32_t height) noexcept;
+    void draw_textured_rectangle(std::uint32_t width, std::uint32_t height) noexcept;
     [[nodiscard]] std::uint16_t sample_raw_texture(
         std::uint32_t u,
         std::uint32_t v) const noexcept;
@@ -113,6 +113,8 @@ private:
     std::uint8_t texture_depth_{};
     std::uint8_t texture_u_{};
     std::uint8_t texture_v_{};
+    std::uint32_t texture_modulation_color_{0x00808080u};
+    bool texture_raw_{true};
     std::uint8_t texture_window_mask_x_{};
     std::uint8_t texture_window_mask_y_{};
     std::uint8_t texture_window_offset_x_{};

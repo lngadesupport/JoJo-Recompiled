@@ -41,6 +41,19 @@ std::uint16_t color24_to_bgr555(std::uint32_t value) noexcept {
     return static_cast<std::uint16_t>(red | (green << 5u) | (blue << 10u));
 }
 
+std::uint16_t modulate_bgr555(std::uint16_t texel, std::uint32_t color24) noexcept {
+    const auto modulate = [](std::uint32_t component5, std::uint32_t color8) {
+        return std::min<std::uint32_t>(
+            31u,
+            (component5 * color8 + 64u) / 128u);
+    };
+    const auto red = modulate(texel & 0x1Fu, color24 & 0xFFu);
+    const auto green = modulate((texel >> 5u) & 0x1Fu, (color24 >> 8u) & 0xFFu);
+    const auto blue = modulate((texel >> 10u) & 0x1Fu, (color24 >> 16u) & 0xFFu);
+    return static_cast<std::uint16_t>(
+        red | (green << 5u) | (blue << 10u) | (texel & 0x8000u));
+}
+
 std::uint32_t display_width_from_mode(std::uint32_t parameter) noexcept {
     if ((parameter & (1u << 6u)) != 0u) return 368u;
     switch (parameter & 3u) {
@@ -65,6 +78,8 @@ void Ps1GpuIngress::reset_command_buffer() noexcept {
     draw_y_ = 0;
     texture_fixed_width_ = 0u;
     texture_fixed_height_ = 0u;
+    texture_modulation_color_ = 0x00808080u;
+    texture_raw_ = true;
     copy_source_x_ = 0u;
     copy_source_y_ = 0u;
     copy_destination_x_ = 0u;
@@ -190,7 +205,7 @@ std::uint16_t Ps1GpuIngress::sample_raw_texture(
     }
 }
 
-void Ps1GpuIngress::draw_raw_textured_rectangle(
+void Ps1GpuIngress::draw_textured_rectangle(
     std::uint32_t width,
     std::uint32_t height) noexcept {
     for (std::uint32_t local_y = 0u; local_y < height; ++local_y) {
@@ -218,8 +233,11 @@ void Ps1GpuIngress::draw_raw_textured_rectangle(
             const auto texel = sample_raw_texture(texture_x, texture_y);
             if (texel == 0u) continue;
 
+            const auto pixel = texture_raw_
+                ? texel
+                : modulate_bgr555(texel, texture_modulation_color_);
             vram_[static_cast<std::size_t>(y) * vram_width +
-                  static_cast<std::uint32_t>(x)] = texel;
+                  static_cast<std::uint32_t>(x)] = pixel;
             ++vram_write_count_;
         }
     }
@@ -507,7 +525,7 @@ R3000aBusResult Ps1GpuIngress::write_gp0(std::uint32_t value) noexcept {
             texture_clut_x_ = static_cast<std::uint32_t>(clut & 0x3Fu) << 4u;
             texture_clut_y_ = static_cast<std::uint32_t>((clut >> 6u) & 0x1FFu);
             if (texture_fixed_width_ != 0u && texture_fixed_height_ != 0u) {
-                draw_raw_textured_rectangle(texture_fixed_width_, texture_fixed_height_);
+                draw_textured_rectangle(texture_fixed_width_, texture_fixed_height_);
                 reset_command_buffer();
             } else {
                 gp0_mode_ = Gp0Mode::textured_rectangle_size;
@@ -518,7 +536,7 @@ R3000aBusResult Ps1GpuIngress::write_gp0(std::uint32_t value) noexcept {
             ++gp0_word_count_;
             const auto width = value & 0xFFFFu;
             const auto height = (value >> 16u) & 0xFFFFu;
-            draw_raw_textured_rectangle(width, height);
+            draw_textured_rectangle(width, height);
             reset_command_buffer();
             return {R3000aBusStatus::ok, 0u};
         }
@@ -624,27 +642,35 @@ R3000aBusResult Ps1GpuIngress::write_gp0(std::uint32_t value) noexcept {
             draw_color_ = color24_to_bgr555(value & 0x00FFFFFFu);
             gp0_mode_ = Gp0Mode::monochrome_rectangle_position;
             return {R3000aBusStatus::ok, 0u};
+        case 0x64u: // Modulated textured variable rectangle
         case 0x65u: // Raw-textured variable rectangle
             if (texture_depth_ > 2u) {
                 last_unsupported_gp0_command_ = command;
                 return {R3000aBusStatus::unsupported, 0u};
             }
+            texture_raw_ = (command & 1u) != 0u;
+            texture_modulation_color_ = value & 0x00FFFFFFu;
             texture_fixed_width_ = 0u;
             texture_fixed_height_ = 0u;
             ++gp0_word_count_;
             gp0_mode_ = Gp0Mode::textured_rectangle_position;
             return {R3000aBusStatus::ok, 0u};
+        case 0x6Cu: // Modulated textured 1x1 rectangle
         case 0x6Du: // Raw-textured 1x1 rectangle
+        case 0x74u: // Modulated textured 8x8 rectangle
         case 0x75u: // Raw-textured 8x8 rectangle
+        case 0x7Cu: // Modulated textured 16x16 rectangle
         case 0x7Du: // Raw-textured 16x16 rectangle
             if (texture_depth_ > 2u) {
                 last_unsupported_gp0_command_ = command;
                 return {R3000aBusStatus::unsupported, 0u};
             }
-            if (command == 0x6Du) {
+            texture_raw_ = (command & 1u) != 0u;
+            texture_modulation_color_ = value & 0x00FFFFFFu;
+            if ((command & 0xF8u) == 0x68u) {
                 texture_fixed_width_ = 1u;
                 texture_fixed_height_ = 1u;
-            } else if (command == 0x75u) {
+            } else if ((command & 0xF8u) == 0x70u) {
                 texture_fixed_width_ = 8u;
                 texture_fixed_height_ = 8u;
             } else {
