@@ -56,7 +56,7 @@ This phase is closed only after its latest Linux and Windows final gates are gre
 
 ## Phase 7 — current commercial gameplay validation
 
-Phase 7 is the next evidence-driven phase.
+Phase 7 remains the evidence-driven commercial acceptance phase and is open in parallel with Phase 8 engineering.
 
 The workflow is:
 
@@ -72,19 +72,26 @@ Broad speculative hardware emulation is not the strategy. Real title evidence co
 
 ## Phase 8 — native x64 optimization and release
 
-The reference R3000A executor remains the correctness oracle until the gameplay path is stable.
+Phase 8 is active in parallel with Phase 7 commercial validation. The reference R3000A executor remains the correctness oracle.
 
-The later native-backend program will:
+The current native path already includes:
 
-- discover title code regions and control flow;
-- lift supported R3000A semantics into explicit IR;
-- preserve branch/load-delay and exception behavior;
-- lower validated IR to Windows x64;
-- bind derived caches to the exact supported revision/executable identity;
-- cross-check native execution against the reference runtime;
-- add final performance, packaging and release gates.
+- explicit R3000A IR and reachable CFG discovery;
+- real Windows x64 machine-code emission;
+- RW→RX executable-memory ownership;
+- guest-code-fingerprinted resident cache with bounded LRU eviction;
+- single-instruction hybrid dispatch in the continuous PS1 runtime;
+- Windows launcher activation of that hybrid runtime;
+- differential comparison against the reference executor;
+- segment telemetry for native/reference retirement and cache activity.
 
-`native-codegen-ready` is not equivalent to playable or production-ready.
+Promotion is incremental. Straight-line non-trapping integer operations were first; variable shifts, HI/LO, multiply, control-flow scheduling and guarded main-RAM access are being added only behind differential tests. Delay slots, load delays and interrupt checks retain reference-equivalent ordering.
+
+MMIO, unsupported memory, COP0, GTE and any trapping or unproven semantics remain on the reference path until explicitly promoted. A native cache miss or eligibility failure must fall back before mutating guest-visible state.
+
+The first product-integrated Windows baseline passed Phase 8 Final Gate run `35317111724`.
+
+`native-codegen-ready` is not equivalent to playable or production-ready. Phase 8 release acceptance still depends on commercial differential evidence, performance, packaging and the unresolved Phase 7 gameplay gates.
 
 ## Commercial evidence policy
 
