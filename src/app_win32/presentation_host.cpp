@@ -717,10 +717,11 @@ Result<RendererCapabilities> probe_d3d11_renderer_capabilities() {
     caps.msaa_modes = {Msaa::off};
 
     struct SampleMode { UINT samples; Msaa mode; };
-    constexpr std::array<SampleMode, 3> samples{{
+    constexpr std::array<SampleMode, 4> samples{{
         {2u, Msaa::x2},
         {4u, Msaa::x4},
         {8u, Msaa::x8},
+        {16u, Msaa::x16},
     }};
     for (const auto& sample : samples) {
         UINT quality_levels = 0u;
