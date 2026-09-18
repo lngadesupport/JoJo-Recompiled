@@ -20,6 +20,37 @@ static fs::path temp_file(const char* name) {
     return path;
 }
 
+static void test_video_and_accessibility_settings_validate_and_round_trip() {
+    jojo::GraphicsSettings graphics{};
+    graphics.msaa = jojo::Msaa::x16;
+    CHECK(jojo::validate_graphics(graphics));
+
+    jojo::AccessibilitySettings accessibility{};
+    CHECK(jojo::validate_accessibility(accessibility));
+    accessibility.menu_text_scale = 151;
+    CHECK(!jojo::validate_accessibility(accessibility));
+
+    const auto path = temp_file("accessibility.ini");
+    jojo::AppSettings settings{};
+    settings.graphics.msaa = jojo::Msaa::x16;
+    settings.accessibility.high_contrast_ui = true;
+    settings.accessibility.reduce_flashing = true;
+    settings.accessibility.reduce_screen_shake = true;
+    settings.accessibility.hold_assist = true;
+    settings.accessibility.menu_text_scale = 125;
+    CHECK(jojo::save_settings_atomic(path, settings));
+
+    const auto loaded = jojo::load_settings(path);
+    CHECK(loaded);
+    if (loaded) {
+        CHECK(loaded.value.graphics.msaa == jojo::Msaa::x16);
+        CHECK(loaded.value.accessibility == settings.accessibility);
+    }
+
+    std::error_code ec;
+    fs::remove(path, ec);
+}
+
 static void test_audio_settings_validate_and_round_trip() {
     jojo::AudioSettings audio{};
     CHECK(jojo::validate_audio(audio));
@@ -169,6 +200,12 @@ static void test_settings_menu_uses_draft_commit_and_discard() {
     CHECK(menu.page() == jojo::SettingsPage::graphics);
     CHECK(!menu.dirty());
 
+    menu.set_page(jojo::SettingsPage::accessibility);
+    auto accessibility = menu.draft().accessibility;
+    accessibility.reduce_flashing = true;
+    CHECK(menu.set_accessibility(accessibility));
+    CHECK(menu.dirty());
+
     menu.set_page(jojo::SettingsPage::audio);
     auto audio = menu.draft().audio;
     audio.master_volume = 50;
@@ -182,6 +219,7 @@ static void test_settings_menu_uses_draft_commit_and_discard() {
     menu.discard();
     CHECK(!menu.dirty());
     CHECK(menu.draft().audio.master_volume == baseline.audio.master_volume);
+    CHECK(menu.draft().accessibility == baseline.accessibility);
     CHECK(menu.draft().input.players[1].selected_device == baseline.input.players[1].selected_device);
 
     audio = menu.draft().audio;
@@ -193,6 +231,7 @@ static void test_settings_menu_uses_draft_commit_and_discard() {
 }
 
 int main() {
+    test_video_and_accessibility_settings_validate_and_round_trip();
     test_audio_settings_validate_and_round_trip();
     test_two_player_bindings_round_trip();
     test_legacy_player_one_keys_still_load();
