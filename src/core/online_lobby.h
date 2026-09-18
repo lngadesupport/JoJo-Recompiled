@@ -56,7 +56,7 @@ struct OnlineCreateRoomDraft {
 struct OnlineLobbyModel {
     OnlineLobbyScreen screen{OnlineLobbyScreen::home};
     std::string player_name{"PLAYER"};
-    std::string region{"SOUTH AMERICA"};
+    std::string region{"SOUTH AMERICA - ARGENTINA"};
     OnlineMatchQueue queue{OnlineMatchQueue::casual};
     OnlineCreateRoomDraft create_room{};
     std::vector<OnlineRoomInfo> rooms{};
