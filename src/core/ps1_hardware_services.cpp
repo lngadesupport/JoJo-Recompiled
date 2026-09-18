@@ -32,8 +32,30 @@ constexpr std::uint32_t kTimerModeOffset = 0x4u;
 constexpr std::uint32_t kTimerTargetOffset = 0x8u;
 constexpr std::uint16_t kTimerResetAtTarget = 0x0008u;
 constexpr std::uint16_t kTimerIrqAtTarget = 0x0010u;
+constexpr std::uint16_t kTimerClockSourceMask = 0x0300u;
+constexpr std::uint32_t kTimer1NtscHblankCpuTicks = 2153u;
+constexpr std::uint32_t kTimer1PalHblankCpuTicks = 2168u;
+constexpr std::uint32_t kTimer2Div8CpuTicks = 8u;
 constexpr std::uint64_t kFnvOffset = 14695981039346656037ull;
 constexpr std::uint64_t kFnvPrime = 1099511628211ull;
+
+std::uint32_t timer_clock_divisor(
+    std::uint32_t channel,
+    std::uint16_t mode,
+    const Ps1GpuDisplayState& display) noexcept {
+    const auto source =
+        static_cast<std::uint32_t>((mode & kTimerClockSourceMask) >> 8u);
+
+    if (channel == 1u && (source == 1u || source == 3u)) {
+        return display.pal
+            ? kTimer1PalHblankCpuTicks
+            : kTimer1NtscHblankCpuTicks;
+    }
+    if (channel == 2u && (source == 2u || source == 3u)) {
+        return kTimer2Div8CpuTicks;
+    }
+    return 1u;
+}
 
 bool decode_timer_register(std::uint32_t physical,
                            std::uint32_t& channel,
@@ -369,8 +391,10 @@ void Ps1HardwareServices::step(std::uint32_t cpu_cycles) noexcept {
         if (cpu_cycles == 0u) continue;
 
         timer.cycle_accumulator += cpu_cycles;
-        while (timer.cycle_accumulator != 0u) {
-            --timer.cycle_accumulator;
+        const auto divisor =
+            timer_clock_divisor(channel, timer.mode, gpu_.display_state());
+        while (timer.cycle_accumulator >= divisor) {
+            timer.cycle_accumulator -= divisor;
             timer.counter = static_cast<std::uint16_t>(timer.counter + 1u);
 
             if (timer.target != 0u && timer.counter == timer.target) {
