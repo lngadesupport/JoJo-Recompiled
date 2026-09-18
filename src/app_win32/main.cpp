@@ -78,7 +78,8 @@ std::unique_ptr<jojo::Ps1CommercialEvidenceRunner> game_runner{};
 jojo::Ps1DisplayFrame game_frame{};
 std::uint64_t game_total_instructions{};
 std::uint32_t game_execution_segments{};
-jojo::Ps1VideoReferenceClock game_reference_clock{};
+std::uint64_t game_completed_frames{};
+jojo::Ps1FrameSliceBudget game_frame_budget{65536u};
 std::chrono::steady_clock::time_point next_game_tick{};
 fs::path settings_path, binding_path, executable_root;
 jojo::AppSettings app_settings{};
@@ -348,7 +349,8 @@ void stop_game_runtime(const jojo::Ps1BootReport* final_boot){
     game_audio_host.reset();
     game_total_instructions=0u;
     game_execution_segments=0u;
-    game_reference_clock.reset();
+    game_completed_frames=0u;
+    game_frame_budget.reset();
     if(checkpoint_btn) SetWindowTextW(checkpoint_btn,L"INICIAR JOGO");
     refresh_actions();
     if(win) InvalidateRect(win,nullptr,FALSE);
@@ -377,27 +379,32 @@ void service_game_audio(){
 void game_tick(){
     if(!game_runner) return;
 
-    const auto display_timing=game_runner->gpu_display_state();
-    const auto timing_mode=display_timing.pal
-        ? (display_timing.interlaced
-            ? jojo::Ps1VideoTimingMode::pal_interlaced
-            : jojo::Ps1VideoTimingMode::pal_non_interlaced)
-        : (display_timing.interlaced
-            ? jojo::Ps1VideoTimingMode::ntsc_interlaced
-            : jojo::Ps1VideoTimingMode::ntsc_non_interlaced);
-    game_reference_clock.set_mode(timing_mode);
+    if(game_frame_budget.frame_complete()){
+        const auto display_timing=game_runner->gpu_display_state();
+        const auto timing_mode=display_timing.pal
+            ? (display_timing.interlaced
+                ? jojo::Ps1VideoTimingMode::pal_interlaced
+                : jojo::Ps1VideoTimingMode::pal_non_interlaced)
+            : (display_timing.interlaced
+                ? jojo::Ps1VideoTimingMode::ntsc_interlaced
+                : jojo::Ps1VideoTimingMode::ntsc_non_interlaced);
 
-    const auto now=std::chrono::steady_clock::now();
-    const auto frame_period=std::chrono::duration_cast<std::chrono::steady_clock::duration>(
-        std::chrono::duration<double>(jojo::ps1_frame_seconds(timing_mode)));
-    if(now<next_game_tick) return;
-    if(now-next_game_tick>frame_period*4) next_game_tick=now;
-    next_game_tick+=frame_period;
+        const auto now=std::chrono::steady_clock::now();
+        const auto frame_period=std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+            std::chrono::duration<double>(jojo::ps1_frame_seconds(timing_mode)));
+        if(now<next_game_tick) return;
+        if(now-next_game_tick>frame_period*4) next_game_tick=now;
+        next_game_tick+=frame_period;
 
-    apply_current_input(*game_runner);
+        (void)game_frame_budget.begin_frame(timing_mode);
+        apply_current_input(*game_runner);
+    }
+
+    const auto slice_ticks=game_frame_budget.next_slice_ticks();
+    if(slice_ticks==0u) return;
 
     jojo::Ps1BootOptions options{};
-    options.instruction_budget=game_reference_clock.next_frame_ticks();
+    options.instruction_budget=slice_ticks;
     options.trace_capacity=64u;
     options.mmio_event_capacity=64u;
     options.bios_event_capacity=64u;
@@ -418,19 +425,30 @@ void game_tick(){
         return;
     }
 
-    game_runner->signal_vblank();
+    if(segment.instructions_retired==0u ||
+       !game_frame_budget.consume(segment.instructions_retired)){
+        jojo::Ps1BootReport invalid=segment;
+        invalid.stop_reason=jojo::Ps1BootStopReason::fatal_runtime_error;
+        stop_game_runtime(&invalid);
+        return;
+    }
+
     service_game_audio();
+    if(!game_frame_budget.frame_complete()) return;
+
+    game_runner->signal_vblank();
+    ++game_completed_frames;
 
     const auto frame=game_runner->display_frame();
     if(frame.width!=0u&&frame.height!=0u&&!frame.rgba8.empty()){
         (void)show_game_frame(frame);
     }
 
-    if((game_execution_segments%60u)==0u){
+    if((game_completed_frames%60u)==0u){
         const auto flushed=game_runner->flush_memory_cards();
         if(!flushed) add_log(L"Aviso: autosave do Memory Card falhou: "+wide(flushed.detail));
-        status=L"Jogo em execução • segmentos: "+
-            std::to_wstring(game_execution_segments)+
+        status=L"Jogo em execução • frames: "+
+            std::to_wstring(game_completed_frames)+
             L" • instruções: "+std::to_wstring(game_total_instructions);
         InvalidateRect(win,nullptr,FALSE);
     }
@@ -470,7 +488,8 @@ void run_checkpoint(){
         std::move(runner.value));
     game_total_instructions=0u;
     game_execution_segments=0u;
-    game_reference_clock.reset();
+    game_completed_frames=0u;
+    game_frame_budget.reset();
     next_game_tick=std::chrono::steady_clock::now();
 
     if(!SetTimer(win,ID_GAME_TIMER,1u,nullptr)){
