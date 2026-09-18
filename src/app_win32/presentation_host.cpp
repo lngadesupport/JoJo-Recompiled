@@ -118,6 +118,33 @@ HRESULT create_probe_device(ID3D11Device** device, ID3D11DeviceContext** context
 
 }
 
+D3d11PresentationQuality make_d3d11_presentation_quality(
+    TextureFilter texture_filter,
+    Msaa anti_aliasing) noexcept {
+    D3d11PresentationQuality quality{};
+
+    switch (texture_filter) {
+        case TextureFilter::off:
+            quality.sampler_filter = D3D11_FILTER_MIN_MAG_MIP_POINT;
+            quality.max_anisotropy = 1u;
+            break;
+        case TextureFilter::x2:
+        case TextureFilter::x4:
+        case TextureFilter::x8:
+        case TextureFilter::x16:
+            quality.sampler_filter = D3D11_FILTER_ANISOTROPIC;
+            quality.max_anisotropy =
+                static_cast<UINT>(static_cast<int>(texture_filter));
+            break;
+    }
+
+    const auto requested_samples = static_cast<int>(anti_aliasing);
+    quality.aa_samples = requested_samples <= 1
+        ? 1u
+        : static_cast<UINT>(std::min(requested_samples, 16));
+    return quality;
+}
+
 Result<Win32WindowPlan> make_win32_window_plan(
     const PresentationPlan& presentation,
     RECT monitor_bounds,
