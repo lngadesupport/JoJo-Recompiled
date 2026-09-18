@@ -78,6 +78,17 @@ The first complete continuous-runtime Phase 6 baseline passed Linux and Windows 
 The hardened Phase 6 completion head is `a7039ef62bc39b4622f4e8ced54a6298acccc7fd`.
 Phase 6 Fast Gate passed, and Final Gate run `35312132685` passed the complete Linux Release and Windows x64 Release graphs.
 
+### Phase 7 — gameplay validation infrastructure: active and CI-green
+
+The current Phase 7 validation baseline is `abee5fb8383bb28cfeb4e9378b8d8f3db05d19bf`.
+
+Phase 7 Fast Gate run `35314104386` passed.
+Phase 7 Final Gate run `35314104437` passed the full Linux Release and Windows x64 Release graphs and published the `JOJO-Recompiled-Phase7-Windows-x64` validation artifact.
+
+The runtime now preserves periodic/manual commercial session evidence and tracks independent signals for visible/dynamic video, controller polling and pressed input, non-silent SPU PCM, Memory Card reads/writes/content changes, cumulative DMA/CD-ROM/GPU/VRAM/VBlank activity, and bounded cumulative CD-ROM command history.
+
+This is a validated test runtime, not proof of commercial playability. Phase 7 remains open until a fresh supported commercial run demonstrates the required title/menu/audio/input/save/fight checkpoints or exposes the next concrete frontier.
+
 ## Current truth boundary
 
 Synthetic and CI tests now cover substantially more than the old Phase 3 boundary, but they do **not** prove commercial gameplay.
