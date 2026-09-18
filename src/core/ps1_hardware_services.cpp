@@ -420,7 +420,7 @@ R3000aBusResult Ps1HardwareServices::write32(std::uint32_t physical,
         }
         const auto sync_mode =
             static_cast<std::uint32_t>((value & kDmaSyncMask) >> 9u);
-        if (sync_mode > 1u ||
+        if (sync_mode > 2u ||
             (value & kDmaStepDecrement) != 0u ||
             (value & kDmaChopping) != 0u) {
             return {R3000aBusStatus::unsupported, 0u};
@@ -428,7 +428,7 @@ R3000aBusResult Ps1HardwareServices::write32(std::uint32_t physical,
         if (sync_mode == 0u && (value & kDmaTrigger) == 0u) {
             return {R3000aBusStatus::unsupported, 0u};
         }
-        if (sync_mode == 1u && (value & kDmaTrigger) != 0u) {
+        if (sync_mode != 0u && (value & kDmaTrigger) != 0u) {
             return {R3000aBusStatus::unsupported, 0u};
         }
 
@@ -436,12 +436,16 @@ R3000aBusResult Ps1HardwareServices::write32(std::uint32_t physical,
         if (!supported_dma_device_direction(dma_channel_index, from_ram)) {
             return {R3000aBusStatus::unsupported, 0u};
         }
+        if (sync_mode == 2u &&
+            (dma_channel_index != 2u || !from_ram)) {
+            return {R3000aBusStatus::unsupported, 0u};
+        }
 
         std::uint64_t words64 = 0u;
         if (sync_mode == 0u) {
             const auto word_count = dma.bcr & 0xFFFFu;
             words64 = word_count == 0u ? 0x10000u : word_count;
-        } else {
+        } else if (sync_mode == 1u) {
             const auto block_size = dma.bcr & 0xFFFFu;
             const auto block_count = (dma.bcr >> 16u) & 0xFFFFu;
             const auto effective_size =
@@ -453,7 +457,8 @@ R3000aBusResult Ps1HardwareServices::write32(std::uint32_t physical,
 
         constexpr std::uint64_t kMaxMainRamWords =
             (2u * 1024u * 1024u) / 4u;
-        if (words64 == 0u || words64 > kMaxMainRamWords) {
+        if (sync_mode != 2u &&
+            (words64 == 0u || words64 > kMaxMainRamWords)) {
             return {R3000aBusStatus::unsupported, 0u};
         }
 
@@ -463,6 +468,7 @@ R3000aBusResult Ps1HardwareServices::write32(std::uint32_t physical,
             dma.madr,
             static_cast<std::uint32_t>(words64),
             from_ram,
+            static_cast<std::uint8_t>(sync_mode),
         };
         return {R3000aBusStatus::ok, 0u};
     }
@@ -559,6 +565,71 @@ bool Ps1HardwareServices::execute_pending_dma(
     std::span<std::uint8_t> main_ram) noexcept {
     if (!pending_dma_transfer_) return false;
     const auto request = *pending_dma_transfer_;
+
+    if (request.channel == 2u &&
+        request.from_ram &&
+        request.sync_mode == 2u) {
+        if (main_ram.size() < 4u) return false;
+
+        auto candidate = gpu_;
+        std::vector<bool> visited(main_ram.size() / 4u, false);
+        std::uint32_t node_address = request.madr & 0x00FFFFFCu;
+        std::size_t nodes = 0u;
+        std::size_t total_words = 0u;
+        constexpr std::size_t kMaxLinkedListNodes = 65536u;
+        constexpr std::size_t kMaxLinkedListWords =
+            (2u * 1024u * 1024u) / 4u;
+
+        for (;;) {
+            const auto node = static_cast<std::size_t>(node_address);
+            if ((node & 3u) != 0u ||
+                node + 4u > main_ram.size()) {
+                return false;
+            }
+            const auto visited_index = node / 4u;
+            if (visited_index >= visited.size() ||
+                visited[visited_index] ||
+                ++nodes > kMaxLinkedListNodes) {
+                return false;
+            }
+            visited[visited_index] = true;
+
+            const std::uint32_t header =
+                static_cast<std::uint32_t>(main_ram[node + 0u]) |
+                (static_cast<std::uint32_t>(main_ram[node + 1u]) << 8u) |
+                (static_cast<std::uint32_t>(main_ram[node + 2u]) << 16u) |
+                (static_cast<std::uint32_t>(main_ram[node + 3u]) << 24u);
+            const auto packet_words =
+                static_cast<std::size_t>(header >> 24u);
+            if (packet_words > kMaxLinkedListWords - total_words ||
+                node + 4u + packet_words * 4u > main_ram.size()) {
+                return false;
+            }
+
+            for (std::size_t i = 0u; i < packet_words; ++i) {
+                const auto offset = node + 4u + i * 4u;
+                const std::uint32_t value =
+                    static_cast<std::uint32_t>(main_ram[offset + 0u]) |
+                    (static_cast<std::uint32_t>(main_ram[offset + 1u]) << 8u) |
+                    (static_cast<std::uint32_t>(main_ram[offset + 2u]) << 16u) |
+                    (static_cast<std::uint32_t>(main_ram[offset + 3u]) << 24u);
+                if (candidate.write_gp0(value).status !=
+                    R3000aBusStatus::ok) {
+                    return false;
+                }
+            }
+            total_words += packet_words;
+
+            if ((header & 0x00800000u) != 0u) {
+                break;
+            }
+            node_address = header & 0x00FFFFFCu;
+        }
+
+        gpu_ = candidate;
+        return complete_dma_transfer(2u);
+    }
+
     const auto start = static_cast<std::size_t>(request.madr);
     const auto byte_count = static_cast<std::size_t>(request.words) * 4u;
     if (start >= main_ram.size() || byte_count > main_ram.size() - start) {
@@ -722,6 +793,7 @@ std::uint64_t Ps1HardwareServices::diagnostic_state_hash() const noexcept {
         hash_u32(hash, pending_dma_transfer_->madr);
         hash_u32(hash, pending_dma_transfer_->words);
         hash_bool(hash, pending_dma_transfer_->from_ram);
+        hash_byte(hash, pending_dma_transfer_->sync_mode);
     }
     hash_u64(hash, completed_dma_transfer_count_);
     hash_u64(hash, vblank_count_);
