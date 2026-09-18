@@ -19,10 +19,11 @@ jobs:
         run: >-
           cmake --build build --target
           jojo_ps1_sio0_tests
+          jojo_ps1_input_bridge_tests
           jojo_ps1_memory_bus_tests
           -j2
       - name: Run Phase 6 focused tests
         run: >-
           ctest --test-dir build -R
-          "jojo_ps1_(sio0|memory_bus)_tests"
+          "jojo_ps1_(sio0|input_bridge|memory_bus)_tests"
           --output-on-failure
