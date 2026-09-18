@@ -10,6 +10,8 @@ namespace jojo {
 
 inline constexpr std::uint32_t kPs1HleC0TableAddress = 0x00000674u;
 inline constexpr std::uint32_t kPs1HleExceptionHandlerAddress = 0x00000C80u;
+inline constexpr std::uint32_t kPs1HleB0TableAddress = 0x0000D000u;
+inline constexpr std::uint32_t kPs1HleChangeClearPadHandlerAddress = 0x0000E000u;
 
 enum class Ps1HleBiosDispatchStatus : std::uint8_t {
     handled,
