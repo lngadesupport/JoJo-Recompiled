@@ -29,6 +29,30 @@ static void select_port0(jojo::Ps1Sio0& sio) {
     CHECK(sio.write16(0x1F80104Au, 0x0003u).status == jojo::R3000aBusStatus::ok);
 }
 
+
+static void write_sector_via_sio(
+    jojo::Ps1Sio0& sio,
+    std::uint8_t sector,
+    const std::array<std::uint8_t, 128>& payload) {
+    select_port0(sio);
+    std::uint8_t checksum = sector;
+
+    CHECK(exchange(sio, 0x81u) == 0xFFu);
+    (void)exchange(sio, 0x57u);
+    CHECK(exchange(sio, 0x00u) == 0x5Au);
+    CHECK(exchange(sio, 0x00u) == 0x5Du);
+    CHECK(exchange(sio, 0x00u) == 0x00u);
+    CHECK(exchange(sio, sector) == 0x00u);
+    for (const auto value : payload) {
+        (void)exchange(sio, value);
+        checksum ^= value;
+    }
+    (void)exchange(sio, checksum);
+    CHECK(exchange(sio, 0x00u) == 0x5Cu);
+    CHECK(exchange(sio, 0x00u) == 0x5Du);
+    CHECK(exchange(sio, 0x00u) == 0x47u);
+}
+
 static void test_blank_card_format_and_persistence() {
     jojo::Ps1MemoryCard card;
     CHECK(card.size() == 128u * 1024u);
@@ -134,6 +158,12 @@ static void test_sio0_memory_card_read_and_write_protocol() {
     CHECK(exchange(sio, 0x00u) == 0x47u);
     CHECK(sio.memory_card_read_sector_count(0u) == 1u);
     CHECK(sio.memory_card_write_sector_count(0u) == 1u);
+    CHECK(sio.memory_card_changed_write_sector_count(0u) == 1u);
+
+    // Rewriting the same bytes is still a guest write, but not a content change.
+    write_sector_via_sio(sio, 0x03u, replacement);
+    CHECK(sio.memory_card_write_sector_count(0u) == 2u);
+    CHECK(sio.memory_card_changed_write_sector_count(0u) == 1u);
 
     const auto written = card.read_sector(3u);
     CHECK(written.has_value());
