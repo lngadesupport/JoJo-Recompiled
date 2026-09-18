@@ -41,6 +41,7 @@ constexpr std::uint32_t kCurrentMainVolumeRight = 0x1F801DBAu;
 constexpr std::uint32_t kReverbConfigBase = 0x1F801DC0u;
 constexpr std::uint32_t kReverbConfigEnd = 0x1F801DFFu;
 constexpr std::uint32_t kValidVoiceMask = 0x00FFFFFFu;
+constexpr std::uint32_t kCpuCyclesPerAudioFrame = 768u;
 constexpr std::uint64_t kFnvOffset = 14695981039346656037ull;
 constexpr std::uint64_t kFnvPrime = 1099511628211ull;
 
@@ -158,6 +159,7 @@ void Ps1Spu::key_on(bool high, std::uint16_t mask) noexcept {
         voice_state.current_address =
             (static_cast<std::uint32_t>(voice_state.start_address) * 8u) %
             static_cast<std::uint32_t>(sound_ram_size);
+        voice_runtime_[i] = VoiceRuntime{};
         endx_flags_ &= ~(1u << i);
     }
 }
@@ -334,6 +336,154 @@ R3000aBusResult Ps1Spu::write16(
     return {R3000aBusStatus::unsupported, 0u};
 }
 
+
+bool Ps1Spu::decode_voice_block(std::size_t voice_index) noexcept {
+    if (voice_index >= voices_.size()) return false;
+    auto& voice_state = voices_[voice_index];
+    auto& runtime = voice_runtime_[voice_index];
+
+    const auto block_start =
+        voice_state.current_address % static_cast<std::uint32_t>(sound_ram_size);
+    std::array<std::uint8_t, 16> packed{};
+    for (std::size_t i = 0u; i < packed.size(); ++i) {
+        packed[i] = sound_ram_[
+            (block_start + static_cast<std::uint32_t>(i)) %
+            static_cast<std::uint32_t>(sound_ram_size)];
+    }
+
+    runtime.decoded = decode_adpcm_block(packed, runtime.history);
+    runtime.sample_index = 0u;
+    runtime.block_loaded = true;
+
+    if ((runtime.decoded.flags & 0x04u) != 0u) {
+        voice_state.repeat_address =
+            static_cast<std::uint16_t>((block_start / 8u) & 0xFFFFu);
+    }
+    voice_state.current_address =
+        (block_start + 16u) % static_cast<std::uint32_t>(sound_ram_size);
+    return true;
+}
+
+bool Ps1Spu::advance_voice_sample(std::size_t voice_index) noexcept {
+    if (voice_index >= voices_.size()) return false;
+    auto& voice_state = voices_[voice_index];
+    auto& runtime = voice_runtime_[voice_index];
+
+    if (runtime.block_loaded && runtime.sample_index >= runtime.decoded.samples.size()) {
+        const auto flags = runtime.decoded.flags;
+        runtime.block_loaded = false;
+        if ((flags & 0x01u) != 0u) {
+            endx_flags_ |= 1u << voice_index;
+            voice_state.current_address =
+                (static_cast<std::uint32_t>(voice_state.repeat_address) * 8u) %
+                static_cast<std::uint32_t>(sound_ram_size);
+            if ((flags & 0x02u) == 0u) {
+                voice_state.keyed_on = false;
+                voice_state.releasing = true;
+                voice_state.adsr_volume = 0u;
+                runtime.current_sample = 0;
+                return false;
+            }
+        }
+    }
+
+    if (!voice_state.keyed_on) {
+        runtime.current_sample = 0;
+        return false;
+    }
+    if (!runtime.block_loaded && !decode_voice_block(voice_index)) {
+        runtime.current_sample = 0;
+        return false;
+    }
+
+    runtime.current_sample =
+        runtime.decoded.samples[runtime.sample_index++];
+    return true;
+}
+
+std::int32_t Ps1Spu::fixed_volume_gain(std::uint16_t value) noexcept {
+    std::int32_t raw = static_cast<std::int32_t>(value & 0x7FFFu);
+    if ((raw & 0x4000) != 0) raw -= 0x8000;
+    return raw * 2;
+}
+
+std::int32_t Ps1Spu::apply_gain(
+    std::int32_t sample,
+    std::int32_t gain) noexcept {
+    const auto product =
+        static_cast<std::int64_t>(sample) * static_cast<std::int64_t>(gain);
+    return static_cast<std::int32_t>(product >> 15u);
+}
+
+void Ps1Spu::mix_sample_frame() noexcept {
+    std::int64_t left = 0;
+    std::int64_t right = 0;
+    const bool enabled = (control_ & 0x8000u) != 0u;
+    const bool unmuted = (control_ & 0x4000u) != 0u;
+
+    if (enabled) {
+        for (std::size_t i = 0u; i < voices_.size(); ++i) {
+            auto& voice_state = voices_[i];
+            auto& runtime = voice_runtime_[i];
+            if (!voice_state.keyed_on || voice_state.pitch == 0u) continue;
+
+            runtime.pitch_accumulator +=
+                std::min<std::uint32_t>(voice_state.pitch, 0x4000u);
+            while (runtime.pitch_accumulator >= 0x1000u &&
+                   voice_state.keyed_on) {
+                runtime.pitch_accumulator -= 0x1000u;
+                (void)advance_voice_sample(i);
+            }
+
+            auto sample = runtime.current_sample;
+            sample = apply_gain(
+                sample,
+                static_cast<std::int32_t>(
+                    std::min<std::uint32_t>(voice_state.adsr_volume, 0x7FFFu)));
+            left += apply_gain(sample, fixed_volume_gain(voice_state.volume_left));
+            right += apply_gain(sample, fixed_volume_gain(voice_state.volume_right));
+        }
+
+        left = apply_gain(
+            static_cast<std::int32_t>(
+                std::clamp<std::int64_t>(left, -32768, 32767)),
+            fixed_volume_gain(main_volume_left_));
+        right = apply_gain(
+            static_cast<std::int32_t>(
+                std::clamp<std::int64_t>(right, -32768, 32767)),
+            fixed_volume_gain(main_volume_right_));
+    }
+
+    if (!unmuted) {
+        left = 0;
+        right = 0;
+    }
+
+    audio_samples_.push_back(static_cast<std::int16_t>(
+        std::clamp<std::int64_t>(left, -32768, 32767)));
+    audio_samples_.push_back(static_cast<std::int16_t>(
+        std::clamp<std::int64_t>(right, -32768, 32767)));
+    ++generated_sample_frames_;
+}
+
+void Ps1Spu::step(std::uint32_t cpu_cycles) noexcept {
+    sample_cycle_accumulator_ += cpu_cycles;
+    while (sample_cycle_accumulator_ >= kCpuCyclesPerAudioFrame) {
+        sample_cycle_accumulator_ -= kCpuCyclesPerAudioFrame;
+        mix_sample_frame();
+    }
+}
+
+std::vector<std::int16_t> Ps1Spu::drain_audio_samples() {
+    std::vector<std::int16_t> drained;
+    drained.swap(audio_samples_);
+    return drained;
+}
+
+std::uint64_t Ps1Spu::generated_sample_frames() const noexcept {
+    return generated_sample_frames_;
+}
+
 bool Ps1Spu::dma_write_words(std::span<const std::uint32_t> words) noexcept {
     for (const auto value : words) {
         write_sound_ram16(static_cast<std::uint16_t>(value));
@@ -405,6 +555,18 @@ std::uint64_t Ps1Spu::diagnostic_state_hash() const noexcept {
     hash_u16(hash, external_volume_left_);
     hash_u16(hash, external_volume_right_);
     for (const auto value : reverb_registers_) hash_u16(hash, value);
+    for (const auto& runtime : voice_runtime_) {
+        hash_u32(hash, static_cast<std::uint32_t>(runtime.history.previous));
+        hash_u32(hash, static_cast<std::uint32_t>(runtime.history.older));
+        hash_u32(hash, static_cast<std::uint32_t>(runtime.sample_index));
+        hash_bool(hash, runtime.block_loaded);
+        hash_u32(hash, runtime.pitch_accumulator);
+        hash_u32(hash, static_cast<std::uint32_t>(runtime.current_sample));
+    }
+    hash_u32(hash, sample_cycle_accumulator_);
+    for (unsigned shift = 0u; shift < 64u; shift += 8u) {
+        hash_byte(hash, static_cast<std::uint8_t>(generated_sample_frames_ >> shift));
+    }
     for (const auto value : sound_ram_) hash_byte(hash, value);
     return hash;
 }

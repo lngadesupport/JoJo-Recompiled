@@ -309,6 +309,7 @@ R3000aBusResult Ps1HardwareServices::write32(std::uint32_t physical,
 }
 
 void Ps1HardwareServices::step(std::uint32_t cpu_cycles) noexcept {
+    spu_.step(cpu_cycles);
     for (std::uint32_t channel = 0u; channel < timers_.size(); ++channel) {
         auto& timer = timers_[channel];
         if (cpu_cycles == 0u) continue;

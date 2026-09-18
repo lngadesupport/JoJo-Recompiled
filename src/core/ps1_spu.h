@@ -55,6 +55,10 @@ public:
     [[nodiscard]] bool dma_write_words(std::span<const std::uint32_t> words) noexcept;
     [[nodiscard]] bool dma_read_words(std::span<std::uint32_t> words) noexcept;
 
+    void step(std::uint32_t cpu_cycles) noexcept;
+    [[nodiscard]] std::vector<std::int16_t> drain_audio_samples();
+    [[nodiscard]] std::uint64_t generated_sample_frames() const noexcept;
+
     [[nodiscard]] const Ps1SpuVoiceState& voice(std::size_t index) const noexcept;
     [[nodiscard]] std::uint32_t endx_flags() const noexcept;
     [[nodiscard]] std::uint32_t transfer_current_address() const noexcept;
@@ -62,6 +66,15 @@ public:
     [[nodiscard]] std::uint64_t diagnostic_state_hash() const noexcept;
 
 private:
+    struct VoiceRuntime {
+        Ps1SpuAdpcmHistory history{};
+        Ps1SpuDecodedBlock decoded{};
+        std::size_t sample_index{28u};
+        bool block_loaded{};
+        std::uint32_t pitch_accumulator{};
+        std::int32_t current_sample{};
+    };
+
     [[nodiscard]] bool decode_voice_register(
         std::uint32_t physical,
         std::size_t& voice_index,
@@ -77,8 +90,16 @@ private:
     void key_off(bool high, std::uint16_t mask) noexcept;
     void write_sound_ram16(std::uint16_t value) noexcept;
     [[nodiscard]] std::uint16_t read_sound_ram16() noexcept;
+    [[nodiscard]] bool decode_voice_block(std::size_t voice_index) noexcept;
+    [[nodiscard]] bool advance_voice_sample(std::size_t voice_index) noexcept;
+    void mix_sample_frame() noexcept;
+    [[nodiscard]] static std::int32_t fixed_volume_gain(std::uint16_t value) noexcept;
+    [[nodiscard]] static std::int32_t apply_gain(
+        std::int32_t sample,
+        std::int32_t gain) noexcept;
 
     std::array<Ps1SpuVoiceState, voice_count> voices_{};
+    std::array<VoiceRuntime, voice_count> voice_runtime_{};
     std::vector<std::uint8_t> sound_ram_;
 
     std::uint16_t main_volume_left_{};
@@ -103,6 +124,9 @@ private:
     std::uint16_t external_volume_left_{};
     std::uint16_t external_volume_right_{};
     std::array<std::uint16_t, 32> reverb_registers_{};
+    std::uint32_t sample_cycle_accumulator_{};
+    std::uint64_t generated_sample_frames_{};
+    std::vector<std::int16_t> audio_samples_{};
 };
 
 } // namespace jojo
