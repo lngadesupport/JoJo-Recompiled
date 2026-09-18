@@ -31,6 +31,8 @@ int main() {
     report.boot.dma_transfer_count = 4u;
     report.boot.gpu_gp0_command_count = 7u;
     report.boot.gpu_gp1_command_count = 8u;
+    report.boot.unsupported_gpu_gp0_command = 0xFEu;
+    report.boot.unsupported_gpu_gp1_command = 0x09u;
     report.boot.vram_write_count = 9u;
     report.boot.presented_frames = 1u;
     report.first_frame = jojo::Ps1CommercialFrameEvidence{
@@ -73,6 +75,8 @@ int main() {
     CHECK(text.find("cdrom_event_0_command=6") != std::string::npos);
     CHECK(text.find("dma_transfer_count=4") != std::string::npos);
     CHECK(text.find("gpu_gp0_command_count=7") != std::string::npos);
+    CHECK(text.find("unsupported_gpu_gp0_command=0xfe") != std::string::npos);
+    CHECK(text.find("unsupported_gpu_gp1_command=0x09") != std::string::npos);
     CHECK(text.find("frame_width=320") != std::string::npos);
     CHECK(text.find("frame_height=240") != std::string::npos);
     CHECK(text.find("frame_hash_fnv1a64=0123456789abcdef") != std::string::npos);
