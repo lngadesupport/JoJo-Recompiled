@@ -97,7 +97,8 @@ void test_d3d11_probe_reports_real_device_quality_capabilities() {
     CHECK(contains(probed.value.msaa_modes, jojo::Msaa::off));
     for (const auto mode : probed.value.msaa_modes) {
         CHECK(mode == jojo::Msaa::off || mode == jojo::Msaa::x2 ||
-              mode == jojo::Msaa::x4 || mode == jojo::Msaa::x8);
+              mode == jojo::Msaa::x4 || mode == jojo::Msaa::x8 ||
+              mode == jojo::Msaa::x16);
     }
 }
 
