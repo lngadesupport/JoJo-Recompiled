@@ -1,13 +1,43 @@
 #include "core/ps1_spu.h"
 #include "core/ps1_hardware_services.h"
 
+#include <array>
 #include <cstdint>
 #include <iostream>
 
 static int failures = 0;
 #define CHECK(x) do { if (!(x)) { std::cerr << __FILE__ << ':' << __LINE__ << " CHECK failed: " #x "\n"; ++failures; } } while (0)
 
+
+static void test_spu_adpcm_decode_contract() {
+    std::array<std::uint8_t, 16> block{};
+    block[0] = 0x00u; // filter 0, shift 0
+    block[1] = 0x07u; // loop end + repeat + loop start
+    block[2] = 0x97u; // +7 then -7
+    jojo::Ps1SpuAdpcmHistory history{};
+    const auto decoded = jojo::Ps1Spu::decode_adpcm_block(block, history);
+
+    CHECK(decoded.flags == 0x07u);
+    CHECK(decoded.samples[0] == 28672);
+    CHECK(decoded.samples[1] == -28672);
+
+    std::array<std::uint8_t, 16> shifted{};
+    shifted[0] = 0x04u; // filter 0, shift 4
+    shifted[2] = 0x07u;
+    history = {};
+    const auto shifted_decoded = jojo::Ps1Spu::decode_adpcm_block(shifted, history);
+    CHECK(shifted_decoded.samples[0] == 1792);
+
+    std::array<std::uint8_t, 16> filtered{};
+    filtered[0] = 0x10u; // filter 1, shift 0
+    history.previous = 1000;
+    history.older = 0;
+    const auto filtered_decoded = jojo::Ps1Spu::decode_adpcm_block(filtered, history);
+    CHECK(filtered_decoded.samples[0] == 938);
+}
+
 int main() {
+    test_spu_adpcm_decode_contract();
     jojo::Ps1Spu spu;
 
     CHECK(spu.write16(0x1F801C00u, 0x1234u).status == jojo::R3000aBusStatus::ok);
