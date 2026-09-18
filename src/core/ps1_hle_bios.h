@@ -24,6 +24,9 @@ public:
         R3000aState& cpu,
         std::uint32_t table_physical,
         std::uint32_t selector) noexcept;
+    [[nodiscard]] Ps1HleBiosDispatchStatus dispatch_syscall(
+        R3000aState& cpu,
+        std::uint32_t selector) noexcept;
 
     [[nodiscard]] std::uint64_t diagnostic_state_hash() const noexcept;
 
