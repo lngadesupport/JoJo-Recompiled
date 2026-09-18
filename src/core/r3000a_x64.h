@@ -6,6 +6,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <vector>
 
 namespace jojo {
@@ -14,6 +15,8 @@ struct R3000aX64Code {
     std::uint32_t entry_pc{};
     std::size_t instruction_count{};
     std::vector<std::uint8_t> bytes;
+    std::shared_ptr<void> executable_owner;
+    const void* executable_entry{};
 };
 
 enum class R3000aX64ExecutionStatus : std::uint8_t {
