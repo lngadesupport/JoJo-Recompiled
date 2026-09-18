@@ -53,6 +53,8 @@ std::uint32_t display_width_from_mode(std::uint32_t parameter) noexcept {
 
 void Ps1GpuIngress::reset_command_buffer() noexcept {
     gp0_mode_ = Gp0Mode::command;
+    polygon_words_.clear();
+    polygon_words_expected_ = 0u;
     fill_color_ = 0u;
     fill_x_ = 0u;
     fill_y_ = 0u;
@@ -221,6 +223,199 @@ void Ps1GpuIngress::draw_raw_textured_rectangle(
     }
 }
 
+
+void Ps1GpuIngress::begin_polygon(std::uint32_t command_word) noexcept {
+    const auto command = static_cast<std::uint8_t>(command_word >> 24u);
+    const bool gouraud = (command & 0x10u) != 0u;
+    const bool quad = (command & 0x08u) != 0u;
+    const bool textured = (command & 0x04u) != 0u;
+    const std::size_t vertices = quad ? 4u : 3u;
+
+    polygon_words_.clear();
+    polygon_words_.reserve(
+        1u + vertices * (1u + (textured ? 1u : 0u)) +
+        (gouraud ? vertices - 1u : 0u));
+    polygon_words_.push_back(command_word);
+    polygon_words_expected_ =
+        1u + vertices * (1u + (textured ? 1u : 0u)) +
+        (gouraud ? vertices - 1u : 0u);
+    gp0_mode_ = Gp0Mode::polygon_payload;
+}
+
+void Ps1GpuIngress::rasterize_triangle(
+    const PolygonVertex& a,
+    const PolygonVertex& b,
+    const PolygonVertex& c,
+    bool textured,
+    bool raw_texture,
+    bool gouraud) noexcept {
+    const auto ax = a.x + draw_offset_x_;
+    const auto ay = a.y + draw_offset_y_;
+    const auto bx = b.x + draw_offset_x_;
+    const auto by = b.y + draw_offset_y_;
+    const auto cx = c.x + draw_offset_x_;
+    const auto cy = c.y + draw_offset_y_;
+
+    const auto edge = [](std::int32_t x0, std::int32_t y0,
+                         std::int32_t x1, std::int32_t y1,
+                         std::int32_t px, std::int32_t py) noexcept {
+        return static_cast<std::int64_t>(px - x0) * (y1 - y0) -
+               static_cast<std::int64_t>(py - y0) * (x1 - x0);
+    };
+
+    const auto area = edge(ax, ay, bx, by, cx, cy);
+    if (area == 0) return;
+
+    const auto min_x = std::max<std::int32_t>(
+        static_cast<std::int32_t>(draw_area_left_),
+        std::max<std::int32_t>(0, std::min({ax, bx, cx})));
+    const auto max_x = std::min<std::int32_t>(
+        static_cast<std::int32_t>(draw_area_right_),
+        std::min<std::int32_t>(
+            static_cast<std::int32_t>(vram_width) - 1,
+            std::max({ax, bx, cx})));
+    const auto min_y = std::max<std::int32_t>(
+        static_cast<std::int32_t>(draw_area_top_),
+        std::max<std::int32_t>(0, std::min({ay, by, cy})));
+    const auto max_y = std::min<std::int32_t>(
+        static_cast<std::int32_t>(draw_area_bottom_),
+        std::min<std::int32_t>(
+            static_cast<std::int32_t>(vram_height) - 1,
+            std::max({ay, by, cy})));
+    if (min_x > max_x || min_y > max_y) return;
+
+    const auto inside = [area](std::int64_t w0, std::int64_t w1, std::int64_t w2) noexcept {
+        return area > 0
+            ? (w0 >= 0 && w1 >= 0 && w2 >= 0)
+            : (w0 <= 0 && w1 <= 0 && w2 <= 0);
+    };
+
+    const auto interpolate = [area](
+        std::int64_t w0,
+        std::int64_t w1,
+        std::int64_t w2,
+        std::int32_t v0,
+        std::int32_t v1,
+        std::int32_t v2) noexcept {
+        return static_cast<std::int32_t>(
+            (w0 * v0 + w1 * v1 + w2 * v2) / area);
+    };
+
+    for (std::int32_t y = min_y; y <= max_y; ++y) {
+        for (std::int32_t x = min_x; x <= max_x; ++x) {
+            const auto w0 = edge(bx, by, cx, cy, x, y);
+            const auto w1 = edge(cx, cy, ax, ay, x, y);
+            const auto w2 = edge(ax, ay, bx, by, x, y);
+            if (!inside(w0, w1, w2)) continue;
+
+            const auto red = gouraud
+                ? std::clamp(interpolate(w0, w1, w2, a.r, b.r, c.r), 0, 255)
+                : static_cast<std::int32_t>(a.r);
+            const auto green = gouraud
+                ? std::clamp(interpolate(w0, w1, w2, a.g, b.g, c.g), 0, 255)
+                : static_cast<std::int32_t>(a.g);
+            const auto blue = gouraud
+                ? std::clamp(interpolate(w0, w1, w2, a.b, b.b, c.b), 0, 255)
+                : static_cast<std::int32_t>(a.b);
+
+            std::uint16_t pixel = 0u;
+            if (textured) {
+                const auto u = static_cast<std::uint32_t>(
+                    std::clamp(interpolate(w0, w1, w2, a.u, b.u, c.u), 0, 255));
+                const auto v = static_cast<std::uint32_t>(
+                    std::clamp(interpolate(w0, w1, w2, a.v, b.v, c.v), 0, 255));
+                const auto texel = sample_raw_texture(u, v);
+                if (texel == 0u) continue;
+
+                if (raw_texture) {
+                    pixel = texel;
+                } else {
+                    const auto modulate = [](std::uint32_t component5, std::int32_t color8) {
+                        return std::min<std::uint32_t>(
+                            31u,
+                            (component5 * static_cast<std::uint32_t>(color8) + 64u) / 128u);
+                    };
+                    const auto tr = modulate(texel & 0x1Fu, red);
+                    const auto tg = modulate((texel >> 5u) & 0x1Fu, green);
+                    const auto tb = modulate((texel >> 10u) & 0x1Fu, blue);
+                    pixel = static_cast<std::uint16_t>(
+                        tr | (tg << 5u) | (tb << 10u) | (texel & 0x8000u));
+                }
+            } else {
+                const auto packed =
+                    static_cast<std::uint32_t>(red) |
+                    (static_cast<std::uint32_t>(green) << 8u) |
+                    (static_cast<std::uint32_t>(blue) << 16u);
+                pixel = color24_to_bgr555(packed);
+            }
+
+            vram_[static_cast<std::size_t>(y) * vram_width +
+                  static_cast<std::uint32_t>(x)] = pixel;
+            ++vram_write_count_;
+        }
+    }
+}
+
+bool Ps1GpuIngress::execute_polygon_packet() noexcept {
+    if (polygon_words_.empty() || polygon_words_.size() != polygon_words_expected_) {
+        return false;
+    }
+
+    const auto command_word = polygon_words_[0];
+    const auto command = static_cast<std::uint8_t>(command_word >> 24u);
+    const bool gouraud = (command & 0x10u) != 0u;
+    const bool quad = (command & 0x08u) != 0u;
+    const bool textured = (command & 0x04u) != 0u;
+    const bool raw_texture = (command & 0x01u) != 0u;
+    const std::size_t vertex_count = quad ? 4u : 3u;
+
+    PolygonVertex vertices[4]{};
+    std::size_t word = 1u;
+    std::uint32_t color = command_word & 0x00FFFFFFu;
+
+    for (std::size_t i = 0u; i < vertex_count; ++i) {
+        if (i != 0u && gouraud) {
+            color = polygon_words_[word++] & 0x00FFFFFFu;
+        }
+        const auto xy = polygon_words_[word++];
+        vertices[i].x = sign_extend16_coord(xy);
+        vertices[i].y = sign_extend16_coord(xy >> 16u);
+        vertices[i].r = static_cast<std::uint8_t>(color & 0xFFu);
+        vertices[i].g = static_cast<std::uint8_t>((color >> 8u) & 0xFFu);
+        vertices[i].b = static_cast<std::uint8_t>((color >> 16u) & 0xFFu);
+
+        if (textured) {
+            const auto uv = polygon_words_[word++];
+            vertices[i].u = static_cast<std::uint8_t>(uv & 0xFFu);
+            vertices[i].v = static_cast<std::uint8_t>((uv >> 8u) & 0xFFu);
+            const auto attribute = static_cast<std::uint16_t>(uv >> 16u);
+            if (i == 0u) {
+                texture_clut_x_ = static_cast<std::uint32_t>(attribute & 0x3Fu) << 4u;
+                texture_clut_y_ = static_cast<std::uint32_t>((attribute >> 6u) & 0x1FFu);
+            } else if (i == 1u) {
+                texture_page_x_ = static_cast<std::uint32_t>(attribute & 0x0Fu) * 64u;
+                texture_page_y_ = static_cast<std::uint32_t>((attribute >> 4u) & 1u) * 256u;
+                texture_depth_ = static_cast<std::uint8_t>((attribute >> 7u) & 3u);
+            }
+        }
+    }
+
+    if (textured && texture_depth_ > 2u) {
+        last_unsupported_gp0_command_ = command;
+        return false;
+    }
+
+    rasterize_triangle(
+        vertices[0], vertices[1], vertices[2],
+        textured, raw_texture, gouraud);
+    if (quad) {
+        rasterize_triangle(
+            vertices[1], vertices[2], vertices[3],
+            textured, raw_texture, gouraud);
+    }
+    return true;
+}
+
 void Ps1GpuIngress::copy_vram_rectangle(
     std::uint32_t width,
     std::uint32_t height) noexcept {
@@ -251,6 +446,23 @@ R3000aBusResult Ps1GpuIngress::write_gp0(std::uint32_t value) noexcept {
     last_unsupported_gp0_command_.reset();
 
     switch (gp0_mode_) {
+        case Gp0Mode::polygon_payload: {
+            ++gp0_word_count_;
+            polygon_words_.push_back(value);
+            if (polygon_words_.size() < polygon_words_expected_) {
+                return {R3000aBusStatus::ok, 0u};
+            }
+            const auto command = polygon_words_.empty()
+                ? std::uint8_t{0}
+                : static_cast<std::uint8_t>(polygon_words_[0] >> 24u);
+            const bool ok = execute_polygon_packet();
+            reset_command_buffer();
+            if (!ok) {
+                last_unsupported_gp0_command_ = command;
+                return {R3000aBusStatus::unsupported, 0u};
+            }
+            return {R3000aBusStatus::ok, 0u};
+        }
         case Gp0Mode::fill_rectangle_position:
             ++gp0_word_count_;
             fill_x_ = value & 0x3FFu;
@@ -354,6 +566,12 @@ R3000aBusResult Ps1GpuIngress::write_gp0(std::uint32_t value) noexcept {
     }
 
     const auto command = static_cast<std::uint8_t>(value >> 24u);
+    if ((command & 0xE0u) == 0x20u) {
+        ++gp0_word_count_;
+        begin_polygon(value);
+        return {R3000aBusStatus::ok, 0u};
+    }
+
     switch (command) {
         case 0x00u: // NOP
         case 0x01u: // Clear cache

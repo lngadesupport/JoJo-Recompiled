@@ -40,6 +40,7 @@ private:
 
     enum class Gp0Mode : std::uint8_t {
         command,
+        polygon_payload,
         fill_rectangle_position,
         fill_rectangle_size,
         monochrome_rectangle_position,
@@ -55,9 +56,28 @@ private:
         cpu_to_vram_payload,
     };
 
+    struct PolygonVertex {
+        std::int32_t x{};
+        std::int32_t y{};
+        std::uint8_t r{};
+        std::uint8_t g{};
+        std::uint8_t b{};
+        std::uint8_t u{};
+        std::uint8_t v{};
+    };
+
     void reset_command_buffer() noexcept;
     void reset_display_state() noexcept;
     void write_transfer_pixel(std::uint16_t pixel) noexcept;
+    void begin_polygon(std::uint32_t command_word) noexcept;
+    [[nodiscard]] bool execute_polygon_packet() noexcept;
+    void rasterize_triangle(
+        const PolygonVertex& a,
+        const PolygonVertex& b,
+        const PolygonVertex& c,
+        bool textured,
+        bool raw_texture,
+        bool gouraud) noexcept;
     void fill_rectangle(std::uint32_t width, std::uint32_t height) noexcept;
     void draw_monochrome_rectangle(std::uint32_t width, std::uint32_t height) noexcept;
     void draw_raw_textured_rectangle(std::uint32_t width, std::uint32_t height) noexcept;
@@ -103,6 +123,8 @@ private:
     std::uint32_t texture_fixed_height_{};
     std::uint32_t texture_clut_x_{};
     std::uint32_t texture_clut_y_{};
+    std::vector<std::uint32_t> polygon_words_{};
+    std::size_t polygon_words_expected_{};
     std::uint32_t copy_source_x_{};
     std::uint32_t copy_source_y_{};
     std::uint32_t copy_destination_x_{};
