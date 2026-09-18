@@ -20,6 +20,7 @@ int main() {
     report.source.revision_id = "jojo-usa-observed-b8b5dbf79cdb9fcf";
     report.frontier = jojo::Ps1CommercialFrontierClass::bios_call;
     report.total_instructions_retired = 123456u;
+    report.execution_segments = 3u;
     report.boot.stop_reason = jojo::Ps1BootStopReason::bios_call_unimplemented;
     report.boot.instructions_retired = 456u;
     report.boot.last_pc = 0x000000A0u;
@@ -69,6 +70,7 @@ int main() {
     CHECK(text.find("frontier=bios_call") != std::string::npos);
     CHECK(text.find("stop_reason=bios_call_unimplemented") != std::string::npos);
     CHECK(text.find("total_instructions_retired=123456") != std::string::npos);
+    CHECK(text.find("execution_segments=3") != std::string::npos);
     CHECK(text.find("last_pc=0x000000a0") != std::string::npos);
     CHECK(text.find("bios_event_0_selector=0x00000033") != std::string::npos);
     CHECK(text.find("mmio_event_0_address=0x1f801810") != std::string::npos);

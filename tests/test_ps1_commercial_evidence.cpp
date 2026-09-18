@@ -130,6 +130,7 @@ void test_runner_continues_bounded_budget_until_real_frontier(const fs::path& te
     CHECK(report.boot.stop_reason == jojo::Ps1BootStopReason::mmio_unimplemented);
     CHECK(report.total_instructions_retired > options.boot.instruction_budget);
     CHECK(report.total_instructions_retired == 6u);
+    CHECK(report.execution_segments == 4u);
     CHECK(report.boot.unsupported_access.has_value());
     if (report.boot.unsupported_access) {
         CHECK(report.boot.unsupported_access->physical_address == 0x1F801040u);
