@@ -38,6 +38,31 @@ std::uint64_t instruction_fingerprint(
 
 } // namespace
 
+R3000aX64BlockCache::R3000aX64BlockCache(
+    std::size_t max_entries) noexcept
+    : max_entries_(max_entries == 0u ? 1u : max_entries) {}
+
+void R3000aX64BlockCache::evict_if_full(
+    std::uint32_t incoming_pc) noexcept {
+    if (entries_.contains(incoming_pc) ||
+        entries_.size() < max_entries_) {
+        return;
+    }
+
+    auto victim = entries_.end();
+    for (auto it = entries_.begin(); it != entries_.end(); ++it) {
+        if (victim == entries_.end() ||
+            it->second.last_use_serial <
+                victim->second.last_use_serial) {
+            victim = it;
+        }
+    }
+    if (victim != entries_.end()) {
+        entries_.erase(victim);
+        ++evictions_;
+    }
+}
+
 std::uint64_t r3000a_x64_block_fingerprint(
     const R3000aIrBlock& block) noexcept {
     std::uint64_t hash = kFnvOffset;
@@ -60,6 +85,7 @@ Result<const R3000aX64Code*> R3000aX64BlockCache::get_or_compile(
     if (found != entries_.end() &&
         found->second.fingerprint == fingerprint &&
         found->second.abi_version == kR3000aX64BackendAbiVersion) {
+        found->second.last_use_serial = ++use_serial_;
         ++reuses_;
         return Result<const R3000aX64Code*>::success(&found->second.code);
     }
@@ -76,9 +102,11 @@ Result<const R3000aX64Code*> R3000aX64BlockCache::get_or_compile(
         ++invalidations_;
     }
 
+    evict_if_full(block.entry_pc);
     Entry entry{};
     entry.fingerprint = fingerprint;
     entry.abi_version = kR3000aX64BackendAbiVersion;
+    entry.last_use_serial = ++use_serial_;
     entry.code = std::move(emitted.value);
     auto [it, inserted] =
         entries_.emplace(block.entry_pc, std::move(entry));
@@ -129,9 +157,11 @@ R3000aX64BlockCache::get_or_compile_instruction(
         ++invalidations_;
     }
 
+    evict_if_full(pc);
     Entry entry{};
     entry.fingerprint = fingerprint;
     entry.abi_version = kR3000aX64BackendAbiVersion;
+    entry.last_use_serial = ++use_serial_;
     entry.code = std::move(emitted.value);
     auto [it, inserted] =
         entries_.emplace(pc, std::move(entry));
@@ -158,6 +188,7 @@ R3000aX64CacheStats R3000aX64BlockCache::stats() const noexcept {
         compilations_,
         reuses_,
         invalidations_,
+        evictions_,
     };
 }
 
