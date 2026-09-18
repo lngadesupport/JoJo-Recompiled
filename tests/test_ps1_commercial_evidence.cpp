@@ -110,7 +110,7 @@ void test_runner_continues_bounded_budget_until_real_frontier(const fs::path& te
         0x00000000u,
         0x00000000u,
         0x00000000u,
-        test_mips::i(0x23u, 8u, 9u, 0x1040u), // unsupported SIO read
+        test_mips::i(0x23u, 8u, 9u, 0x1500u), // unsupported expansion MMIO read
         0x00000000u,
     });
     const auto source = test_ps1::write_cooked_iso(temp / "segmented-frontier.iso", fixture);
@@ -135,7 +135,7 @@ void test_runner_continues_bounded_budget_until_real_frontier(const fs::path& te
     CHECK(report.execution_segments == 4u);
     CHECK(report.boot.unsupported_access.has_value());
     if (report.boot.unsupported_access) {
-        CHECK(report.boot.unsupported_access->physical_address == 0x1F801040u);
+        CHECK(report.boot.unsupported_access->physical_address == 0x1F801500u);
     }
 }
 
