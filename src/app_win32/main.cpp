@@ -6,6 +6,7 @@
 #include "core/ps1_disc_session.h"
 #include "core/ps1_input_bridge.h"
 #include "core/ps1_timing.h"
+#include "core/online_session.h"
 #include "core/settings.h"
 #include "platform/windows/controller_win32.h"
 #include "launcher_ui.h"
@@ -101,6 +102,7 @@ std::wstring status=L"Selecione a imagem da sua própria cópia do jogo.";
 std::deque<std::wstring> logs;
 bool validated=false;
 jojo::win32::LauncherUi launcher_ui{};
+jojo::OnlineSessionController online_session{};
 bool binding_capture_active=false;
 std::size_t binding_capture_player=0u;
 jojo::GameAction binding_capture_action=jojo::GameAction::attack_light;
@@ -786,6 +788,51 @@ void run_checkpoint(){
     InvalidateRect(win,nullptr,FALSE);
 }
 
+std::uint64_t online_now_ms(){
+    return static_cast<std::uint64_t>(
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now().time_since_epoch()).count());
+}
+
+void poll_online_session(){
+    auto& model=launcher_ui.online_model();
+    const auto state=online_session.view().state;
+    if(state==jojo::OnlineSessionState::inactive ||
+       state==jojo::OnlineSessionState::disconnected ||
+       state==jojo::OnlineSessionState::faulted){
+        return;
+    }
+
+    const auto polled=online_session.poll(online_now_ms());
+    if(!polled){
+        model.status="NETWORK ERROR: "+polled.detail;
+        InvalidateRect(win,nullptr,FALSE);
+        return;
+    }
+
+    const auto& view=online_session.view();
+    if(view.state==jojo::OnlineSessionState::connected){
+        if(!model.local_player_is_host &&
+           model.screen!=jojo::OnlineLobbyScreen::lobby){
+            const auto joined=jojo::online_enter_joined_lobby(model);
+            if(!joined){
+                model.screen=jojo::OnlineLobbyScreen::lobby;
+                model.local_player_is_host=false;
+            }
+        }
+        model.status=
+            "CONNECTED • RTT "+std::to_string(static_cast<int>(view.rtt_ms))+
+            " ms • LOSS "+std::to_string(static_cast<int>(view.packet_loss_percent))+"%";
+    }else if(view.state==jojo::OnlineSessionState::reconnecting){
+        jojo::online_set_connecting(model,"RECONNECTING...");
+    }else if(view.state==jojo::OnlineSessionState::connecting){
+        jojo::online_set_connecting(model,"CONNECTING...");
+    }else if(view.state==jojo::OnlineSessionState::waiting_for_peer){
+        model.status="WAITING FOR PEER";
+    }
+    InvalidateRect(win,nullptr,FALSE);
+}
+
 std::wstring capture_action_name(jojo::GameAction action){
     switch(action){
     case jojo::GameAction::up:return L"UP";
@@ -874,6 +921,111 @@ void handle_launcher_action(jojo::win32::LauncherUiAction action){
         binding_capture_status=
             L"PRESS A CONTROL FOR "+capture_action_name(binding_capture_action)+L"...";
         break;
+    case jojo::win32::LauncherUiAction::online_refresh_rooms:{
+        auto& model=launcher_ui.online_model();
+        jojo::online_set_rooms(model,{});
+        model.status=
+            "PUBLIC DIRECTORY SERVICE NOT CONFIGURED. "
+            "DIRECT UDP + ROLLBACK CORE IS AVAILABLE.";
+        break;
+    }
+    case jojo::win32::LauncherUiAction::online_host_room:{
+        auto& model=launcher_ui.online_model();
+        const auto valid=jojo::online_validate_create_room(model.create_room);
+        if(!valid){
+            model.status=valid.detail;
+            break;
+        }
+        online_session.reset();
+        const auto hosted=online_session.host(
+            jojo::NetworkEndpoint{{0u,0u,0u,0u},0u});
+        if(!hosted){
+            model.status="HOST FAILED: "+hosted.detail;
+            break;
+        }
+        const auto entered=jojo::online_enter_host_lobby(model);
+        if(!entered){
+            model.status=entered.detail;
+            online_session.reset();
+            break;
+        }
+        const auto local=online_session.view().local_endpoint;
+        if(local){
+            model.status=
+                "DIRECT HOST READY • "+jojo::format_direct_endpoint(*local)+
+                " • PUBLIC DIRECTORY/RELAY NOT CONFIGURED";
+        }else{
+            model.status="DIRECT HOST READY • WAITING FOR PEER";
+        }
+        break;
+    }
+    case jojo::win32::LauncherUiAction::online_connect_room:{
+        auto& model=launcher_ui.online_model();
+        if(!model.selected_room||*model.selected_room>=model.rooms.size()){
+            model.status="SELECT A PUBLIC ROOM FIRST.";
+            break;
+        }
+        const auto& room=model.rooms[*model.selected_room];
+        if(room.connect_endpoint.empty()){
+            model.status="ROOM HAS NO CONNECT ENDPOINT.";
+            break;
+        }
+        const auto remote=jojo::parse_direct_endpoint(room.connect_endpoint);
+        if(!remote){
+            model.status="INVALID ROOM ENDPOINT: "+remote.detail;
+            break;
+        }
+        online_session.reset();
+        const auto joined=online_session.join(
+            jojo::NetworkEndpoint{{0u,0u,0u,0u},0u},
+            remote.value,
+            {},
+            online_now_ms());
+        if(!joined){
+            model.status="CONNECT FAILED: "+joined.detail;
+            break;
+        }
+        jojo::online_set_connecting(
+            model,
+            "CONNECTING TO "+room.name+"...");
+        break;
+    }
+    case jojo::win32::LauncherUiAction::online_begin_matchmaking:{
+        auto& model=launcher_ui.online_model();
+        const auto searching=jojo::online_begin_match_search(model);
+        if(!searching){
+            model.status=searching.detail;
+            break;
+        }
+        model.status=
+            "MATCHMAKING SERVICE NOT CONFIGURED. "
+            "CASUAL/RANKED UI IS READY FOR THE DIRECTORY SERVICE.";
+        break;
+    }
+    case jojo::win32::LauncherUiAction::online_cancel_matchmaking:{
+        online_session.reset();
+        jojo::online_cancel_match_search(launcher_ui.online_model());
+        break;
+    }
+    case jojo::win32::LauncherUiAction::online_leave_lobby:{
+        if(online_session.view().state==jojo::OnlineSessionState::connected){
+            (void)online_session.disconnect(online_now_ms());
+        }
+        online_session.reset();
+        jojo::online_open_home(launcher_ui.online_model());
+        break;
+    }
+    case jojo::win32::LauncherUiAction::online_start_lobby_game:{
+        auto& model=launcher_ui.online_model();
+        if(online_session.view().state!=jojo::OnlineSessionState::connected){
+            model.status="A PEER MUST BE CONNECTED BEFORE STARTING.";
+            break;
+        }
+        model.status=
+            "PEER CONNECTED. GAMEPLAY ROLLBACK HANDOFF IS NOT YET WIRED "
+            "TO THE COMMERCIAL RUNTIME.";
+        break;
+    }
     }
     if(win)InvalidateRect(win,nullptr,FALSE);
 }
@@ -936,9 +1088,18 @@ LRESULT CALLBACK proc(HWND h,UINT m,WPARAM w,LPARAM l){
         }
         if(w==ID_UI_TIMER){
             poll_binding_capture();
+            poll_online_session();
             return 0;
         }
         break;
+    case WM_CHAR:
+        if(!binding_capture_active){
+            launcher_ui.char_input(
+                static_cast<wchar_t>(w),
+                app_settings);
+            InvalidateRect(h,nullptr,FALSE);
+        }
+        return 0;
     case WM_KEYDOWN:
         if(binding_capture_active&&w==VK_ESCAPE){
             binding_capture_active=false;
@@ -992,6 +1153,7 @@ LRESULT CALLBACK proc(HWND h,UINT m,WPARAM w,LPARAM l){
     case WM_ERASEBKGND:return 1;
     case WM_PAINT:{PAINTSTRUCT ps{};HDC dc=BeginPaint(h,&ps);RECT c{};GetClientRect(h,&c);paint(dc,c);EndPaint(h,&ps);return 0;}
     case WM_CLOSE:
+        online_session.reset();
         if(game_runner) stop_game_runtime();
         DestroyWindow(h);
         return 0;
@@ -1079,6 +1241,7 @@ int WINAPI wWinMain(HINSTANCE inst,HINSTANCE,PWSTR,int show){
     game_presenter.reset();
     game_audio_host.reset();
     game_runner.reset();
+    online_session.reset();
     input_host.reset();
     game_frame={};
     launcher_ui.shutdown();
