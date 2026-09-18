@@ -41,6 +41,27 @@ int main() {
         CHECK(*gpu.last_unsupported_gp0_command() == 0x04u);
     }
 
+
+    // GP1(10h) internal-register readback feeds GPUREAD immediately.
+    CHECK(gpu.write_gp0(0xE2000000u | 0x000A9555u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(gpu.write_gp1(0x10000002u).status == jojo::R3000aBusStatus::ok);
+    const auto texture_window = gpu.read_gp0();
+    CHECK(texture_window.status == jojo::R3000aBusStatus::ok);
+    CHECK(texture_window.value == (0x000A9555u & 0x000FFFFFu));
+
+    CHECK(gpu.write_gp0(0xE3000000u | (17u << 10u) | 9u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(gpu.write_gp1(0x10000003u).status == jojo::R3000aBusStatus::ok);
+    const auto draw_top_left = gpu.read_gp0();
+    CHECK(draw_top_left.status == jojo::R3000aBusStatus::ok);
+    CHECK(draw_top_left.value == ((17u << 10u) | 9u));
+
+    CHECK(gpu.write_gp1(0x10000007u).status == jojo::R3000aBusStatus::ok);
+    const auto version = gpu.read_gp0();
+    CHECK(version.status == jojo::R3000aBusStatus::ok);
+    CHECK(version.value == 2u);
+
     jojo::Ps1HardwareServices hw;
     CHECK(hw.write32(0x1F801814u, 0x00000000u).status == jojo::R3000aBusStatus::ok);
     CHECK(hw.write32(0x1F801810u, 0x00000000u).status == jojo::R3000aBusStatus::ok);
