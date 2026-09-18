@@ -293,7 +293,35 @@ void test_bios_fallback_is_opt_in_and_recorded(const fs::path& temp) {
 }
 }
 
+
+static void test_gameplay_validation_summary_is_objective() {
+    jojo::Ps1CommercialEvidenceReport empty{};
+    const auto baseline = jojo::summarize_ps1_gameplay_validation(empty);
+    CHECK(!baseline.frame_observed);
+    CHECK(!baseline.controller_poll_observed);
+    CHECK(!baseline.audio_generated);
+    CHECK(!baseline.memory_card_read_observed);
+    CHECK(!baseline.memory_card_write_observed);
+
+    jojo::Ps1CommercialEvidenceReport observed{};
+    observed.first_frame = jojo::Ps1CommercialFrameEvidence{
+        320u, 240u, 0x1234u, 99u};
+    observed.pad_poll_count = {4u, 0u};
+    observed.spu_sample_frames = 735u;
+    observed.memory_card_read_sector_count = {1u, 0u};
+    observed.memory_card_write_sector_count = {0u, 2u};
+
+    const auto summary =
+        jojo::summarize_ps1_gameplay_validation(observed);
+    CHECK(summary.frame_observed);
+    CHECK(summary.controller_poll_observed);
+    CHECK(summary.audio_generated);
+    CHECK(summary.memory_card_read_observed);
+    CHECK(summary.memory_card_write_observed);
+}
+
 int main() {
+    test_gameplay_validation_summary_is_objective();
     const auto temp = fs::temp_directory_path() / "jojo_phase2_commercial_evidence";
     std::error_code ec;
     fs::remove_all(temp, ec);
