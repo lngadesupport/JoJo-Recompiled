@@ -22,6 +22,9 @@ class IRollbackSimulation {
 public:
     virtual ~IRollbackSimulation() = default;
     [[nodiscard]] virtual std::vector<std::uint8_t> save_state() const = 0;
+    [[nodiscard]] virtual std::vector<std::uint8_t> state_hash_material() const {
+        return save_state();
+    }
     [[nodiscard]] virtual Result<void> load_state(std::span<const std::uint8_t> state) = 0;
     [[nodiscard]] virtual Result<void> step_frame(
         RollbackInput local,
