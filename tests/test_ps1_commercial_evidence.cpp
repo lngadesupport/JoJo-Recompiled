@@ -298,6 +298,7 @@ static void test_gameplay_validation_summary_is_objective() {
     jojo::Ps1CommercialEvidenceReport empty{};
     const auto baseline = jojo::summarize_ps1_gameplay_validation(empty);
     CHECK(!baseline.frame_observed);
+    CHECK(!baseline.dynamic_video_observed);
     CHECK(!baseline.controller_poll_observed);
     CHECK(!baseline.audio_non_silent_observed);
     CHECK(!baseline.memory_card_read_observed);
@@ -306,6 +307,8 @@ static void test_gameplay_validation_summary_is_objective() {
     jojo::Ps1CommercialEvidenceReport observed{};
     observed.first_frame = jojo::Ps1CommercialFrameEvidence{
         320u, 240u, 0x1234u, 99u};
+    observed.observed_non_black_frames = 120u;
+    observed.frame_change_count = 87u;
     observed.pad_poll_count = {4u, 0u};
     observed.spu_sample_frames = 735u;
     observed.spu_nonzero_samples = 12u;
@@ -315,6 +318,7 @@ static void test_gameplay_validation_summary_is_objective() {
     const auto summary =
         jojo::summarize_ps1_gameplay_validation(observed);
     CHECK(summary.frame_observed);
+    CHECK(summary.dynamic_video_observed);
     CHECK(summary.controller_poll_observed);
     CHECK(summary.audio_non_silent_observed);
     CHECK(summary.memory_card_read_observed);
