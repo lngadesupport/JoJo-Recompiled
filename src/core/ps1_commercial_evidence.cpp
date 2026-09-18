@@ -124,4 +124,8 @@ Ps1DisplayFrame Ps1CommercialEvidenceRunner::display_frame() const {
     return runtime_.display_frame();
 }
 
+std::vector<std::int16_t> Ps1CommercialEvidenceRunner::drain_audio_samples() {
+    return runtime_.bus().hardware_services().spu().drain_audio_samples();
+}
+
 } // namespace jojo

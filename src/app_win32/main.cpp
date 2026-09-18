@@ -6,6 +6,7 @@
 #include "core/ps1_disc_session.h"
 #include "core/settings.h"
 #include "presentation_host.h"
+#include "audio_host.h"
 #include <windows.h>
 #include <knownfolders.h>
 #include <shellapi.h>
@@ -13,6 +14,7 @@
 #include <shlobj_core.h>
 #include <deque>
 #include <filesystem>
+#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
@@ -64,6 +66,7 @@ HWND win{}, source_box{}, source_btn{}, validate_btn{}, checkpoint_btn{}, game_w
 HFONT title_font{}, body_font{}, small_font{}, button_font{};
 HBRUSH edit_brush{};
 std::optional<jojo::D3d11Ps1Presenter> game_presenter{};
+std::unique_ptr<jojo::XAudio2Ps1AudioHost> game_audio_host{};
 jojo::Ps1DisplayFrame game_frame{};
 fs::path settings_path, binding_path, executable_root;
 jojo::AppSettings app_settings{};
@@ -302,6 +305,23 @@ void run_checkpoint(){
     options.boot.stagnation_instruction_limit=50000u;
 
     const auto report=runner.value.run(options);
+    auto audio_samples=runner.value.drain_audio_samples();
+    if(!audio_samples.empty()){
+        if(!game_audio_host){
+            auto audio_host=jojo::XAudio2Ps1AudioHost::create();
+            if(audio_host) game_audio_host=std::move(audio_host.value);
+            else add_log(L"Aviso: XAudio2 indisponível: "+wide(audio_host.detail));
+        }
+        if(game_audio_host){
+            const auto submitted=game_audio_host->submit(audio_samples);
+            if(submitted){
+                add_log(L"Áudio SPU enviado ao XAudio2: "+
+                        std::to_wstring(audio_samples.size()/2u)+L" frames.");
+            }else{
+                add_log(L"Aviso: envio de áudio falhou: "+wide(submitted.detail));
+            }
+        }
+    }
     if(report.first_frame){
         if(show_game_frame(runner.value.display_frame())){
             add_log(L"Primeiro frame PS1 apresentado na janela de jogo.");
@@ -423,6 +443,7 @@ int WINAPI wWinMain(HINSTANCE inst,HINSTANCE,PWSTR,int show){
     MSG msg{};while(GetMessageW(&msg,nullptr,0,0)>0){TranslateMessage(&msg);DispatchMessageW(&msg);}
     if(game_window && IsWindow(game_window)) DestroyWindow(game_window);
     game_presenter.reset();
+    game_audio_host.reset();
     game_frame={};
     if(title_font)DeleteObject(title_font);if(body_font)DeleteObject(body_font);if(small_font)DeleteObject(small_font);if(edit_brush)DeleteObject(edit_brush);CoUninitialize();return static_cast<int>(msg.wParam);
 }

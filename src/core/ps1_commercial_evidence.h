@@ -58,6 +58,7 @@ public:
 
     [[nodiscard]] const Ps1DiscSession& disc_session() const noexcept;
     [[nodiscard]] Ps1DisplayFrame display_frame() const;
+    [[nodiscard]] std::vector<std::int16_t> drain_audio_samples();
 
 private:
     Ps1DiscSession disc_{};
