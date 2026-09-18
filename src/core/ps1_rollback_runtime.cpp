@@ -97,7 +97,10 @@ void Ps1RollbackSimulation::prune_snapshots() const {
 
 std::vector<std::uint8_t> Ps1RollbackSimulation::save_state() const {
     const auto id = next_snapshot_id_++;
-    snapshots_[id] = runner_.save_runtime_state();
+    snapshots_[id] = SnapshotRecord{
+        runner_.save_runtime_state(),
+        timing_clock_.save_state(),
+    };
     snapshot_order_.push_back(id);
     prune_snapshots();
     return encode_snapshot_id(id);
@@ -105,12 +108,17 @@ std::vector<std::uint8_t> Ps1RollbackSimulation::save_state() const {
 
 std::vector<std::uint8_t>
 Ps1RollbackSimulation::state_hash_material() const {
-    const auto hash = runner_.diagnostic_state_hash();
-    std::vector<std::uint8_t> bytes(8u);
+    const auto runtime_hash = runner_.diagnostic_state_hash();
+    const auto timing = timing_clock_.save_state();
+
+    std::vector<std::uint8_t> bytes(17u);
     for (unsigned shift = 0u; shift < 64u; shift += 8u) {
         bytes[shift / 8u] =
-            static_cast<std::uint8_t>(hash >> shift);
+            static_cast<std::uint8_t>(runtime_hash >> shift);
+        bytes[9u + shift / 8u] =
+            static_cast<std::uint8_t>(timing.remainder >> shift);
     }
+    bytes[8u] = static_cast<std::uint8_t>(timing.mode);
     return bytes;
 }
 
@@ -126,7 +134,20 @@ Result<void> Ps1RollbackSimulation::load_state(
             ErrorCode::file_not_found,
             "PS1 rollback snapshot is no longer retained");
     }
-    return runner_.load_runtime_state(found->second);
+
+    const auto previous_timing = timing_clock_.save_state();
+    if (!timing_clock_.load_state(found->second.timing)) {
+        return Result<void>::failure(
+            ErrorCode::invalid_argument,
+            "PS1 rollback snapshot contains invalid video timing");
+    }
+
+    const auto restored = runner_.load_runtime_state(found->second.runtime);
+    if (!restored) {
+        (void)timing_clock_.load_state(previous_timing);
+        return restored;
+    }
+    return Result<void>::success();
 }
 
 Result<void> Ps1RollbackSimulation::step_frame(
@@ -141,13 +162,15 @@ Result<void> Ps1RollbackSimulation::step_frame(
         remote_player_port,
         ps1_active_low_from_rollback_input(remote));
 
-    Ps1FrameSliceBudget budget{65536u};
     const auto mode =
         timing_mode_from_display(runner_.gpu_display_state());
-    (void)budget.begin_frame(mode);
+    timing_clock_.set_mode(mode);
+    std::uint64_t remaining_ticks =
+        timing_clock_.next_frame_ticks();
 
-    while (!budget.frame_complete()) {
-        const auto slice_ticks = budget.next_slice_ticks();
+    while (remaining_ticks != 0u) {
+        const auto slice_ticks =
+            std::min<std::uint64_t>(remaining_ticks, 65536u);
         if (slice_ticks == 0u) {
             return Result<void>::failure(
                 ErrorCode::backend_unavailable,
@@ -174,11 +197,12 @@ Result<void> Ps1RollbackSimulation::step_frame(
         }
 
         if (segment.execution_steps == 0u ||
-            !budget.consume(segment.execution_steps)) {
+            segment.execution_steps > remaining_ticks) {
             return Result<void>::failure(
                 ErrorCode::backend_unavailable,
                 "PS1 rollback frame timing did not make progress");
         }
+        remaining_ticks -= segment.execution_steps;
     }
 
     runner_.signal_vblank();
