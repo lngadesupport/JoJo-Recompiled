@@ -236,6 +236,14 @@ Result<void> Ps1MemoryBus::load_main_ram(
     return Result<void>::success();
 }
 
+std::uint8_t* Ps1MemoryBus::main_ram_data() noexcept {
+    return main_ram_.data();
+}
+
+const std::uint8_t* Ps1MemoryBus::main_ram_data() const noexcept {
+    return main_ram_.data();
+}
+
 std::uint16_t Ps1MemoryBus::interrupt_mask() const noexcept {
     return hardware_.interrupt_mask();
 }
