@@ -269,6 +269,8 @@ void select_image(const fs::path& image) {
     if(game_runner) return;
     source=image.wstring();
     validated=false;
+    (void)jojo::online_set_local_game_revision(
+        launcher_ui.online_model(), {});
     if(source_box) SetWindowTextW(source_box,source.c_str());
     status=L"Imagem selecionada. Clique em VALIDAR JOGO para confirmar a revisão e o PS-X EXE.";
     add_log(L"Imagem PS1 selecionada diretamente; nenhum conteúdo foi extraído.");
@@ -300,6 +302,8 @@ void validate_source(){
     auto opened=jojo::Ps1DiscSession::open(fs::path(source),open_options);
     if(!opened){
         validated=false;
+        (void)jojo::online_set_local_game_revision(
+            launcher_ui.online_model(), {});
         status=L"A imagem não foi validada: "+wide(opened.detail);
         add_log(L"Validação falhou; a fonte permanece intacta e somente leitura.");
         refresh_actions();
@@ -308,6 +312,9 @@ void validate_source(){
     }
 
     validated=true;
+    (void)jojo::online_set_local_game_revision(
+        launcher_ui.online_model(),
+        opened.value.binding().revision_id);
     status=L"Imagem validada. Revisão: "+wide(opened.value.binding().revision_id)+L". Análise de frontier disponível.";
     add_log(L"SYSTEM.CNF e PS-X EXE foram lidos diretamente da imagem original.");
 
@@ -822,6 +829,11 @@ bool send_online_profile_and_ready(){
     if(!send_online_control(jojo::NetworkPacketKind::lobby_profile,profile)){
         return false;
     }
+    const auto revision=online_text_payload(model.local_game_revision);
+    if(!send_online_control(
+            jojo::NetworkPacketKind::lobby_game_revision,revision)){
+        return false;
+    }
     const std::vector<std::uint8_t> ready{
         static_cast<std::uint8_t>(model.ready?1u:0u)};
     if(!send_online_control(jojo::NetworkPacketKind::lobby_ready,ready)){
@@ -880,6 +892,13 @@ void poll_online_session(){
                     jojo::online_set_remote_ready(model,packet.payload[0]!=0u);
                 }
                 break;
+            case jojo::NetworkPacketKind::lobby_game_revision:{
+                const auto revision=online_payload_text(packet);
+                const auto applied=
+                    jojo::online_set_remote_game_revision(model,revision);
+                if(!applied) model.status="INVALID PEER GAME REVISION";
+                break;
+            }
             case jojo::NetworkPacketKind::lobby_chat:{
                 const auto message=online_payload_text(packet);
                 const auto appended=jojo::online_append_chat(
@@ -1168,6 +1187,11 @@ void handle_launcher_action(jojo::win32::LauncherUiAction action){
         }
         if(!model.local_player_is_host || !model.ready || !model.remote_ready){
             model.status="BOTH PLAYERS MUST BE READY.";
+            break;
+        }
+        if(!jojo::online_game_revision_matches(model)){
+            model.status=
+                "GAME REVISION MISMATCH OR DISC NOT VALIDATED ON BOTH PEERS.";
             break;
         }
         const std::vector<std::uint8_t> empty{};
