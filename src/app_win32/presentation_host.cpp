@@ -1008,6 +1008,20 @@ Result<void> D3d11Ps1Presenter::ensure_msaa_target(
     }
 
     UINT samples = std::max<UINT>(1u, requested_samples);
+    UINT quality_levels = 1u;
+    while (samples > 1u) {
+        quality_levels = 0u;
+        const HRESULT quality_hr =
+            device_->CheckMultisampleQualityLevels(
+                DXGI_FORMAT_R8G8B8A8_UNORM,
+                samples,
+                &quality_levels);
+        if (SUCCEEDED(quality_hr) && quality_levels > 0u) {
+            break;
+        }
+        samples /= 2u;
+    }
+
     if (samples <= 1u) {
         msaa_render_target_.Reset();
         msaa_texture_.Reset();
@@ -1018,18 +1032,6 @@ Result<void> D3d11Ps1Presenter::ensure_msaa_target(
     if (samples == active_msaa_samples_ &&
         msaa_texture_ && msaa_render_target_) {
         return Result<void>::success();
-    }
-
-    UINT quality_levels = 0u;
-    const HRESULT quality_hr =
-        device_->CheckMultisampleQualityLevels(
-            DXGI_FORMAT_R8G8B8A8_UNORM,
-            samples,
-            &quality_levels);
-    if (FAILED(quality_hr) || quality_levels == 0u) {
-        return Result<void>::failure(
-            ErrorCode::backend_unavailable,
-            "requested D3D11 MSAA sample count is not supported");
     }
 
     D3D11_TEXTURE2D_DESC desc{};
