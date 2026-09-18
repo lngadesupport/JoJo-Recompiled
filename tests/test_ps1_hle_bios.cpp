@@ -80,6 +80,26 @@ static void test_unknown_syscall_is_non_mutating() {
     CHECK(cpu.cop0.status == before.cop0.status);
 }
 
+
+static void test_a0_44_flushcache_returns_without_mutating_result() {
+    jojo::Ps1HleBios bios{};
+    auto cpu = make_cpu();
+    cpu.gpr[2] = 0x13572468u;
+    CHECK(bios.dispatch(cpu, 0xA0u, 0x44u) ==
+          jojo::Ps1HleBiosDispatchStatus::handled);
+    CHECK(cpu.gpr[2] == 0x13572468u);
+    check_returned_through_ra(cpu);
+}
+
+static void test_b0_56_getc0table_returns_clean_room_table() {
+    jojo::Ps1HleBios bios{};
+    auto cpu = make_cpu();
+    CHECK(bios.dispatch(cpu, 0xB0u, 0x56u) ==
+          jojo::Ps1HleBiosDispatchStatus::handled);
+    CHECK(cpu.gpr[2] == jojo::kPs1HleC0TableAddress);
+    check_returned_through_ra(cpu);
+}
+
 static void test_a0_39_initheap() {
     jojo::Ps1HleBios bios{};
     auto cpu = make_cpu();
@@ -281,6 +301,8 @@ int main() {
     test_sys_01_entercriticalsection();
     test_sys_02_exitcriticalsection();
     test_unknown_syscall_is_non_mutating();
+    test_a0_44_flushcache_returns_without_mutating_result();
+    test_b0_56_getc0table_returns_clean_room_table();
     test_a0_39_initheap();
     test_a0_remove_iso9660_aliases();
     test_b0_18_resetentryint_clears_custom_hook();
