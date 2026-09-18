@@ -79,9 +79,9 @@ int main() {
     hw.step(1u);
     CHECK(hw.timer_counter(2u) == 1u);
 
-    CHECK(hw.vblank_count() == 0u);
-    hw.signal_vblank();
     CHECK(hw.vblank_count() == 1u);
+    hw.signal_vblank();
+    CHECK(hw.vblank_count() == 2u);
     CHECK((hw.interrupt_status() & 0x0001u) != 0u);
     CHECK(hw.interrupt_pending());
     CHECK(hw.write16(0x1F801070u, 0x07FEu).status == jojo::R3000aBusStatus::ok);
