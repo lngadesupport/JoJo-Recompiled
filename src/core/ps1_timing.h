@@ -53,6 +53,27 @@ private:
 
 using Ps1NtscReferenceClock = Ps1VideoReferenceClock;
 
+class Ps1FrameSliceBudget {
+public:
+    explicit Ps1FrameSliceBudget(
+        std::uint64_t max_slice_ticks = 65536u) noexcept
+        : max_slice_ticks_(max_slice_ticks == 0u ? 1u : max_slice_ticks) {}
+
+    [[nodiscard]] std::uint64_t begin_frame(
+        Ps1VideoTimingMode mode) noexcept;
+    [[nodiscard]] std::uint64_t next_slice_ticks() const noexcept;
+    [[nodiscard]] bool consume(std::uint64_t ticks) noexcept;
+    [[nodiscard]] bool frame_complete() const noexcept;
+    [[nodiscard]] std::uint64_t remaining_ticks() const noexcept;
+    [[nodiscard]] Ps1VideoTimingMode mode() const noexcept;
+    void reset() noexcept;
+
+private:
+    Ps1VideoReferenceClock clock_{};
+    std::uint64_t max_slice_ticks_{65536u};
+    std::uint64_t remaining_ticks_{};
+};
+
 [[nodiscard]] constexpr double ps1_frame_seconds(
     Ps1VideoTimingMode mode) noexcept {
     const auto spec = ps1_video_timing_spec(mode);
