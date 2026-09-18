@@ -119,6 +119,12 @@ struct Ps1CommercialEvidenceReport {
     std::uint32_t gpu_nonzero_min_y{};
     std::uint32_t gpu_nonzero_max_x{};
     std::uint32_t gpu_nonzero_max_y{};
+    std::uint16_t spu_control{};
+    std::uint16_t spu_status{};
+    std::uint16_t spu_transfer_control{};
+    std::uint32_t spu_transfer_current_address{};
+    std::uint32_t spu_keyed_on_voice_count{};
+    std::uint64_t spu_nonzero_sound_ram_bytes{};
     std::optional<Ps1CommercialFrameEvidence> first_frame{};
     std::vector<Ps1CommercialDiagnosticDecision> diagnostic_decisions;
 };
