@@ -127,6 +127,10 @@ Ps1BootReport Ps1BootRuntime::run(const Ps1BootOptions& options) noexcept {
             hardware.gpu_gp0_word_count() - gpu_gp0_word_count_at_start;
         report.gpu_gp1_command_count =
             hardware.gpu_gp1_command_count() - gpu_gp1_command_count_at_start;
+        report.unsupported_gpu_gp0_command =
+            hardware.gpu().last_unsupported_gp0_command();
+        report.unsupported_gpu_gp1_command =
+            hardware.gpu().last_unsupported_gp1_command();
         report.vram_write_count =
             hardware.gpu_vram_write_count() - vram_write_count_at_start;
         return report;
@@ -227,6 +231,13 @@ Ps1BootReport Ps1BootRuntime::run(const Ps1BootOptions& options) noexcept {
                     report.unsupported_access->value,
                     false,
                 }, options.mmio_event_capacity);
+                const auto& gpu = bus_.hardware_services().gpu();
+                if ((physical == std::optional<std::uint32_t>{0x1F801810u} &&
+                     gpu.last_unsupported_gp0_command()) ||
+                    (physical == std::optional<std::uint32_t>{0x1F801814u} &&
+                     gpu.last_unsupported_gp1_command())) {
+                    return finish(Ps1BootStopReason::gpu_command_unimplemented);
+                }
                 return finish(Ps1BootStopReason::mmio_unimplemented);
             }
         }
