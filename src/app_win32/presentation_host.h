@@ -68,7 +68,9 @@ public:
     D3d11Ps1Presenter() = default;
 
     [[nodiscard]] static Result<D3d11Ps1Presenter> create(HWND window);
-    [[nodiscard]] Result<void> present(const Ps1DisplayFrame& frame);
+    [[nodiscard]] Result<void> present(
+        const Ps1DisplayFrame& frame,
+        bool vsync = false);
 
     [[nodiscard]] std::uint32_t back_buffer_width() const noexcept;
     [[nodiscard]] std::uint32_t back_buffer_height() const noexcept;
