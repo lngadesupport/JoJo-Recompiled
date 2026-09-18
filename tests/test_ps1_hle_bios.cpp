@@ -1,4 +1,5 @@
 #include "core/ps1_hle_bios.h"
+#include "core/ps1_memory_bus.h"
 
 #include <cstdint>
 #include <iostream>
@@ -341,6 +342,70 @@ static void test_b0_5b_changeclearpad() {
     check_returned_through_ra(enabled);
 }
 
+static void test_c0_irq_priority_chain_enqueue_and_dequeue() {
+    jojo::Ps1HleBios bios{};
+    jojo::Ps1MemoryBus bus{};
+
+    constexpr std::uint32_t first = 0x80006000u;
+    constexpr std::uint32_t second = 0x80006020u;
+
+    auto enqueue_first = make_cpu();
+    enqueue_first.gpr[4] = 2u;
+    enqueue_first.gpr[5] = first;
+    enqueue_first.gpr[2] = 0x13572468u;
+    CHECK(bios.dispatch(
+              enqueue_first, 0xC0u, 0x02u, &bus) ==
+          jojo::Ps1HleBiosDispatchStatus::handled);
+    CHECK(bios.interrupt_priority_head(2u) ==
+          std::optional<std::uint32_t>{first});
+    CHECK(bus.read32(first).status == jojo::R3000aBusStatus::ok);
+    CHECK(bus.read32(first).value == 0u);
+    CHECK(enqueue_first.gpr[2] == 0x13572468u);
+    check_returned_through_ra(enqueue_first);
+
+    auto enqueue_second = make_cpu();
+    enqueue_second.gpr[4] = 2u;
+    enqueue_second.gpr[5] = second;
+    CHECK(bios.dispatch(
+              enqueue_second, 0xC0u, 0x02u, &bus) ==
+          jojo::Ps1HleBiosDispatchStatus::handled);
+    CHECK(bios.interrupt_priority_head(2u) ==
+          std::optional<std::uint32_t>{second});
+    CHECK(bus.read32(second).value == first);
+
+    auto dequeue_second = make_cpu();
+    dequeue_second.gpr[4] = 2u;
+    dequeue_second.gpr[5] = second;
+    CHECK(bios.dispatch(
+              dequeue_second, 0xC0u, 0x03u, &bus) ==
+          jojo::Ps1HleBiosDispatchStatus::handled);
+    CHECK(bios.interrupt_priority_head(2u) ==
+          std::optional<std::uint32_t>{first});
+
+    auto dequeue_first = make_cpu();
+    dequeue_first.gpr[4] = 2u;
+    dequeue_first.gpr[5] = first;
+    CHECK(bios.dispatch(
+              dequeue_first, 0xC0u, 0x03u, &bus) ==
+          jojo::Ps1HleBiosDispatchStatus::handled);
+    CHECK(!bios.interrupt_priority_head(2u).has_value());
+}
+
+static void test_c0_03_removes_unmodeled_bios_chain_element() {
+    jojo::Ps1HleBios bios{};
+    jojo::Ps1MemoryBus bus{};
+    auto cpu = make_cpu();
+    cpu.gpr[4] = 2u;
+    cpu.gpr[5] = 0x8006364Cu;
+    cpu.gpr[2] = 0xCAFEBABEu;
+
+    CHECK(bios.dispatch(cpu, 0xC0u, 0x03u, &bus) ==
+          jojo::Ps1HleBiosDispatchStatus::handled);
+    CHECK(cpu.gpr[2] == 0xCAFEBABEu);
+    CHECK(!bios.interrupt_priority_head(2u).has_value());
+    check_returned_through_ra(cpu);
+}
+
 static void test_c0_0a_changeclearrcnt_returns_previous_state() {
     jojo::Ps1HleBios bios{};
 
@@ -474,6 +539,8 @@ int main() {
     test_b0_18_resetentryint_clears_custom_hook();
     test_b0_19_hookentryint();
     test_b0_5b_changeclearpad();
+    test_c0_irq_priority_chain_enqueue_and_dequeue();
+    test_c0_03_removes_unmodeled_bios_chain_element();
     test_c0_0a_changeclearrcnt_returns_previous_state();
     test_unknown_selector_is_non_mutating();
     test_unknown_table_is_non_mutating();
