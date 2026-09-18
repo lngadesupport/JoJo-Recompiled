@@ -40,6 +40,7 @@ struct OnlineRoomInfo {
     bool password_required{false};
     bool available{true};
     std::string connect_endpoint{};
+    std::string game_revision{};
 
     friend bool operator==(const OnlineRoomInfo&, const OnlineRoomInfo&) = default;
 };
