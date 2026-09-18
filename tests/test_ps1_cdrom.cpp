@@ -65,7 +65,14 @@ int main() {
     CHECK(((words[0] >> 24u) & 0xFFu) == static_cast<std::uint32_t>('E'));
 
     // Unknown commands remain explicit; they are never guessed successful.
+    const auto commands_before_unknown = cd.command_count();
     CHECK(cd.write8(0x1F801801u, 0x7Fu).status == jojo::R3000aBusStatus::unsupported);
+    CHECK(cd.command_count() == commands_before_unknown + 1u);
+    CHECK(!cd.recent_commands().empty());
+    if (!cd.recent_commands().empty()) {
+        CHECK(cd.recent_commands().back().command == 0x7Fu);
+        CHECK(cd.recent_commands().back().index == 0u);
+    }
     CHECK(cd.last_unsupported_command().has_value());
     if (cd.last_unsupported_command()) CHECK(*cd.last_unsupported_command() == 0x7Fu);
 
