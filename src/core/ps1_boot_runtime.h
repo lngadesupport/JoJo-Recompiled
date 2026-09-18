@@ -14,6 +14,16 @@
 
 namespace jojo {
 
+struct Ps1BootRuntimeState {
+    Ps1MemoryBus bus{};
+    R3000aState cpu{};
+    Ps1HleBios bios{};
+    std::uint64_t native_text_begin{};
+    std::uint64_t native_text_end{};
+    bool native_x64_enabled{};
+    bool diagnostic_bios_frontier_pending{};
+};
+
 enum class Ps1BiosFallback : std::uint8_t {
     return_zero,
     return_one,
@@ -35,6 +45,8 @@ public:
     [[nodiscard]] bool apply_diagnostic_bios_fallback(Ps1BiosFallback fallback) noexcept;
     [[nodiscard]] std::uint64_t diagnostic_state_hash() const noexcept;
     [[nodiscard]] Ps1DisplayFrame display_frame() const;
+    [[nodiscard]] Ps1BootRuntimeState save_state() const;
+    [[nodiscard]] Result<void> load_state(const Ps1BootRuntimeState& state);
 
     [[nodiscard]] const R3000aState& cpu_state() const noexcept;
     [[nodiscard]] const std::optional<Ps1BiosHeapState>& bios_heap_state() const noexcept;
