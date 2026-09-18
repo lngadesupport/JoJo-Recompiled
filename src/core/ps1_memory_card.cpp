@@ -110,9 +110,9 @@ Result<Ps1MemoryCard> Ps1MemoryCard::load(
             "memory-card file not found: " + path.string());
     }
 
-    std::vector<std::uint8_t> bytes(
+    const std::vector<std::uint8_t> bytes{
         std::istreambuf_iterator<char>(in),
-        std::istreambuf_iterator<char>());
+        std::istreambuf_iterator<char>()};
     if (bytes.size() != raw_size) {
         return Result<Ps1MemoryCard>::failure(
             ErrorCode::invalid_argument,
