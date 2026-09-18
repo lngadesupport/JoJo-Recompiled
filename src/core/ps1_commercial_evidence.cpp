@@ -75,6 +75,17 @@ Ps1CommercialEvidenceReport Ps1CommercialEvidenceRunner::run(
     Ps1CommercialEvidenceReport report{};
     report.source = disc_.binding();
 
+    const auto finalize_report = [&]() {
+        const auto counters = validation_counters();
+        report.pad_poll_count = counters.pad_poll_count;
+        report.memory_card_read_sector_count =
+            counters.memory_card_read_sector_count;
+        report.memory_card_write_sector_count =
+            counters.memory_card_write_sector_count;
+        report.spu_sample_frames = counters.spu_sample_frames;
+        return finalize_report();
+    };
+
     std::size_t fallback_index = 0u;
     std::uint32_t execution_segments = 0u;
     const auto max_execution_segments =
@@ -92,7 +103,7 @@ Ps1CommercialEvidenceReport Ps1CommercialEvidenceRunner::run(
             report.boot.presented_frames = 1u;
             report.boot.stop_reason = Ps1BootStopReason::commercial_frame_presented;
             report.frontier = Ps1CommercialFrontierClass::commercial_frame_presented;
-            return report;
+            return finalize_report();
         }
 
         report.frontier = classify_ps1_commercial_frontier(report.boot);
@@ -103,19 +114,19 @@ Ps1CommercialEvidenceReport Ps1CommercialEvidenceRunner::run(
         }
 
         if (report.frontier != Ps1CommercialFrontierClass::bios_call) {
-            return report;
+            return finalize_report();
         }
         if (fallback_index >= options.diagnostic_bios_fallbacks.size()) {
-            return report;
+            return finalize_report();
         }
         if (report.boot.recent_bios_calls.empty()) {
-            return report;
+            return finalize_report();
         }
 
         const auto bios = report.boot.recent_bios_calls.back();
         const auto fallback = options.diagnostic_bios_fallbacks[fallback_index++];
         if (!runtime_.apply_diagnostic_bios_fallback(fallback)) {
-            return report;
+            return finalize_report();
         }
 
         report.diagnostic_decisions.push_back(Ps1CommercialDiagnosticDecision{
@@ -136,6 +147,22 @@ Ps1DisplayFrame Ps1CommercialEvidenceRunner::display_frame() const {
 
 Ps1GpuDisplayState Ps1CommercialEvidenceRunner::gpu_display_state() const noexcept {
     return runtime_.bus().hardware_services().gpu().display_state();
+}
+
+Ps1CommercialRuntimeCounters
+Ps1CommercialEvidenceRunner::validation_counters() const noexcept {
+    Ps1CommercialRuntimeCounters counters{};
+    const auto& hardware = runtime_.bus().hardware_services();
+    const auto& sio0 = hardware.sio0();
+    for (std::uint32_t port = 0u; port < 2u; ++port) {
+        counters.pad_poll_count[port] = sio0.digital_pad_poll_count(port);
+        counters.memory_card_read_sector_count[port] =
+            sio0.memory_card_read_sector_count(port);
+        counters.memory_card_write_sector_count[port] =
+            sio0.memory_card_write_sector_count(port);
+    }
+    counters.spu_sample_frames = hardware.spu().generated_sample_frames();
+    return counters;
 }
 
 std::vector<std::int16_t> Ps1CommercialEvidenceRunner::drain_audio_samples() {
