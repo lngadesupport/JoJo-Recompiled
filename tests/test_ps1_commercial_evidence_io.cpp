@@ -40,6 +40,8 @@ int main() {
     report.spu_nonzero_samples = 12345u;
     report.boot.stop_reason = jojo::Ps1BootStopReason::bios_call_unimplemented;
     report.boot.instructions_retired = 456u;
+    report.boot.native_x64_instructions_retired = 123u;
+    report.boot.reference_instructions_retired = 333u;
     report.boot.last_pc = 0x000000A0u;
     report.boot.last_opcode = 0x0120F809u;
     report.boot.diagnostic_probe_mode = true;
@@ -118,6 +120,8 @@ int main() {
     CHECK(text.find("validation_memory_card_read_observed=1") != std::string::npos);
     CHECK(text.find("validation_memory_card_write_observed=1") != std::string::npos);
     CHECK(text.find("validation_memory_card_content_change_observed=1") != std::string::npos);
+    CHECK(text.find("segment_native_x64_instructions_retired=123") != std::string::npos);
+    CHECK(text.find("segment_reference_instructions_retired=333") != std::string::npos);
     CHECK(text.find("last_pc=0x000000a0") != std::string::npos);
     CHECK(text.find("bios_event_0_selector=0x00000033") != std::string::npos);
     CHECK(text.find("mmio_event_0_address=0x1f801810") != std::string::npos);
