@@ -103,6 +103,23 @@ void Ps1GpuIngress::apply_display_mode(std::uint32_t parameter) noexcept {
     display_.interlaced = (parameter & (1u << 5u)) != 0u;
     display_.height = vertical_480 && display_.interlaced ? 480u : 240u;
     display_.rgb24 = (parameter & (1u << 4u)) != 0u;
+
+    constexpr std::uint32_t display_mode_status_mask =
+        (1u << 14u) |
+        (1u << 16u) |
+        (3u << 17u) |
+        (1u << 19u) |
+        (1u << 20u) |
+        (1u << 21u) |
+        (1u << 22u);
+    status_ &= ~display_mode_status_mask;
+    status_ |= ((parameter >> 7u) & 1u) << 14u;
+    status_ |= ((parameter >> 6u) & 1u) << 16u;
+    status_ |= (parameter & 3u) << 17u;
+    status_ |= ((parameter >> 2u) & 1u) << 19u;
+    status_ |= ((parameter >> 3u) & 1u) << 20u;
+    status_ |= ((parameter >> 4u) & 1u) << 21u;
+    status_ |= ((parameter >> 5u) & 1u) << 22u;
 }
 
 void Ps1GpuIngress::write_transfer_pixel(std::uint16_t pixel) noexcept {
