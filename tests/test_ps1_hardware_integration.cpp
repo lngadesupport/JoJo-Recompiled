@@ -97,6 +97,50 @@ int main() {
     CHECK(hw.completed_dma_transfer_count() == 2u);
     CHECK(hw.gpu_gp0_word_count() == 2u);
 
+    // 3E: GPU DMA2 linked-list mode. Each node starts with a header
+    // whose high byte is the GP0 word count and whose low 24 bits link to
+    // the next node; bit 23 terminates the list.
+    const auto write_word = [&](std::size_t offset, std::uint32_t value) {
+        ram[offset + 0u] = static_cast<std::uint8_t>(value);
+        ram[offset + 1u] = static_cast<std::uint8_t>(value >> 8u);
+        ram[offset + 2u] = static_cast<std::uint8_t>(value >> 16u);
+        ram[offset + 3u] = static_cast<std::uint8_t>(value >> 24u);
+    };
+    write_word(0x5000u, 0x02005020u); // 2 words, next node 0x5020
+    write_word(0x5004u, 0x00000000u); // GP0 NOP
+    write_word(0x5008u, 0x00000000u); // GP0 NOP
+    write_word(0x5020u, 0x01800000u); // 1 word, end marker
+    write_word(0x5024u, 0x00000000u); // GP0 NOP
+
+    CHECK(hw.write32(0x1F8010A0u, 0x00005000u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(hw.write32(0x1F8010A8u, 0x01000401u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(hw.pending_dma_transfer().has_value());
+    if (hw.pending_dma_transfer()) {
+        CHECK(hw.pending_dma_transfer()->channel == 2u);
+        CHECK(hw.pending_dma_transfer()->from_ram);
+        CHECK(hw.pending_dma_transfer()->sync_mode == 2u);
+    }
+    const auto gp0_before_linked = hw.gpu_gp0_word_count();
+    CHECK(hw.execute_pending_dma(ram));
+    CHECK(hw.gpu_gp0_word_count() == gp0_before_linked + 3u);
+    CHECK(!hw.pending_dma_transfer().has_value());
+
+    // Cyclic lists must fail transactionally and leave the pending request
+    // intact so diagnostics can report the malformed chain.
+    write_word(0x5100u, 0x01005100u);
+    write_word(0x5104u, 0x00000000u);
+    CHECK(hw.write32(0x1F8010A0u, 0x00005100u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(hw.write32(0x1F8010A8u, 0x01000401u).status ==
+          jojo::R3000aBusStatus::ok);
+    const auto gp0_before_cycle = hw.gpu_gp0_word_count();
+    CHECK(!hw.execute_pending_dma(ram));
+    CHECK(hw.gpu_gp0_word_count() == gp0_before_cycle);
+    CHECK(hw.pending_dma_transfer().has_value());
+    hw.cancel_pending_dma_transfer();
+
     // Direct-disc invariant: hardware activity never mutates the source image.
     CHECK(read_all(iso_path) == before);
 
