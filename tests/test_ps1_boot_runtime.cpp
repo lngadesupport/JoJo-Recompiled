@@ -23,6 +23,23 @@ static jojo::Ps1BootRuntime make_runtime(const std::vector<std::uint32_t>& words
     return runtime ? std::move(runtime.value) : jojo::Ps1BootRuntime{};
 }
 
+
+static void test_runtime_initializes_clean_room_c0_exception_entry() {
+    const std::vector<std::uint32_t> words{
+        0x00000000u,
+    };
+    auto runtime = make_runtime(words);
+    const auto entry = runtime.bus().read32(
+        jojo::kPs1HleC0TableAddress + 6u * sizeof(std::uint32_t));
+    CHECK(entry.status == jojo::R3000aBusStatus::ok);
+    CHECK(entry.value == jojo::kPs1HleExceptionHandlerAddress);
+
+    const auto patch_window =
+        runtime.bus().read32(jojo::kPs1HleExceptionHandlerAddress + 0x28u);
+    CHECK(patch_window.status == jojo::R3000aBusStatus::ok);
+    CHECK(patch_window.value == 0u);
+}
+
 static void test_instruction_budget_is_explicit_stop_reason() {
     const std::vector<std::uint32_t> words{
         test_mips::j(0x02u, 0x80010000u >> 2),
@@ -443,6 +460,7 @@ static void test_deterministic_replay_matches_full_m3a_state() {
 }
 
 int main() {
+    test_runtime_initializes_clean_room_c0_exception_entry();
     test_instruction_budget_is_explicit_stop_reason();
     test_budget_exhaustion_keeps_bounded_recent_trace();
     test_local_evidence_options_grow_monotonically();
