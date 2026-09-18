@@ -55,6 +55,16 @@ int main() {
     CHECK(classify_ps1_commercial_frontier(cdrom) ==
           Ps1CommercialFrontierClass::cdrom_command);
 
+    auto gpu_gp0 = report_with(Ps1BootStopReason::gpu_command_unimplemented);
+    gpu_gp0.unsupported_gpu_gp0_command = 0xFEu;
+    CHECK(classify_ps1_commercial_frontier(gpu_gp0) ==
+          Ps1CommercialFrontierClass::gpu_gp0_command);
+
+    auto gpu_gp1 = report_with(Ps1BootStopReason::gpu_command_unimplemented);
+    gpu_gp1.unsupported_gpu_gp1_command = 0x09u;
+    CHECK(classify_ps1_commercial_frontier(gpu_gp1) ==
+          Ps1CommercialFrontierClass::gpu_gp1_command);
+
     CHECK(classify_ps1_commercial_frontier(report_with(Ps1BootStopReason::cpu_boundary)) ==
           Ps1CommercialFrontierClass::cpu_boundary);
     CHECK(classify_ps1_commercial_frontier(report_with(Ps1BootStopReason::diagnostic_stall)) ==
