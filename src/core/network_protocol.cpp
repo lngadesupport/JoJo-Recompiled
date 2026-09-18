@@ -27,6 +27,7 @@ bool valid_kind(NetworkPacketKind kind) noexcept {
         case NetworkPacketKind::lobby_chat:
         case NetworkPacketKind::lobby_start:
         case NetworkPacketKind::lobby_game_revision:
+        case NetworkPacketKind::state_hash:
             return true;
     }
     return false;
@@ -136,7 +137,7 @@ Result<NetworkPacket> parse_network_packet(std::span<const std::uint8_t> bytes) 
     }
 
     const auto raw_kind = bytes[5];
-    if (raw_kind > static_cast<std::uint8_t>(NetworkPacketKind::lobby_game_revision)) {
+    if (raw_kind > static_cast<std::uint8_t>(NetworkPacketKind::state_hash)) {
         return Result<NetworkPacket>::failure(ErrorCode::unsupported_format, "network packet kind is invalid");
     }
     const auto kind = static_cast<NetworkPacketKind>(raw_kind);
