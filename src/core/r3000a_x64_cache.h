@@ -19,10 +19,13 @@ struct R3000aX64CacheStats {
     std::uint64_t compilations{};
     std::uint64_t reuses{};
     std::uint64_t invalidations{};
+    std::uint64_t evictions{};
 };
 
 class R3000aX64BlockCache {
 public:
+    explicit R3000aX64BlockCache(std::size_t max_entries = 4096u) noexcept;
+
     [[nodiscard]] Result<const R3000aX64Code*> get_or_compile(
         const R3000aIrBlock& block);
     [[nodiscard]] Result<const R3000aX64Code*> get_or_compile_instruction(
@@ -41,10 +44,14 @@ private:
         R3000aX64Code code{};
     };
 
+    void evict_if_full(std::uint32_t incoming_pc) noexcept;
+
     std::map<std::uint32_t, Entry> entries_;
+    std::size_t max_entries_{4096u};
     std::uint64_t compilations_{};
     std::uint64_t reuses_{};
     std::uint64_t invalidations_{};
+    std::uint64_t evictions_{};
 };
 
 } // namespace jojo
