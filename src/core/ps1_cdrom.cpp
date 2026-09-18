@@ -229,6 +229,18 @@ bool Ps1CdromController::adpcm_muted() const noexcept {
     return adpcm_muted_;
 }
 
+std::uint8_t Ps1CdromController::mode() const noexcept {
+    return mode_;
+}
+
+std::uint8_t Ps1CdromController::filter_file() const noexcept {
+    return filter_file_;
+}
+
+std::uint8_t Ps1CdromController::filter_channel() const noexcept {
+    return filter_channel_;
+}
+
 const std::array<std::uint8_t, 4>&
 Ps1CdromController::pending_audio_matrix() const noexcept {
     return pending_audio_matrix_;
@@ -248,6 +260,9 @@ std::uint64_t Ps1CdromController::diagnostic_state_hash() const noexcept {
     hash_byte(hash, status_byte_);
     hash_byte(hash, static_cast<std::uint8_t>(muted_ ? 1u : 0u));
     hash_byte(hash, static_cast<std::uint8_t>(adpcm_muted_ ? 1u : 0u));
+    hash_byte(hash, mode_);
+    hash_byte(hash, filter_file_);
+    hash_byte(hash, filter_channel_);
     for (const auto value : pending_audio_matrix_) hash_byte(hash, value);
     for (const auto value : active_audio_matrix_) hash_byte(hash, value);
     hash_u64(hash, current_lba_);
@@ -395,6 +410,42 @@ R3000aBusResult Ps1CdromController::execute_command(std::uint8_t command) noexce
             interrupt_flags_ = 0x03u;
             return {R3000aBusStatus::ok, 0u};
 
+        case 0x0Du: // Setfilter(file, channel)
+            if (parameters_.size() < 2u) {
+                return {R3000aBusStatus::unsupported, 0u};
+            }
+            filter_file_ = parameters_[0];
+            filter_channel_ = parameters_[1];
+            parameters_.clear();
+            if (!push_response(status_byte_)) {
+                return {R3000aBusStatus::unsupported, 0u};
+            }
+            interrupt_flags_ = 0x03u;
+            return {R3000aBusStatus::ok, 0u};
+
+        case 0x0Eu: // Setmode(mode)
+            if (parameters_.empty()) {
+                return {R3000aBusStatus::unsupported, 0u};
+            }
+            mode_ = parameters_.front();
+            parameters_.clear();
+            if (!push_response(status_byte_)) {
+                return {R3000aBusStatus::unsupported, 0u};
+            }
+            interrupt_flags_ = 0x03u;
+            return {R3000aBusStatus::ok, 0u};
+
+        case 0x0Fu: // Getparam
+            if (!push_response(status_byte_) ||
+                !push_response(mode_) ||
+                !push_response(0u) ||
+                !push_response(filter_file_) ||
+                !push_response(filter_channel_)) {
+                return {R3000aBusStatus::unsupported, 0u};
+            }
+            interrupt_flags_ = 0x03u;
+            return {R3000aBusStatus::ok, 0u};
+
         case 0x0Au: { // Init: preserve host HINTMSK, INT3 then INT2
             const auto* attached = disc_;
             const auto interrupt_enable = interrupt_enable_;
@@ -405,6 +456,10 @@ R3000aBusResult Ps1CdromController::execute_command(std::uint8_t command) noexce
             interrupt_enable_ = interrupt_enable;
             interrupt_flags_ = 0u;
             status_byte_ = 0u;
+            mode_ = 0x20u;
+            filter_file_ = 0u;
+            filter_channel_ = 0u;
+            muted_ = false;
             current_lba_ = 0u;
             last_unsupported_command_.reset();
             deferred_responses_.push_back(DeferredResponse{
