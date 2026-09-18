@@ -150,6 +150,7 @@ add_jojo_test(jojo_ps1_diagnostic_frontier_tests tests/test_ps1_diagnostic_front
 add_jojo_test(jojo_ps1_max3_explorer_tests tests/test_ps1_max3_explorer.cpp)
 add_jojo_test(jojo_ps1_boot_report_io_tests tests/test_ps1_boot_report_io.cpp)
 add_jojo_test(jojo_mips_decoder_tests tests/test_mips_decoder.cpp)
+add_jojo_test(jojo_r3000a_ir_tests tests/test_r3000a_ir.cpp)
 add_jojo_test(jojo_r3000a_integer_tests tests/test_r3000a_integer.cpp)
 add_jojo_test(jojo_r3000a_exception_tests tests/test_r3000a_exceptions.cpp)
 add_jojo_test(jojo_r3000a_hilo_tests tests/test_r3000a_hilo.cpp)
