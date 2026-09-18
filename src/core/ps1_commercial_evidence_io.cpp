@@ -163,6 +163,15 @@ std::string format_ps1_commercial_evidence_report(
         << report.gpu_display_region_nonzero_words << '\n';
     out << "gpu_nonzero_bounds_valid="
         << (report.gpu_nonzero_bounds_valid ? 1 : 0) << '\n';
+    out << "spu_control=" << hex32(report.spu_control) << '\n';
+    out << "spu_status=" << hex32(report.spu_status) << '\n';
+    out << "spu_transfer_control=" << hex32(report.spu_transfer_control) << '\n';
+    out << "spu_transfer_current_address="
+        << report.spu_transfer_current_address << '\n';
+    out << "spu_keyed_on_voice_count="
+        << report.spu_keyed_on_voice_count << '\n';
+    out << "spu_nonzero_sound_ram_bytes="
+        << report.spu_nonzero_sound_ram_bytes << '\n';
     if (report.gpu_nonzero_bounds_valid) {
         out << "gpu_nonzero_min_x=" << report.gpu_nonzero_min_x << '\n';
         out << "gpu_nonzero_min_y=" << report.gpu_nonzero_min_y << '\n';
