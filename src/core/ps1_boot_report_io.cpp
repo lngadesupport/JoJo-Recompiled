@@ -83,6 +83,10 @@ std::string format_ps1_boot_report(const Ps1BootReport& report) {
         << '\n';
     out << "stop_reason=" << ps1_boot_stop_reason_name(report.stop_reason) << '\n';
     out << "instructions_retired=" << report.instructions_retired << '\n';
+    out << "native_x64_instructions_retired="
+        << report.native_x64_instructions_retired << '\n';
+    out << "reference_instructions_retired="
+        << report.reference_instructions_retired << '\n';
     out << "last_pc=" << hex32(report.last_pc) << '\n';
     out << "last_opcode=" << optional_hex32(report.last_opcode) << '\n';
     out << "diagnostic_probe_mode=" << (report.diagnostic_probe_mode ? 1 : 0) << '\n';
