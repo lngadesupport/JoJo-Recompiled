@@ -14,6 +14,8 @@ bool r3000a_op_is_native_alu_candidate(MipsOp op) noexcept {
         case MipsOp::mthi:
         case MipsOp::mflo:
         case MipsOp::mtlo:
+        case MipsOp::mult:
+        case MipsOp::multu:
         case MipsOp::addu:
         case MipsOp::subu:
         case MipsOp::bit_and:
