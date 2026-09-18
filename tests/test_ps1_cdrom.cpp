@@ -106,6 +106,49 @@ int main() {
     CHECK(cd.write8(0x1F801800u, 0x00u).status ==
           jojo::R3000aBusStatus::ok);
 
+    // TOC commands for the supported JoJo data disc: one track,
+    // track 01 starts at 00:02 and track 00 returns lead-out.
+    CHECK(cd.write8(0x1F801801u, 0x13u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(cd.read8(0x1F801801u).value == 0x02u);
+    CHECK(cd.read8(0x1F801801u).value == 0x01u);
+    CHECK(cd.read8(0x1F801801u).value == 0x01u);
+    CHECK(cd.write8(0x1F801800u, 0x01u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(cd.write8(0x1F801803u, 0x07u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(cd.write8(0x1F801800u, 0x00u).status ==
+          jojo::R3000aBusStatus::ok);
+
+    CHECK(cd.write8(0x1F801802u, 0x01u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(cd.write8(0x1F801801u, 0x14u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(cd.read8(0x1F801801u).value == 0x02u);
+    CHECK(cd.read8(0x1F801801u).value == 0x00u);
+    CHECK(cd.read8(0x1F801801u).value == 0x02u);
+    CHECK(cd.write8(0x1F801800u, 0x01u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(cd.write8(0x1F801803u, 0x07u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(cd.write8(0x1F801800u, 0x00u).status ==
+          jojo::R3000aBusStatus::ok);
+
+    CHECK(cd.write8(0x1F801802u, 0x00u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(cd.write8(0x1F801801u, 0x14u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(cd.read8(0x1F801801u).value == 0x02u);
+    const auto leadout_minute = cd.read8(0x1F801801u).value;
+    const auto leadout_second = cd.read8(0x1F801801u).value;
+    CHECK(leadout_minute != 0u || leadout_second > 0x02u);
+    CHECK(cd.write8(0x1F801800u, 0x01u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(cd.write8(0x1F801803u, 0x07u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(cd.write8(0x1F801800u, 0x00u).status ==
+          jojo::R3000aBusStatus::ok);
+
     // Setloc to logical sector 25: absolute MSF is 00:02:25 (150-frame lead-in + 25).
     CHECK(cd.write8(0x1F801802u, 0x00u).status == jojo::R3000aBusStatus::ok);
     CHECK(cd.write8(0x1F801802u, 0x02u).status == jojo::R3000aBusStatus::ok);
