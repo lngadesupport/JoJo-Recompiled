@@ -408,6 +408,7 @@ void game_tick(){
         return;
     }
 
+    game_runner->signal_vblank();
     service_game_audio();
 
     const auto frame=game_runner->display_frame();
