@@ -29,6 +29,7 @@ struct XAudio2PcmPlan {
 
 [[nodiscard]] Result<XAudio2PcmPlan> make_xaudio2_pcm_plan(
     std::span<const std::int16_t> interleaved_stereo) noexcept;
+[[nodiscard]] float xaudio2_gain_from_percent(int percent) noexcept;
 
 class XAudio2Ps1AudioHost {
 public:
@@ -42,6 +43,7 @@ public:
     [[nodiscard]] static Result<std::unique_ptr<XAudio2Ps1AudioHost>> create();
     [[nodiscard]] Result<void> submit(
         std::span<const std::int16_t> interleaved_stereo);
+    [[nodiscard]] Result<void> set_volume(float gain) noexcept;
     [[nodiscard]] std::uint64_t submitted_frames() const noexcept;
 
 private:
