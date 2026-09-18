@@ -77,6 +77,12 @@ std::unique_ptr<jojo::win32::Win32InputHost> input_host{};
 std::unique_ptr<jojo::Ps1CommercialEvidenceRunner> game_runner{};
 jojo::Ps1DisplayFrame game_frame{};
 std::uint64_t game_total_instructions{};
+std::uint64_t game_native_x64_instructions{};
+std::uint64_t game_reference_instructions{};
+std::uint64_t game_native_x64_cache_compilations{};
+std::uint64_t game_native_x64_cache_reuses{};
+std::uint64_t game_native_x64_cache_invalidations{};
+std::uint64_t game_native_x64_cache_evictions{};
 std::uint32_t game_execution_segments{};
 std::uint64_t game_completed_frames{};
 jojo::Ps1CommercialFrameProgress game_frame_progress{};
@@ -330,6 +336,18 @@ jojo::Ps1CommercialEvidenceReport make_game_session_report(
     report.frontier=jojo::classify_ps1_commercial_frontier(report.boot);
     report.session_termination=termination;
     report.total_instructions_retired=game_total_instructions;
+    report.total_native_x64_instructions_retired=
+        game_native_x64_instructions;
+    report.total_reference_instructions_retired=
+        game_reference_instructions;
+    report.total_native_x64_cache_compilations=
+        game_native_x64_cache_compilations;
+    report.total_native_x64_cache_reuses=
+        game_native_x64_cache_reuses;
+    report.total_native_x64_cache_invalidations=
+        game_native_x64_cache_invalidations;
+    report.total_native_x64_cache_evictions=
+        game_native_x64_cache_evictions;
     report.execution_segments=game_execution_segments;
     report.completed_frames=game_completed_frames;
     report.observed_non_black_frames=
@@ -428,6 +446,12 @@ void stop_game_runtime(const jojo::Ps1BootReport* final_boot){
     game_runner.reset();
     game_audio_host.reset();
     game_total_instructions=0u;
+    game_native_x64_instructions=0u;
+    game_reference_instructions=0u;
+    game_native_x64_cache_compilations=0u;
+    game_native_x64_cache_reuses=0u;
+    game_native_x64_cache_invalidations=0u;
+    game_native_x64_cache_evictions=0u;
     game_execution_segments=0u;
     game_completed_frames=0u;
     game_frame_progress.reset();
@@ -496,6 +520,14 @@ void game_tick(){
     game_last_segment=segment;
     ++game_execution_segments;
     game_total_instructions+=segment.instructions_retired;
+    game_native_x64_instructions+=segment.native_x64_instructions_retired;
+    game_reference_instructions+=segment.reference_instructions_retired;
+    game_native_x64_cache_compilations+=
+        segment.native_x64_cache_compilations;
+    game_native_x64_cache_reuses+=segment.native_x64_cache_reuses;
+    game_native_x64_cache_invalidations+=
+        segment.native_x64_cache_invalidations;
+    game_native_x64_cache_evictions+=segment.native_x64_cache_evictions;
 
     const auto frontier=jojo::classify_ps1_commercial_frontier(segment);
     if(frontier!=jojo::Ps1CommercialFrontierClass::execution_budget){
@@ -543,8 +575,15 @@ void game_tick(){
         }
         const auto validation=
             jojo::summarize_ps1_gameplay_validation(checkpoint_report);
+        const auto native_percent=game_total_instructions==0u
+            ? 0u
+            : static_cast<std::uint64_t>(
+                (static_cast<long double>(game_native_x64_instructions)*
+                 100.0L)/
+                static_cast<long double>(game_total_instructions));
         status=L"Jogo • frames: "+
-            std::to_wstring(game_completed_frames)+L" • "+
+            std::to_wstring(game_completed_frames)+
+            L" • x64 "+std::to_wstring(native_percent)+L"% • "+
             validation_status_text(validation);
         InvalidateRect(win,nullptr,FALSE);
     }
@@ -588,6 +627,12 @@ void run_checkpoint(){
     game_runner=std::make_unique<jojo::Ps1CommercialEvidenceRunner>(
         std::move(runner.value));
     game_total_instructions=0u;
+    game_native_x64_instructions=0u;
+    game_reference_instructions=0u;
+    game_native_x64_cache_compilations=0u;
+    game_native_x64_cache_reuses=0u;
+    game_native_x64_cache_invalidations=0u;
+    game_native_x64_cache_evictions=0u;
     game_execution_segments=0u;
     game_completed_frames=0u;
     game_frame_progress.reset();
