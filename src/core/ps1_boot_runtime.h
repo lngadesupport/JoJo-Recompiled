@@ -51,8 +51,8 @@ private:
     R3000aState cpu_{};
     Ps1HleBios bios_{};
     R3000aX64BlockCache native_x64_cache_{};
-    std::uint32_t native_text_begin_{};
-    std::uint32_t native_text_end_{};
+    std::uint64_t native_text_begin_{};
+    std::uint64_t native_text_end_{};
     bool native_x64_enabled_{};
     bool diagnostic_bios_frontier_pending_{};
 };
