@@ -93,6 +93,7 @@ private:
     void apply_display_mode(std::uint32_t parameter) noexcept;
 
     std::uint32_t status_{reset_status};
+    std::uint32_t gpuread_latch_{};
     std::uint64_t gp0_word_count_{};
     std::uint64_t gp1_command_count_{};
     std::vector<std::uint16_t> vram_ = std::vector<std::uint16_t>(
