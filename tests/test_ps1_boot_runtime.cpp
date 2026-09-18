@@ -25,29 +25,26 @@ static jojo::Ps1BootRuntime make_runtime(const std::vector<std::uint32_t>& words
 
 
 static void test_vblank_routes_to_r3000a_hardware_irq2() {
-    auto executable = test_ps1::make_psx_exe_from_words({
+    auto runtime = make_runtime({
         test_mips::j(0x02u, 0x80010000u >> 2),
         0x00000000u,
     });
-    auto runtime = jojo::Ps1BootRuntime::create(executable);
-    CHECK(runtime);
-    if (!runtime) return;
 
     // Enable VBlank in I_MASK and CPU IEc + IP2 mask.
-    CHECK(runtime.value.bus().write16(
+    CHECK(runtime.bus().write16(
               0x1F801074u, 0x0001u).status ==
           jojo::R3000aBusStatus::ok);
-    auto state = runtime.value.save_state();
+    auto state = runtime.save_state();
     state.cpu.cop0.status |= 0x00000401u;
-    CHECK(runtime.value.load_state(state));
+    CHECK(runtime.load_state(state));
 
-    runtime.value.signal_vblank();
-    CHECK(runtime.value.cpu_state().external_interrupt_pending ==
+    runtime.signal_vblank();
+    CHECK(runtime.cpu_state().external_interrupt_pending ==
           0x04u);
 
     jojo::Ps1BootOptions options{};
     options.instruction_budget = 1u;
-    const auto report = runtime.value.run(options);
+    const auto report = runtime.run(options);
     CHECK(report.interrupts_accepted == 1u);
 }
 
