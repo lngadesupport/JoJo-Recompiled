@@ -81,22 +81,37 @@ if(WIN32)
   target_compile_definitions(jojo_win32_input_host PRIVATE UNICODE _UNICODE _WIN32_WINNT=0x0A00 WINVER=0x0A00)
   target_link_libraries(jojo_win32_input_host PUBLIC jojo_core setupapi hid user32)
 
-  add_executable(jojo_recompiled WIN32 src/app_win32/main.cpp src/app_win32/presentation_host.cpp src/app_win32/audio_host.cpp)
+  add_executable(jojo_recompiled WIN32
+    src/app_win32/main.cpp
+    src/app_win32/launcher_ui.cpp
+    src/app_win32/presentation_host.cpp
+    src/app_win32/audio_host.cpp
+  )
   set_target_properties(jojo_recompiled PROPERTIES OUTPUT_NAME "JOJO-Recompiled")
   target_compile_definitions(jojo_recompiled PRIVATE UNICODE _UNICODE _WIN32_WINNT=0x0A00 WINVER=0x0A00)
-  target_link_libraries(jojo_recompiled PRIVATE jojo_core jojo_win32_input_host shell32 ole32 uuid d3d11 d3dcompiler dxgi xaudio2)
+  target_link_libraries(jojo_recompiled PRIVATE jojo_core jojo_win32_input_host shell32 ole32 uuid d3d11 d3dcompiler dxgi xaudio2 gdiplus)
+
+  add_custom_command(TARGET jojo_recompiled POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory
+      "$<TARGET_FILE_DIR:jojo_recompiled>/assets/launcher"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+      "${CMAKE_SOURCE_DIR}/assets/launcher/jojo_launcher_main.jpg"
+      "$<TARGET_FILE_DIR:jojo_recompiled>/assets/launcher/jojo_launcher_main.jpg"
+    VERBATIM
+  )
 
   add_executable(
     jojo_win32_image_selection_tests
     tests/test_win32_image_selection.cpp
     src/app_win32/main.cpp
+    src/app_win32/launcher_ui.cpp
     src/app_win32/presentation_host.cpp
     src/app_win32/audio_host.cpp
   )
   target_compile_definitions(jojo_win32_image_selection_tests PRIVATE UNICODE _UNICODE _WIN32_WINNT=0x0A00 WINVER=0x0A00)
   target_link_libraries(
     jojo_win32_image_selection_tests
-    PRIVATE jojo_core jojo_win32_input_host shell32 ole32 uuid d3d11 d3dcompiler dxgi xaudio2
+    PRIVATE jojo_core jojo_win32_input_host shell32 ole32 uuid d3d11 d3dcompiler dxgi xaudio2 gdiplus
   )
   add_test(NAME jojo_win32_image_selection_tests COMMAND jojo_win32_image_selection_tests)
   set_tests_properties(jojo_win32_image_selection_tests PROPERTIES TIMEOUT 45)
