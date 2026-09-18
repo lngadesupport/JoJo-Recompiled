@@ -84,6 +84,30 @@ void test_invalid_monitor_or_dpi_is_rejected() {
     CHECK(result.error == jojo::ErrorCode::invalid_argument);
 }
 
+void test_aspect_viewport_letterboxes_and_pillarboxes() {
+    const auto four_three = jojo::make_d3d11_aspect_viewport(
+        1920u, 1080u, jojo::AspectRatio::ratio_4_3);
+    CHECK(four_three.Width == 1440.0f);
+    CHECK(four_three.Height == 1080.0f);
+    CHECK(four_three.TopLeftX == 240.0f);
+    CHECK(four_three.TopLeftY == 0.0f);
+
+    const auto sixteen_nine = jojo::make_d3d11_aspect_viewport(
+        1920u, 1080u, jojo::AspectRatio::ratio_16_9);
+    CHECK(sixteen_nine.Width == 1920.0f);
+    CHECK(sixteen_nine.Height == 1080.0f);
+    CHECK(sixteen_nine.TopLeftX == 0.0f);
+    CHECK(sixteen_nine.TopLeftY == 0.0f);
+
+    const auto ultrawide = jojo::make_d3d11_aspect_viewport(
+        1920u, 1080u, jojo::AspectRatio::ratio_21_9);
+    CHECK(ultrawide.Width == 1920.0f);
+    CHECK(ultrawide.Height > 822.0f);
+    CHECK(ultrawide.Height < 823.0f);
+    CHECK(ultrawide.TopLeftY > 128.0f);
+    CHECK(ultrawide.TopLeftY < 129.0f);
+}
+
 void test_presentation_quality_maps_filter_and_aa_settings() {
     const auto off = jojo::make_d3d11_presentation_quality(
         jojo::TextureFilter::off,
@@ -414,6 +438,7 @@ int main() {
     test_borderless_plan_covers_monitor_without_switching_display_mode();
     test_exclusive_plan_requests_display_switch_and_popup_surface();
     test_invalid_monitor_or_dpi_is_rejected();
+    test_aspect_viewport_letterboxes_and_pillarboxes();
     test_presentation_quality_maps_filter_and_aa_settings();
     test_d3d11_probe_reports_real_device_quality_capabilities();
     test_d3d11_ps1_frame_upload_plan_is_tightly_packed_rgba8();
