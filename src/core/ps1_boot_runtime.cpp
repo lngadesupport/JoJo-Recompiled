@@ -1,8 +1,10 @@
 #include "core/ps1_boot_runtime.h"
 
 #include "core/ps1_executable_loader.h"
+#include "core/r3000a_ir.h"
 #include "core/r3000a_reference_executor.h"
 
+#include <array>
 #include <set>
 #include <utility>
 
@@ -103,7 +105,18 @@ Result<Ps1BootRuntime> Ps1BootRuntime::create(const Ps1Executable& executable) {
         return Result<Ps1BootRuntime>::failure(loaded.error, loaded.detail);
     }
     runtime.cpu_ = std::move(loaded.value);
+    runtime.native_text_begin_ = executable.metadata.text_load_address;
+    runtime.native_text_end_ =
+        executable.metadata.text_load_address + executable.metadata.text_size;
     return Result<Ps1BootRuntime>::success(std::move(runtime));
+}
+
+void Ps1BootRuntime::set_native_x64_enabled(bool enabled) noexcept {
+    native_x64_enabled_ = enabled;
+}
+
+bool Ps1BootRuntime::native_x64_enabled() const noexcept {
+    return native_x64_enabled_;
 }
 
 Ps1BootReport Ps1BootRuntime::run(const Ps1BootOptions& options) noexcept {
@@ -203,9 +216,49 @@ Ps1BootReport Ps1BootRuntime::run(const Ps1BootOptions& options) noexcept {
         bus_.clear_last_unsupported_access();
         bus_.clear_last_diagnostic_mmio_probe();
 
+        const bool pc_in_native_text =
+            native_text_end_ > native_text_begin_ &&
+            cpu_.pc >= native_text_begin_ &&
+            cpu_.pc < native_text_end_ &&
+            static_cast<std::uint64_t>(cpu_.pc) + 4u <=
+                static_cast<std::uint64_t>(native_text_end_);
+
+        if (native_x64_enabled_ &&
+            pc_in_native_text &&
+            observed_opcode.status == R3000aBusStatus::ok) {
+            const std::array<std::uint32_t, 1> word{observed_opcode.value};
+            const auto block = lift_r3000a_basic_block(cpu_.pc, word);
+            if (block) {
+                const auto compiled =
+                    native_x64_cache_.get_or_compile(block.value);
+                if (compiled) {
+                    const auto native =
+                        execute_r3000a_x64_block(*compiled.value, cpu_);
+                    if (native.status == R3000aX64ExecutionStatus::executed) {
+                        ++report.instructions_retired;
+                        ++report.native_x64_instructions_retired;
+                        ++instructions_since_progress;
+                        bus_.hardware_services().step(1u);
+                        cpu_.external_interrupt_pending =
+                            bus_.hardware_services().interrupt_pending() ? 1u : 0u;
+                        if (options.stagnation_instruction_limit != 0u &&
+                            instructions_since_progress >=
+                                options.stagnation_instruction_limit) {
+                            return finish(Ps1BootStopReason::diagnostic_stall);
+                        }
+                        continue;
+                    }
+                    if (native.status == R3000aX64ExecutionStatus::host_error) {
+                        return finish(Ps1BootStopReason::fatal_runtime_error);
+                    }
+                }
+            }
+        }
+
         const auto step = step_r3000a(cpu_, bus_);
         if (step.status == R3000aStepStatus::retired) {
             ++report.instructions_retired;
+            ++report.reference_instructions_retired;
             ++instructions_since_progress;
             bus_.hardware_services().step(1u);
             cpu_.external_interrupt_pending =
