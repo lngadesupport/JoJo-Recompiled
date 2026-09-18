@@ -20,6 +20,8 @@ static jojo::Ps1BootReport make_report(std::uint64_t retired) {
     jojo::Ps1BootReport report{};
     report.stop_reason = jojo::Ps1BootStopReason::bios_call_unimplemented;
     report.instructions_retired = retired;
+    report.native_x64_instructions_retired = 1u;
+    report.reference_instructions_retired = retired > 0u ? retired - 1u : 0u;
     report.last_pc = 0x800000A0u;
     report.bios_call_count = 1u;
     report.recent_bios_calls.push_back({
@@ -73,6 +75,8 @@ int main() {
     CHECK(text.find("format=jojo-m3a-checkpoint-v1\n") == 0u);
     CHECK(text.find("stop_reason=bios_call_unimplemented\n") != std::string::npos);
     CHECK(text.find("instructions_retired=2\n") != std::string::npos);
+    CHECK(text.find("native_x64_instructions_retired=1\n") != std::string::npos);
+    CHECK(text.find("reference_instructions_retired=1\n") != std::string::npos);
     CHECK(text.find("last_pc=0x800000a0\n") != std::string::npos);
     CHECK(text.find("bios_event_count=1\n") != std::string::npos);
     CHECK(text.find("bios_event_0_selector=0x0000003f\n") != std::string::npos);
