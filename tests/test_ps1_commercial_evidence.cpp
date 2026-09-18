@@ -40,6 +40,49 @@ void test_frame_evidence_requires_non_black_visible_pixels() {
     }
 }
 
+
+void test_frame_progress_preserves_first_visible_and_counts_changes() {
+    jojo::Ps1CommercialFrameProgress progress{};
+
+    jojo::Ps1DisplayFrame black{};
+    black.width = 2u;
+    black.height = 1u;
+    black.rgba8 = {0xFF000000u, 0xFF000000u};
+    progress.observe(black);
+    CHECK(progress.observed_non_black_frames() == 0u);
+    CHECK(progress.frame_change_count() == 0u);
+    CHECK(!progress.first_frame().has_value());
+
+    jojo::Ps1DisplayFrame first = black;
+    first.rgba8[0] = 0xFF0000FFu;
+    progress.observe(first);
+    CHECK(progress.observed_non_black_frames() == 1u);
+    CHECK(progress.frame_change_count() == 0u);
+    CHECK(progress.first_frame().has_value());
+    const auto first_hash = progress.first_frame()
+        ? progress.first_frame()->frame_hash_fnv1a64
+        : 0u;
+
+    progress.observe(first);
+    CHECK(progress.observed_non_black_frames() == 2u);
+    CHECK(progress.frame_change_count() == 0u);
+
+    jojo::Ps1DisplayFrame changed = first;
+    changed.rgba8[0] = 0xFF00FF00u;
+    progress.observe(changed);
+    CHECK(progress.observed_non_black_frames() == 3u);
+    CHECK(progress.frame_change_count() == 1u);
+    CHECK(progress.first_frame().has_value());
+    if (progress.first_frame()) {
+        CHECK(progress.first_frame()->frame_hash_fnv1a64 == first_hash);
+    }
+
+    progress.reset();
+    CHECK(progress.observed_non_black_frames() == 0u);
+    CHECK(progress.frame_change_count() == 0u);
+    CHECK(!progress.first_frame().has_value());
+}
+
 void test_runner_promotes_visible_gpu_output_to_commercial_frame(const fs::path& temp) {
     auto fixture = test_ps1::make_disc_fixture();
     fixture.executable = test_ps1::make_psx_exe_from_words({
@@ -341,6 +384,7 @@ int main() {
     CHECK(!ec);
 
     test_frame_evidence_requires_non_black_visible_pixels();
+    test_frame_progress_preserves_first_visible_and_counts_changes();
     test_runner_promotes_visible_gpu_output_to_commercial_frame(temp);
     test_runner_continues_bounded_budget_until_real_frontier(temp);
     test_normal_mode_retains_disc_and_never_mutates_source(temp);
