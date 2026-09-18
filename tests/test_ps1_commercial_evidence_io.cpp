@@ -27,6 +27,7 @@ int main() {
     report.memory_card_read_sector_count = {3u, 1u};
     report.memory_card_write_sector_count = {2u, 0u};
     report.spu_sample_frames = 44100u;
+    report.spu_nonzero_samples = 12345u;
     report.boot.stop_reason = jojo::Ps1BootStopReason::bios_call_unimplemented;
     report.boot.instructions_retired = 456u;
     report.boot.last_pc = 0x000000A0u;
@@ -86,9 +87,10 @@ int main() {
     CHECK(text.find("memory_card1_read_sector_count=1") != std::string::npos);
     CHECK(text.find("memory_card1_write_sector_count=0") != std::string::npos);
     CHECK(text.find("spu_sample_frames=44100") != std::string::npos);
+    CHECK(text.find("spu_nonzero_samples=12345") != std::string::npos);
     CHECK(text.find("validation_frame_observed=1") != std::string::npos);
     CHECK(text.find("validation_controller_poll_observed=1") != std::string::npos);
-    CHECK(text.find("validation_audio_generated=1") != std::string::npos);
+    CHECK(text.find("validation_audio_non_silent_observed=1") != std::string::npos);
     CHECK(text.find("validation_memory_card_read_observed=1") != std::string::npos);
     CHECK(text.find("validation_memory_card_write_observed=1") != std::string::npos);
     CHECK(text.find("last_pc=0x000000a0") != std::string::npos);
