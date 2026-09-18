@@ -52,6 +52,12 @@ struct Ps1CommercialRuntimeCounters {
     std::array<std::uint64_t, 2> pad_pressed_poll_count{};
     std::array<std::uint64_t, 2> memory_card_read_sector_count{};
     std::array<std::uint64_t, 2> memory_card_write_sector_count{};
+    std::uint64_t dma_transfer_count{};
+    std::uint64_t cdrom_command_count{};
+    std::uint64_t gpu_gp0_word_count{};
+    std::uint64_t gpu_gp1_command_count{};
+    std::uint64_t vram_write_count{};
+    std::uint64_t vblank_count{};
     std::uint64_t spu_sample_frames{};
     std::uint64_t spu_nonzero_samples{};
 };
@@ -71,6 +77,12 @@ struct Ps1CommercialEvidenceReport {
     std::array<std::uint64_t, 2> pad_pressed_poll_count{};
     std::array<std::uint64_t, 2> memory_card_read_sector_count{};
     std::array<std::uint64_t, 2> memory_card_write_sector_count{};
+    std::uint64_t session_dma_transfer_count{};
+    std::uint64_t session_cdrom_command_count{};
+    std::uint64_t session_gpu_gp0_word_count{};
+    std::uint64_t session_gpu_gp1_command_count{};
+    std::uint64_t session_vram_write_count{};
+    std::uint64_t session_vblank_count{};
     std::uint64_t spu_sample_frames{};
     std::uint64_t spu_nonzero_samples{};
     std::optional<Ps1CommercialFrameEvidence> first_frame{};
