@@ -10,7 +10,7 @@ namespace jojo {
 namespace {
 
 constexpr std::array<std::uint8_t, 4> packet_magic{'J', 'R', 'B', 'K'};
-constexpr std::uint8_t protocol_version = 1;
+constexpr std::uint8_t protocol_version = 2;
 constexpr std::size_t fixed_packet_size = 42;
 constexpr std::size_t max_payload_size = 1024;
 
@@ -22,6 +22,10 @@ bool valid_kind(NetworkPacketKind kind) noexcept {
         case NetworkPacketKind::session_hello:
         case NetworkPacketKind::session_accept:
         case NetworkPacketKind::disconnect:
+        case NetworkPacketKind::lobby_profile:
+        case NetworkPacketKind::lobby_ready:
+        case NetworkPacketKind::lobby_chat:
+        case NetworkPacketKind::lobby_start:
             return true;
     }
     return false;
@@ -78,10 +82,18 @@ Result<std::uint64_t> read_u64(std::span<const std::uint8_t> bytes, std::size_t&
 
 }
 
+bool is_application_control(NetworkPacketKind kind) noexcept {
+    return kind == NetworkPacketKind::lobby_profile ||
+        kind == NetworkPacketKind::lobby_ready ||
+        kind == NetworkPacketKind::lobby_chat ||
+        kind == NetworkPacketKind::lobby_start;
+}
+
 bool is_reliable_control(NetworkPacketKind kind) noexcept {
     return kind == NetworkPacketKind::session_hello ||
         kind == NetworkPacketKind::session_accept ||
-        kind == NetworkPacketKind::disconnect;
+        kind == NetworkPacketKind::disconnect ||
+        is_application_control(kind);
 }
 
 Result<std::vector<std::uint8_t>> serialize_network_packet(const NetworkPacket& packet) {
@@ -122,7 +134,7 @@ Result<NetworkPacket> parse_network_packet(std::span<const std::uint8_t> bytes) 
     }
 
     const auto raw_kind = bytes[5];
-    if (raw_kind > static_cast<std::uint8_t>(NetworkPacketKind::disconnect)) {
+    if (raw_kind > static_cast<std::uint8_t>(NetworkPacketKind::lobby_start)) {
         return Result<NetworkPacket>::failure(ErrorCode::unsupported_format, "network packet kind is invalid");
     }
     const auto kind = static_cast<NetworkPacketKind>(raw_kind);
