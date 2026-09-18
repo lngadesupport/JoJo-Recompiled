@@ -78,9 +78,22 @@ R3000aBusResult Ps1CdromController::write8(std::uint32_t physical,
         return {R3000aBusStatus::unsupported, 0u};
     }
     if (physical == kCdInterrupt) {
+        if (index_ == 0u) {
+            // CD request register (bank 0). Bit 7 requests sector-buffer
+            // reads; bit 5/6 are sound-map/write controls. JoJo clears the
+            // register with 00h during bootstrap, which is a valid operation.
+            request_register_ = value;
+            return {R3000aBusStatus::ok, 0u};
+        }
         if (index_ == 1u) {
-            interrupt_flags_ = static_cast<std::uint8_t>(interrupt_flags_ & ~(value & 0x1Fu));
+            interrupt_flags_ = static_cast<std::uint8_t>(
+                interrupt_flags_ & ~(value & 0x1Fu));
             if ((value & 0x40u) != 0u) parameters_.clear();
+            return {R3000aBusStatus::ok, 0u};
+        }
+        if (index_ == 2u || index_ == 3u) {
+            // XA volume matrix/apply registers. Preserve the write contract
+            // without inventing XA mixing until the title requires it.
             return {R3000aBusStatus::ok, 0u};
         }
         return {R3000aBusStatus::unsupported, 0u};
@@ -114,6 +127,10 @@ std::uint64_t Ps1CdromController::current_lba() const noexcept {
 
 std::uint64_t Ps1CdromController::command_count() const noexcept {
     return command_count_;
+}
+
+std::uint8_t Ps1CdromController::request_register() const noexcept {
+    return request_register_;
 }
 
 const std::deque<Ps1CdromCommandEvent>&
