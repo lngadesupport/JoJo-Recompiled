@@ -11,6 +11,9 @@
 #ifdef _WIN32
 #define NOMINMAX
 #include <windows.h>
+#ifdef exception_code
+#undef exception_code
+#endif
 #endif
 
 namespace jojo {
