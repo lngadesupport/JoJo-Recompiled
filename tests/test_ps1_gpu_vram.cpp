@@ -192,7 +192,6 @@ int main() {
         CHECK(window_gpu.write_gp0(0x00000000u).status == jojo::R3000aBusStatus::ok);
         CHECK(window_gpu.write_gp0(0x00000000u).status == jojo::R3000aBusStatus::ok);
         CHECK(window_gpu.write_gp0(0x00000000u).status == jojo::R3000aBusStatus::ok);
-        CHECK(window_gpu.write_gp0(0x00000000u).status == jojo::R3000aBusStatus::ok);
         CHECK(window_gpu.write_gp0(0x0000001Fu).status == jojo::R3000aBusStatus::ok);
 
         CHECK(window_gpu.write_gp0(0xE1000100u).status == jojo::R3000aBusStatus::ok); // 15bpp
