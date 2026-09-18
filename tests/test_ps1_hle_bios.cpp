@@ -81,6 +81,34 @@ static void test_unknown_syscall_is_non_mutating() {
 }
 
 
+
+static void test_stdout_write_aliases_return_requested_length() {
+    for (const auto call : std::array<std::pair<std::uint32_t, std::uint32_t>, 2>{{
+             {0xA0u, 0x03u},
+             {0xB0u, 0x35u},
+         }}) {
+        jojo::Ps1HleBios bios{};
+        auto cpu = make_cpu();
+        cpu.gpr[4] = 1u;
+        cpu.gpr[5] = 0x800973A8u;
+        cpu.gpr[6] = 0x20u;
+        CHECK(bios.dispatch(cpu, call.first, call.second) ==
+              jojo::Ps1HleBiosDispatchStatus::handled);
+        CHECK(cpu.gpr[2] == 0x20u);
+        check_returned_through_ra(cpu);
+    }
+
+    jojo::Ps1HleBios bios{};
+    auto file = make_cpu();
+    file.gpr[4] = 3u;
+    file.gpr[6] = 0x20u;
+    const auto before = file;
+    CHECK(bios.dispatch(file, 0xB0u, 0x35u) ==
+          jojo::Ps1HleBiosDispatchStatus::unimplemented);
+    CHECK(file.gpr == before.gpr);
+    CHECK(file.pc == before.pc);
+}
+
 static void test_a0_44_flushcache_returns_without_mutating_result() {
     jojo::Ps1HleBios bios{};
     auto cpu = make_cpu();
@@ -301,6 +329,7 @@ int main() {
     test_sys_01_entercriticalsection();
     test_sys_02_exitcriticalsection();
     test_unknown_syscall_is_non_mutating();
+    test_stdout_write_aliases_return_requested_length();
     test_a0_44_flushcache_returns_without_mutating_result();
     test_b0_56_getc0table_returns_clean_room_table();
     test_a0_39_initheap();
