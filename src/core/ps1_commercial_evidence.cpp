@@ -1,9 +1,22 @@
 #include "core/ps1_commercial_evidence.h"
+#include "core/ps1_timing.h"
 
 #include <utility>
 
 namespace jojo {
 namespace {
+
+Ps1VideoTimingMode timing_mode_from_display(
+    const Ps1GpuDisplayState& display) noexcept {
+    if (display.pal) {
+        return display.interlaced
+            ? Ps1VideoTimingMode::pal_interlaced
+            : Ps1VideoTimingMode::pal_non_interlaced;
+    }
+    return display.interlaced
+        ? Ps1VideoTimingMode::ntsc_interlaced
+        : Ps1VideoTimingMode::ntsc_non_interlaced;
+}
 
 constexpr std::uint64_t kFnv1a64Offset = 14695981039346656037ull;
 constexpr std::uint64_t kFnv1a64Prime = 1099511628211ull;
@@ -189,10 +202,22 @@ Ps1CommercialEvidenceReport Ps1CommercialEvidenceRunner::run(
 
     std::size_t fallback_index = 0u;
     std::uint32_t execution_segments = 0u;
+    Ps1VideoReferenceClock video_clock{
+        timing_mode_from_display(runtime_.gpu_display_state())};
+    std::uint64_t frame_ticks_remaining =
+        video_clock.next_frame_ticks();
     const auto max_execution_segments =
         options.max_execution_segments == 0u ? 1u : options.max_execution_segments;
     while (true) {
-        auto segment = run_segment(options.boot);
+        Ps1BootOptions segment_options = options.boot;
+        if (frame_ticks_remaining != 0u) {
+            segment_options.instruction_budget =
+                std::min<std::uint64_t>(
+                    segment_options.instruction_budget,
+                    frame_ticks_remaining);
+        }
+
+        auto segment = run_segment(segment_options);
         ++execution_segments;
         report.execution_segments = execution_segments;
         report.total_execution_steps += segment.execution_steps;
@@ -210,6 +235,24 @@ Ps1CommercialEvidenceReport Ps1CommercialEvidenceRunner::run(
         report.total_native_x64_cache_evictions +=
             segment.native_x64_cache_evictions;
         report.boot = std::move(segment);
+
+        const auto segment_frontier =
+            classify_ps1_commercial_frontier(report.boot);
+        if (segment_frontier ==
+                Ps1CommercialFrontierClass::execution_budget &&
+            report.boot.execution_steps != 0u &&
+            report.boot.execution_steps <= frame_ticks_remaining) {
+            frame_ticks_remaining -= report.boot.execution_steps;
+            if (frame_ticks_remaining == 0u) {
+                runtime_.signal_vblank();
+                ++report.completed_frames;
+                video_clock.set_mode(
+                    timing_mode_from_display(
+                        runtime_.gpu_display_state()));
+                frame_ticks_remaining =
+                    video_clock.next_frame_ticks();
+            }
+        }
 
         const auto frame = runtime_.display_frame();
         report.first_frame = make_ps1_commercial_frame_evidence(frame);
