@@ -5,6 +5,7 @@
 #include "core/ps1_commercial_evidence_io.h"
 #include "core/ps1_disc_session.h"
 #include "core/ps1_input_bridge.h"
+#include "core/ps1_rollback_runtime.h"
 #include "core/ps1_timing.h"
 #include "core/online_session.h"
 #include "core/settings.h"
@@ -103,6 +104,10 @@ std::deque<std::wstring> logs;
 bool validated=false;
 jojo::win32::LauncherUi launcher_ui{};
 jojo::OnlineSessionController online_session{};
+std::unique_ptr<jojo::Ps1RollbackSimulation> online_rollback_simulation{};
+std::unique_ptr<jojo::RollbackSession> online_rollback_session{};
+std::deque<jojo::NetworkPacket> pending_online_gameplay_packets{};
+std::uint32_t online_game_packet_sequence{1u};
 bool online_lobby_sync_sent=false;
 bool binding_capture_active=false;
 std::size_t binding_capture_player=0u;
@@ -577,6 +582,11 @@ void stop_game_runtime(const jojo::Ps1BootReport* final_boot){
     const auto flushed=game_runner->flush_memory_cards();
     if(!flushed) add_log(L"Aviso: falha ao salvar Memory Card: "+wide(flushed.detail));
 
+    const bool was_online_match=static_cast<bool>(online_rollback_session);
+    online_rollback_session.reset();
+    online_rollback_simulation.reset();
+    pending_online_gameplay_packets.clear();
+    online_game_packet_sequence=1u;
     game_runner.reset();
     game_audio_host.reset();
     game_total_execution_steps=0u;
@@ -592,6 +602,11 @@ void stop_game_runtime(const jojo::Ps1BootReport* final_boot){
     game_frame_progress.reset();
     game_last_segment.reset();
     game_frame_budget.reset();
+    if(was_online_match){
+        auto& online_model=launcher_ui.online_model();
+        online_model.start_requested=false;
+        online_model.status="ONLINE MATCH ENDED";
+    }
     if(checkpoint_btn) SetWindowTextW(checkpoint_btn,L"INICIAR JOGO");
     refresh_actions();
     if(win) InvalidateRect(win,nullptr,FALSE);
@@ -617,8 +632,14 @@ void service_game_audio(){
     }
 }
 
+void online_game_tick();
+
 void game_tick(){
     if(!game_runner) return;
+    if(online_rollback_session){
+        online_game_tick();
+        return;
+    }
 
     if(game_frame_budget.frame_complete()){
         const auto display_timing=game_runner->gpu_display_state();
@@ -725,27 +746,23 @@ void game_tick(){
     }
 }
 
-void run_checkpoint(){
-    if(game_runner){
-        stop_game_runtime();
-        return;
-    }
-    if(!validated || source.empty()) return;
+bool initialize_game_runtime_runner(){
+    if(game_runner) return true;
+    if(!validated || source.empty()) return false;
 
-    auto runner=jojo::Ps1CommercialEvidenceRunner::open(fs::path(source),open_options);
+    auto runner=jojo::Ps1CommercialEvidenceRunner::open(
+        fs::path(source),open_options);
     if(!runner){
         status=L"Análise comercial falhou ao abrir a fonte: "+wide(runner.detail);
         add_log(L"Falha antes da execução; a imagem original permaneceu intacta.");
         InvalidateRect(win,nullptr,FALSE);
-        return;
+        return false;
     }
 
 #if defined(_M_X64)
     runner.value.set_native_x64_enabled(true);
     add_log(L"Backend híbrido R3000A→x64 habilitado; operações não promovidas usam fallback de referência.");
 #endif
-
-    apply_current_input(runner.value);
 
     const auto save_root=app_root()/L"saves";
     for(std::uint32_t port=0u;port<2u;++port){
@@ -756,7 +773,7 @@ void run_checkpoint(){
             status=L"Memory Card PS1 inválido: "+wide(card.detail);
             add_log(L"Save não foi sobrescrito.");
             InvalidateRect(win,nullptr,FALSE);
-            return;
+            return false;
         }
     }
 
@@ -776,6 +793,17 @@ void run_checkpoint(){
     game_last_segment.reset();
     game_frame_budget.reset();
     next_game_tick=std::chrono::steady_clock::now();
+    return true;
+}
+
+void run_checkpoint(){
+    if(game_runner){
+        stop_game_runtime();
+        return;
+    }
+    if(!initialize_game_runtime_runner()) return;
+
+    apply_current_input(*game_runner);
 
     if(!SetTimer(win,ID_GAME_TIMER,1u,nullptr)){
         status=L"Falha ao iniciar o relógio de execução do jogo.";
@@ -801,6 +829,211 @@ std::uint64_t online_now_ms(){
     return static_cast<std::uint64_t>(
         std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now().time_since_epoch()).count());
+}
+
+
+jojo::RollbackInput current_online_local_input(){
+    if(!input_host) return {};
+    const auto frame=input_host->snapshot();
+    const auto resolved=jojo::resolve_player_actions(app_settings.input,frame);
+    const auto pads=jojo::ps1_digital_pad_frame(resolved);
+    return jojo::ps1_rollback_input_from_active_low(pads[0]);
+}
+
+void handle_online_gameplay_packet(const jojo::NetworkPacket& packet){
+    if(packet.kind!=jojo::NetworkPacketKind::input &&
+       packet.kind!=jojo::NetworkPacketKind::state_hash){
+        return;
+    }
+
+    if(!online_rollback_session){
+        pending_online_gameplay_packets.push_back(packet);
+        while(pending_online_gameplay_packets.size()>64u){
+            pending_online_gameplay_packets.pop_front();
+        }
+        return;
+    }
+
+    auto& model=launcher_ui.online_model();
+    if(packet.kind==jojo::NetworkPacketKind::input){
+        const auto submitted=
+            online_rollback_session->submit_remote_input(
+                packet.frame,packet.input);
+        if(!submitted){
+            model.status="ROLLBACK INPUT ERROR: "+submitted.detail;
+        }
+        return;
+    }
+
+    const std::string hash(
+        packet.payload.begin(),packet.payload.end());
+    const auto submitted=
+        online_rollback_session->submit_remote_hash(
+            packet.frame,hash);
+    if(!submitted){
+        model.status="DESYNC HASH ERROR: "+submitted.detail;
+    }
+}
+
+void drain_pending_online_gameplay_packets(){
+    if(!online_rollback_session) return;
+    auto pending=std::move(pending_online_gameplay_packets);
+    pending_online_gameplay_packets.clear();
+    for(const auto& packet:pending){
+        handle_online_gameplay_packet(packet);
+    }
+}
+
+bool start_online_game_runtime(){
+    if(online_rollback_session) return true;
+
+    auto& model=launcher_ui.online_model();
+    if(online_session.view().state!=jojo::OnlineSessionState::connected){
+        model.status="ONLINE MATCH REQUIRES A CONNECTED PEER.";
+        return false;
+    }
+    if(!jojo::online_game_revision_matches(model)){
+        model.status="ONLINE MATCH REQUIRES THE SAME VALIDATED GAME REVISION.";
+        return false;
+    }
+    if(!initialize_game_runtime_runner()){
+        model.status="FAILED TO INITIALIZE NATIVE PS1 RUNTIME.";
+        return false;
+    }
+
+    const auto role=online_session.view().role;
+    if(!role){
+        model.status="ONLINE SESSION ROLE IS UNAVAILABLE.";
+        game_runner.reset();
+        return false;
+    }
+
+    const std::uint32_t local_port=
+        *role==jojo::DirectSessionRole::host?0u:1u;
+    online_rollback_simulation=
+        std::make_unique<jojo::Ps1RollbackSimulation>(
+            *game_runner,local_port,96u);
+    online_rollback_session=
+        std::make_unique<jojo::RollbackSession>(
+            *online_rollback_simulation,8u);
+    online_game_packet_sequence=1u;
+    next_game_tick=std::chrono::steady_clock::now();
+    model.start_requested=true;
+
+    drain_pending_online_gameplay_packets();
+
+    if(!SetTimer(win,ID_GAME_TIMER,1u,nullptr)){
+        model.status="FAILED TO START ONLINE GAME CLOCK.";
+        online_rollback_session.reset();
+        online_rollback_simulation.reset();
+        game_runner.reset();
+        return false;
+    }
+
+    model.status=
+        local_port==0u
+        ?"ONLINE MATCH RUNNING • HOST / PLAYER 1"
+        :"ONLINE MATCH RUNNING • CLIENT / PLAYER 2";
+    status=L"Online rollback match em execução.";
+    refresh_actions();
+    online_game_tick();
+    return true;
+}
+
+void online_game_tick(){
+    if(!game_runner || !online_rollback_session) return;
+
+    auto& model=launcher_ui.online_model();
+    if(online_session.view().state!=jojo::OnlineSessionState::connected){
+        model.status="ONLINE MATCH PAUSED • RECONNECTING";
+        return;
+    }
+
+    const auto display=game_runner->gpu_display_state();
+    const auto timing_mode=display.pal
+        ?(display.interlaced
+            ?jojo::Ps1VideoTimingMode::pal_interlaced
+            :jojo::Ps1VideoTimingMode::pal_non_interlaced)
+        :(display.interlaced
+            ?jojo::Ps1VideoTimingMode::ntsc_interlaced
+            :jojo::Ps1VideoTimingMode::ntsc_non_interlaced);
+
+    const auto now=std::chrono::steady_clock::now();
+    const auto frame_period=
+        std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+            std::chrono::duration<double>(
+                jojo::ps1_frame_seconds(timing_mode)));
+    if(now<next_game_tick) return;
+    if(now-next_game_tick>frame_period*4) next_game_tick=now;
+    next_game_tick+=frame_period;
+
+    const auto frame_id=online_rollback_session->current_frame();
+    const auto local_input=current_online_local_input();
+
+    jojo::NetworkPacket input_packet{};
+    input_packet.kind=jojo::NetworkPacketKind::input;
+    input_packet.sequence=online_game_packet_sequence++;
+    input_packet.frame=frame_id;
+    input_packet.timestamp_ms=online_now_ms();
+    input_packet.input=local_input;
+    const auto input_sent=
+        online_session.send(input_packet,input_packet.timestamp_ms);
+    if(!input_sent){
+        model.status="ONLINE INPUT SEND FAILED: "+input_sent.detail;
+        return;
+    }
+
+    const auto advanced=online_rollback_session->advance(local_input);
+    if(!advanced){
+        model.status="ROLLBACK FRAME FAILED: "+advanced.detail;
+        stop_game_runtime(nullptr);
+        return;
+    }
+
+    const auto hash=online_rollback_session->state_hash(frame_id);
+    if(hash){
+        jojo::NetworkPacket hash_packet{};
+        hash_packet.kind=jojo::NetworkPacketKind::state_hash;
+        hash_packet.sequence=online_game_packet_sequence++;
+        hash_packet.frame=frame_id;
+        hash_packet.timestamp_ms=online_now_ms();
+        hash_packet.payload.assign(hash.value.begin(),hash.value.end());
+        const auto hash_sent=
+            online_session.send(hash_packet,hash_packet.timestamp_ms);
+        if(!hash_sent){
+            model.status="STATE HASH SEND FAILED: "+hash_sent.detail;
+        }
+    }
+
+    service_game_audio();
+    ++game_completed_frames;
+    const auto frame=game_runner->display_frame();
+    game_frame_progress.observe(frame);
+    if(frame.width!=0u&&frame.height!=0u&&!frame.rgba8.empty()){
+        (void)show_game_frame(frame);
+    }
+
+    if(online_rollback_session->desync_frame()){
+        model.status=
+            "DESYNC DETECTED AT FRAME "+
+            std::to_string(*online_rollback_session->desync_frame());
+    }else{
+        const auto& net=online_session.view();
+        const auto& telemetry=online_rollback_session->telemetry();
+        model.status=
+            "ONLINE • FRAME "+std::to_string(frame_id)+
+            " • RTT "+std::to_string(static_cast<int>(net.rtt_ms))+" ms"+
+            " • ROLLBACK "+std::to_string(telemetry.last_rollback_depth)+
+            "/"+std::to_string(telemetry.max_rollback_depth);
+    }
+
+    if((game_completed_frames%60u)==0u){
+        const auto flushed=game_runner->flush_memory_cards();
+        if(!flushed){
+            add_log(L"Aviso: autosave online do Memory Card falhou: "+
+                wide(flushed.detail));
+        }
+    }
 }
 
 std::vector<std::uint8_t> online_text_payload(std::string_view text){
