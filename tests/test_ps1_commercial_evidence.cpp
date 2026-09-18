@@ -82,6 +82,15 @@ void test_runner_promotes_visible_gpu_output_to_commercial_frame(const fs::path&
     CHECK(report.boot.stop_reason == jojo::Ps1BootStopReason::commercial_frame_presented);
     CHECK(report.boot.presented_frames == 1u);
     CHECK(report.first_frame.has_value());
+
+    const auto visible_frame = runner.value.display_frame();
+    CHECK(visible_frame.width == 320u);
+    CHECK(visible_frame.height == 240u);
+    CHECK(visible_frame.rgba8.size() == static_cast<std::size_t>(320u * 240u));
+    if (!visible_frame.rgba8.empty()) {
+        CHECK(visible_frame.rgba8[0] == 0xFF0000FFu);
+    }
+
     if (report.first_frame) {
         CHECK(report.first_frame->width == 320u);
         CHECK(report.first_frame->height == 240u);
