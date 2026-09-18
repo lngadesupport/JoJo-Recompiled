@@ -342,6 +342,8 @@ jojo::Ps1CommercialEvidenceReport make_game_session_report(
         validation.memory_card_read_sector_count;
     report.memory_card_write_sector_count=
         validation.memory_card_write_sector_count;
+    report.memory_card_changed_write_sector_count=
+        validation.memory_card_changed_write_sector_count;
     report.session_dma_transfer_count=validation.dma_transfer_count;
     report.session_cdrom_command_count=validation.cdrom_command_count;
     report.session_gpu_gp0_word_count=validation.gpu_gp0_word_count;
@@ -382,9 +384,10 @@ std::wstring validation_status_text(
         : L"não";
     const bool save_read=validation.memory_card_read_observed;
     const bool save_write=validation.memory_card_write_observed;
-    const wchar_t* save=save_write
-        ? L"escrita"
-        : (save_read ? L"leitura" : L"não");
+    const bool save_changed=validation.memory_card_content_change_observed;
+    const wchar_t* save=save_changed
+        ? L"alterado"
+        : (save_write ? L"escrita" : (save_read ? L"leitura" : L"não"));
 
     return L"vídeo "+std::wstring(video)+
         L" • input "+input+
