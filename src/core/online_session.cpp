@@ -179,6 +179,25 @@ Result<void> OnlineSessionController::send(const NetworkPacket& packet,
     return Result<void>::success();
 }
 
+Result<void> OnlineSessionController::send_control(
+    NetworkPacketKind kind,
+    std::span<const std::uint8_t> payload,
+    std::uint64_t now_ms) {
+    if (view_.state != OnlineSessionState::connected || !session_) {
+        return Result<void>::failure(
+            ErrorCode::invalid_argument,
+            "online lobby control requires connection");
+    }
+    const auto result = session_->send_reliable_control(kind, payload, now_ms);
+    if (!result) {
+        if (result.error == ErrorCode::invalid_argument) return result;
+        set_fault(result.error, result.detail);
+        return result;
+    }
+    refresh_view();
+    return Result<void>::success();
+}
+
 Result<void> OnlineSessionController::disconnect(std::uint64_t now_ms) {
     if (view_.state != OnlineSessionState::connected || !session_) {
         return Result<void>::failure(ErrorCode::invalid_argument,
