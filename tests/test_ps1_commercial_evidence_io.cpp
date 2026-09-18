@@ -21,6 +21,12 @@ int main() {
     report.frontier = jojo::Ps1CommercialFrontierClass::bios_call;
     report.session_termination = jojo::Ps1CommercialSessionTermination::manual_stop;
     report.total_instructions_retired = 123456u;
+    report.total_native_x64_instructions_retired = 100000u;
+    report.total_reference_instructions_retired = 23456u;
+    report.total_native_x64_cache_compilations = 111u;
+    report.total_native_x64_cache_reuses = 222u;
+    report.total_native_x64_cache_invalidations = 3u;
+    report.total_native_x64_cache_evictions = 4u;
     report.execution_segments = 3u;
     report.completed_frames = 600u;
     report.observed_non_black_frames = 590u;
@@ -95,6 +101,12 @@ int main() {
     CHECK(text.find("session_termination=manual_stop") != std::string::npos);
     CHECK(text.find("stop_reason=bios_call_unimplemented") != std::string::npos);
     CHECK(text.find("total_instructions_retired=123456") != std::string::npos);
+    CHECK(text.find("total_native_x64_instructions_retired=100000") != std::string::npos);
+    CHECK(text.find("total_reference_instructions_retired=23456") != std::string::npos);
+    CHECK(text.find("total_native_x64_cache_compilations=111") != std::string::npos);
+    CHECK(text.find("total_native_x64_cache_reuses=222") != std::string::npos);
+    CHECK(text.find("total_native_x64_cache_invalidations=3") != std::string::npos);
+    CHECK(text.find("total_native_x64_cache_evictions=4") != std::string::npos);
     CHECK(text.find("execution_segments=3") != std::string::npos);
     CHECK(text.find("completed_frames=600") != std::string::npos);
     CHECK(text.find("observed_non_black_frames=590") != std::string::npos);
