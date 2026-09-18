@@ -295,6 +295,7 @@ void run_checkpoint(){
 
     jojo::Ps1CommercialEvidenceOptions options{};
     options.boot.instruction_budget=250000u;
+    options.max_execution_segments=16u;
     options.boot.trace_capacity=64u;
     options.boot.mmio_event_capacity=64u;
     options.boot.bios_event_capacity=64u;
