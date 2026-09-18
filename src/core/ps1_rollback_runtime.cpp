@@ -44,8 +44,10 @@ std::uint16_t ps1_active_low_from_rollback_input(
 
 Ps1RollbackSimulation::Ps1RollbackSimulation(
     Ps1CommercialEvidenceRunner& runner,
+    std::uint32_t local_player_port,
     std::size_t snapshot_capacity) noexcept
     : runner_(runner),
+      local_player_port_(local_player_port == 0u ? 0u : 1u),
       snapshot_capacity_(std::max<std::size_t>(snapshot_capacity, 16u)) {}
 
 std::vector<std::uint8_t>
@@ -131,10 +133,13 @@ Result<void> Ps1RollbackSimulation::step_frame(
     RollbackInput local,
     RollbackInput remote,
     bool emit_side_effects) {
+    const auto remote_player_port = 1u - local_player_port_;
     runner_.set_pad_buttons(
-        0u, ps1_active_low_from_rollback_input(local));
+        local_player_port_,
+        ps1_active_low_from_rollback_input(local));
     runner_.set_pad_buttons(
-        1u, ps1_active_low_from_rollback_input(remote));
+        remote_player_port,
+        ps1_active_low_from_rollback_input(remote));
 
     Ps1FrameSliceBudget budget{65536u};
     const auto mode =
