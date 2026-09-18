@@ -119,7 +119,7 @@ static void test_runtime_continues_vblank_through_hookentryint() {
     CHECK(report.stop_reason ==
           jojo::Ps1BootStopReason::execution_budget_exhausted);
     CHECK(!report.cpu_diagnostic.has_value());
-    CHECK(runtime.bus().interrupt_status() == 0u);
+    CHECK(runtime.bus().hardware_services().interrupt_status() == 0u);
     CHECK(runtime.cpu_state().pc != 0x80000080u);
     CHECK(runtime.cpu_state().pc == interrupted_pc ||
           runtime.cpu_state().pc == interrupted_pc + 4u ||
