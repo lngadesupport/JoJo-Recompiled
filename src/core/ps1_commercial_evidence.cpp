@@ -67,6 +67,9 @@ Ps1GameplayValidationSummary summarize_ps1_gameplay_validation(
     summary.controller_poll_observed =
         report.pad_poll_count[0] != 0u ||
         report.pad_poll_count[1] != 0u;
+    summary.controller_input_observed =
+        report.pad_pressed_poll_count[0] != 0u ||
+        report.pad_pressed_poll_count[1] != 0u;
     summary.audio_non_silent_observed =
         report.spu_nonzero_samples != 0u;
     summary.memory_card_read_observed =
@@ -117,6 +120,7 @@ Ps1CommercialEvidenceReport Ps1CommercialEvidenceRunner::run(
     const auto finalize_report = [&]() {
         const auto counters = validation_counters();
         report.pad_poll_count = counters.pad_poll_count;
+        report.pad_pressed_poll_count = counters.pad_pressed_poll_count;
         report.memory_card_read_sector_count =
             counters.memory_card_read_sector_count;
         report.memory_card_write_sector_count =
@@ -197,6 +201,8 @@ Ps1CommercialEvidenceRunner::validation_counters() const noexcept {
     const auto& sio0 = hardware.sio0();
     for (std::uint32_t port = 0u; port < 2u; ++port) {
         counters.pad_poll_count[port] = sio0.digital_pad_poll_count(port);
+        counters.pad_pressed_poll_count[port] =
+            sio0.digital_pad_pressed_poll_count(port);
         counters.memory_card_read_sector_count[port] =
             sio0.memory_card_read_sector_count(port);
         counters.memory_card_write_sector_count[port] =
