@@ -6,6 +6,9 @@
 namespace jojo {
 namespace {
 
+constexpr std::uint32_t kMemoryControlBase = 0x1F801000u;
+constexpr std::uint32_t kMemoryControlEnd = 0x1F801020u;
+constexpr std::uint32_t kRamSizeAddress = 0x1F801060u;
 constexpr std::uint32_t kInterruptStatusAddress = 0x1F801070u;
 constexpr std::uint32_t kInterruptMaskAddress = 0x1F801074u;
 constexpr std::uint32_t kDmaBase = 0x1F801080u;
@@ -55,6 +58,19 @@ std::uint32_t timer_clock_divisor(
         return kTimer2Div8CpuTicks;
     }
     return 1u;
+}
+
+bool decode_memory_control_register(
+    std::uint32_t physical,
+    std::size_t& index) noexcept {
+    if (physical < kMemoryControlBase ||
+        physical > kMemoryControlEnd ||
+        ((physical - kMemoryControlBase) & 3u) != 0u) {
+        return false;
+    }
+    index = static_cast<std::size_t>(
+        (physical - kMemoryControlBase) / 4u);
+    return index < 9u;
 }
 
 bool decode_timer_register(std::uint32_t physical,
@@ -161,6 +177,9 @@ R3000aBusResult Ps1HardwareServices::read8(std::uint32_t physical) noexcept {
 }
 
 R3000aBusResult Ps1HardwareServices::read16(std::uint32_t physical) noexcept {
+    if (physical == kRamSizeAddress) {
+        return {R3000aBusStatus::ok, ram_size_ & 0xFFFFu};
+    }
     if (physical == Ps1Sio0::mode_address ||
         physical == Ps1Sio0::control_address ||
         physical == Ps1Sio0::baud_address) {
@@ -188,6 +207,17 @@ R3000aBusResult Ps1HardwareServices::read16(std::uint32_t physical) noexcept {
 }
 
 R3000aBusResult Ps1HardwareServices::read32(std::uint32_t physical) noexcept {
+    std::size_t memory_control_index = 0u;
+    if (decode_memory_control_register(
+            physical, memory_control_index)) {
+        return {
+            R3000aBusStatus::ok,
+            memory_control_[memory_control_index],
+        };
+    }
+    if (physical == kRamSizeAddress) {
+        return {R3000aBusStatus::ok, ram_size_};
+    }
     if (physical == Ps1Sio0::data_address ||
         physical == Ps1Sio0::status_address) {
         return sio0_.read32(physical);
@@ -257,6 +287,11 @@ R3000aBusResult Ps1HardwareServices::write8(std::uint32_t physical,
 
 R3000aBusResult Ps1HardwareServices::write16(std::uint32_t physical,
                                              std::uint16_t value) noexcept {
+    if (physical == kRamSizeAddress) {
+        ram_size_ = (ram_size_ & 0xFFFF0000u) |
+                    static_cast<std::uint32_t>(value);
+        return {R3000aBusStatus::ok, 0u};
+    }
     if (physical == Ps1Sio0::mode_address ||
         physical == Ps1Sio0::control_address ||
         physical == Ps1Sio0::baud_address) {
@@ -304,6 +339,16 @@ R3000aBusResult Ps1HardwareServices::write16(std::uint32_t physical,
 
 R3000aBusResult Ps1HardwareServices::write32(std::uint32_t physical,
                                              std::uint32_t value) noexcept {
+    std::size_t memory_control_index = 0u;
+    if (decode_memory_control_register(
+            physical, memory_control_index)) {
+        memory_control_[memory_control_index] = value;
+        return {R3000aBusStatus::ok, 0u};
+    }
+    if (physical == kRamSizeAddress) {
+        ram_size_ = value;
+        return {R3000aBusStatus::ok, 0u};
+    }
     if (physical == Ps1Sio0::data_address) {
         const auto result = sio0_.write32(physical, value);
         sync_sio0_irq_edge();
@@ -616,6 +661,10 @@ const Ps1Sio0& Ps1HardwareServices::sio0() const noexcept {
 
 std::uint64_t Ps1HardwareServices::diagnostic_state_hash() const noexcept {
     std::uint64_t hash = kFnvOffset;
+    for (const auto value : memory_control_) {
+        hash_u32(hash, value);
+    }
+    hash_u32(hash, ram_size_);
     hash_u16(hash, interrupt_status_);
     hash_u16(hash, interrupt_mask_);
     for (const auto& timer : timers_) {
