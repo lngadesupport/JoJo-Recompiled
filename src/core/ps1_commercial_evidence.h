@@ -111,6 +111,14 @@ struct Ps1CommercialEvidenceReport {
     std::uint64_t session_vblank_count{};
     std::uint64_t spu_sample_frames{};
     std::uint64_t spu_nonzero_samples{};
+    Ps1GpuDisplayState gpu_display{};
+    std::uint64_t gpu_nonzero_vram_words{};
+    std::uint64_t gpu_display_region_nonzero_words{};
+    bool gpu_nonzero_bounds_valid{};
+    std::uint32_t gpu_nonzero_min_x{};
+    std::uint32_t gpu_nonzero_min_y{};
+    std::uint32_t gpu_nonzero_max_x{};
+    std::uint32_t gpu_nonzero_max_y{};
     std::optional<Ps1CommercialFrameEvidence> first_frame{};
     std::vector<Ps1CommercialDiagnosticDecision> diagnostic_decisions;
 };
