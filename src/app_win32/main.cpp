@@ -336,6 +336,7 @@ jojo::Ps1CommercialEvidenceReport make_game_session_report(
     report.memory_card_write_sector_count=
         validation.memory_card_write_sector_count;
     report.spu_sample_frames=validation.spu_sample_frames;
+    report.spu_nonzero_samples=validation.spu_nonzero_samples;
     report.first_frame=jojo::make_ps1_commercial_frame_evidence(
         game_runner->display_frame());
     return report;
