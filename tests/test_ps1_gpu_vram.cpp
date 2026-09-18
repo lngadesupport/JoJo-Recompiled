@@ -104,6 +104,43 @@ int main() {
         CHECK(sprite_gpu.vram_write_count() == writes_before_sprite + 4u);
     }
 
+    // GP0(65h): raw 4bpp indexed sprite with CLUT. Index zero is
+    // transparent; non-zero palette entries are copied exactly.
+    {
+        jojo::Ps1GpuIngress indexed_gpu;
+
+        // One VRAM word carries four 4bpp texels: 1,2,0,1.
+        CHECK(indexed_gpu.write_gp0(0xA0000000u).status == jojo::R3000aBusStatus::ok);
+        CHECK(indexed_gpu.write_gp0(0x00000000u).status == jojo::R3000aBusStatus::ok);
+        CHECK(indexed_gpu.write_gp0((1u << 16u) | 1u).status == jojo::R3000aBusStatus::ok);
+        CHECK(indexed_gpu.write_gp0(0x00001021u).status == jojo::R3000aBusStatus::ok);
+
+        // CLUT at (16,1): transparent, red, green.
+        CHECK(indexed_gpu.write_gp0(0xA0000000u).status == jojo::R3000aBusStatus::ok);
+        CHECK(indexed_gpu.write_gp0((1u << 16u) | 16u).status == jojo::R3000aBusStatus::ok);
+        CHECK(indexed_gpu.write_gp0((1u << 16u) | 3u).status == jojo::R3000aBusStatus::ok);
+        CHECK(indexed_gpu.write_gp0(0x001F0000u).status == jojo::R3000aBusStatus::ok);
+        CHECK(indexed_gpu.write_gp0(0x000003E0u).status == jojo::R3000aBusStatus::ok);
+
+        CHECK(indexed_gpu.write_gp0(0xE1000000u).status == jojo::R3000aBusStatus::ok); // 4bpp
+        CHECK(indexed_gpu.write_gp0(0xE3000000u).status == jojo::R3000aBusStatus::ok);
+        CHECK(indexed_gpu.write_gp0(0xE4000000u | 1023u | (511u << 10u)).status ==
+              jojo::R3000aBusStatus::ok);
+
+        const auto writes_before_sprite = indexed_gpu.vram_write_count();
+        CHECK(indexed_gpu.write_gp0(0x65FFFFFFu).status == jojo::R3000aBusStatus::ok);
+        CHECK(indexed_gpu.write_gp0((10u << 16u) | 10u).status == jojo::R3000aBusStatus::ok);
+        const std::uint32_t clut = 1u | (1u << 6u);
+        CHECK(indexed_gpu.write_gp0(clut << 16u).status == jojo::R3000aBusStatus::ok);
+        CHECK(indexed_gpu.write_gp0((1u << 16u) | 4u).status == jojo::R3000aBusStatus::ok);
+
+        CHECK(indexed_gpu.vram_pixel(10u, 10u) == 0x001Fu);
+        CHECK(indexed_gpu.vram_pixel(11u, 10u) == 0x03E0u);
+        CHECK(indexed_gpu.vram_pixel(12u, 10u) == 0x0000u);
+        CHECK(indexed_gpu.vram_pixel(13u, 10u) == 0x001Fu);
+        CHECK(indexed_gpu.vram_write_count() == writes_before_sprite + 3u);
+    }
+
     // GP0(02h): Fill Rectangle. Keep X/width aligned here so this test isolates
     // packet assembly, color conversion and deterministic in-bounds raster writes.
     {
