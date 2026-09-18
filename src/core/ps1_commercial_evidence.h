@@ -153,6 +153,10 @@ public:
     [[nodiscard]] std::vector<Ps1CdromCommandSummary>
     recent_cdrom_commands() const;
     [[nodiscard]] std::vector<std::int16_t> drain_audio_samples();
+    [[nodiscard]] Ps1BootRuntimeState save_runtime_state() const;
+    [[nodiscard]] Result<void> load_runtime_state(
+        const Ps1BootRuntimeState& state);
+    [[nodiscard]] std::uint64_t diagnostic_state_hash() const noexcept;
     void set_pad_buttons(
         std::uint32_t port,
         std::uint16_t active_low_buttons) noexcept;
