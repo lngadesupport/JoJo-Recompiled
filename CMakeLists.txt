@@ -20,6 +20,7 @@ add_library(jojo_core STATIC
   src/core/rollback.cpp
   src/core/network_protocol.cpp
   src/core/online_session.cpp
+  src/core/online_lobby.cpp
   src/core/disc_image.cpp
   src/core/disc_media.cpp
   src/core/iso9660.cpp
@@ -202,6 +203,7 @@ add_jojo_test(jojo_m5_settings_input_tests tests/test_m5_settings_input.cpp)
 add_jojo_test(jojo_training_tests tests/test_training.cpp)
 add_jojo_test(jojo_rollback_tests tests/test_rollback.cpp)
 add_jojo_test(jojo_online_session_tests tests/test_online_session.cpp)
+add_jojo_test(jojo_online_lobby_tests tests/test_online_lobby.cpp)
 add_jojo_test(jojo_mod_policy_tests tests/test_mod_policy.cpp)
 
 function(add_jojo_native_mod_fixture target mod_id)
