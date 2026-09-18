@@ -270,6 +270,7 @@ Result<std::vector<OnlineRoomInfo>> LanLobbyDiscovery::poll() {
         room.available =
             room.players < room.max_players;
         room.connect_endpoint = connect_endpoint;
+        room.game_revision = parsed.value.game_revision;
         discovered_rooms_[room.id] = std::move(room);
     }
 
