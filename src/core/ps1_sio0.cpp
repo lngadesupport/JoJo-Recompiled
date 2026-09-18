@@ -287,13 +287,18 @@ void Ps1Sio0::transfer_byte(std::uint8_t value) noexcept {
             transaction_ = TransactionState::controller_buttons_high;
             more_data = true;
             break;
-        case TransactionState::controller_buttons_high:
+        case TransactionState::controller_buttons_high: {
+            const auto port = selected_port();
             response = static_cast<std::uint8_t>(
-                pad_buttons_[selected_port()] >> 8u);
-            ++digital_pad_poll_count_[selected_port()];
+                pad_buttons_[port] >> 8u);
+            ++digital_pad_poll_count_[port];
+            if (pad_buttons_[port] != 0xFFFFu) {
+                ++digital_pad_pressed_poll_count_[port];
+            }
             transaction_ = TransactionState::done;
             more_data = false;
             break;
+        }
         case TransactionState::memory_command:
             transaction_ = TransactionState::memory_transfer;
             transfer_memory_byte(value, response, more_data);
@@ -469,6 +474,13 @@ std::uint64_t Ps1Sio0::digital_pad_poll_count(
         : 0u;
 }
 
+std::uint64_t Ps1Sio0::digital_pad_pressed_poll_count(
+    std::uint32_t port) const noexcept {
+    return port < digital_pad_pressed_poll_count_.size()
+        ? digital_pad_pressed_poll_count_[port]
+        : 0u;
+}
+
 std::uint64_t Ps1Sio0::memory_card_read_sector_count(
     std::uint32_t port) const noexcept {
     return port < memory_card_read_sector_count_.size()
@@ -493,6 +505,16 @@ std::uint64_t Ps1Sio0::diagnostic_state_hash() const noexcept {
     hash_u16(hash, control_);
     hash_u16(hash, baud_);
     for (const auto buttons : pad_buttons_) hash_u16(hash, buttons);
+    for (const auto count : digital_pad_poll_count_) {
+        for (unsigned shift = 0u; shift < 64u; shift += 8u) {
+            hash_byte(hash, static_cast<std::uint8_t>(count >> shift));
+        }
+    }
+    for (const auto count : digital_pad_pressed_poll_count_) {
+        for (unsigned shift = 0u; shift < 64u; shift += 8u) {
+            hash_byte(hash, static_cast<std::uint8_t>(count >> shift));
+        }
+    }
     for (const auto& card : memory_cards_) {
         const auto card_hash = card.content_hash();
         for (unsigned shift = 0u; shift < 64u; shift += 8u) {
