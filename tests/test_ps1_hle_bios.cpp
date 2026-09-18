@@ -83,6 +83,19 @@ static void test_unknown_syscall_is_non_mutating() {
 
 
 
+
+static void test_backup_unit_init_aliases_mark_card_filesystem_ready() {
+    for (const auto selector : {0x55u, 0x70u}) {
+        jojo::Ps1HleBios bios{};
+        auto cpu = make_cpu();
+        CHECK(!bios.backup_unit_initialized());
+        CHECK(bios.dispatch(cpu, 0xA0u, selector) ==
+              jojo::Ps1HleBiosDispatchStatus::handled);
+        CHECK(bios.backup_unit_initialized());
+        check_returned_through_ra(cpu);
+    }
+}
+
 static void test_card2_lifecycle_tracks_pad_enable_and_start_stop() {
     jojo::Ps1HleBios bios{};
 
@@ -373,6 +386,7 @@ int main() {
     test_sys_01_entercriticalsection();
     test_sys_02_exitcriticalsection();
     test_unknown_syscall_is_non_mutating();
+    test_backup_unit_init_aliases_mark_card_filesystem_ready();
     test_card2_lifecycle_tracks_pad_enable_and_start_stop();
     test_stdout_write_aliases_return_requested_length();
     test_a0_44_flushcache_returns_without_mutating_result();
