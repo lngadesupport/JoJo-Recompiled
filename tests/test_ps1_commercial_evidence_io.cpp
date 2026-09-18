@@ -23,6 +23,8 @@ int main() {
     report.total_instructions_retired = 123456u;
     report.execution_segments = 3u;
     report.completed_frames = 600u;
+    report.observed_non_black_frames = 590u;
+    report.frame_change_count = 480u;
     report.pad_poll_count = {11u, 7u};
     report.memory_card_read_sector_count = {3u, 1u};
     report.memory_card_write_sector_count = {2u, 0u};
@@ -80,6 +82,8 @@ int main() {
     CHECK(text.find("total_instructions_retired=123456") != std::string::npos);
     CHECK(text.find("execution_segments=3") != std::string::npos);
     CHECK(text.find("completed_frames=600") != std::string::npos);
+    CHECK(text.find("observed_non_black_frames=590") != std::string::npos);
+    CHECK(text.find("frame_change_count=480") != std::string::npos);
     CHECK(text.find("pad0_poll_count=11") != std::string::npos);
     CHECK(text.find("pad1_poll_count=7") != std::string::npos);
     CHECK(text.find("memory_card0_read_sector_count=3") != std::string::npos);
@@ -89,6 +93,7 @@ int main() {
     CHECK(text.find("spu_sample_frames=44100") != std::string::npos);
     CHECK(text.find("spu_nonzero_samples=12345") != std::string::npos);
     CHECK(text.find("validation_frame_observed=1") != std::string::npos);
+    CHECK(text.find("validation_dynamic_video_observed=1") != std::string::npos);
     CHECK(text.find("validation_controller_poll_observed=1") != std::string::npos);
     CHECK(text.find("validation_audio_non_silent_observed=1") != std::string::npos);
     CHECK(text.find("validation_memory_card_read_observed=1") != std::string::npos);
