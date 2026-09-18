@@ -19,6 +19,7 @@ namespace {
 
 static_assert(std::is_standard_layout_v<R3000aState>);
 static_assert(std::is_standard_layout_v<R3000aDelaySlot>);
+static_assert(std::is_standard_layout_v<R3000aDelayedLoad>);
 
 void emit_u8(std::vector<std::uint8_t>& out, std::uint8_t value) {
     out.push_back(value);
@@ -68,6 +69,21 @@ void emit_load_edx_gpr(
     emit_u32(out, gpr_offset(reg));
 }
 
+void emit_load_r8d_gpr(
+    std::vector<std::uint8_t>& out,
+    std::uint8_t reg) {
+    if (reg == 0u) {
+        emit_u8(out, 0x45u);
+        emit_u8(out, 0x31u);
+        emit_u8(out, 0xC0u); // xor r8d, r8d
+        return;
+    }
+    emit_u8(out, 0x44u);
+    emit_u8(out, 0x8Bu);
+    emit_u8(out, 0x81u);
+    emit_u32(out, gpr_offset(reg));
+}
+
 void emit_store_eax_gpr(
     std::vector<std::uint8_t>& out,
     std::uint8_t reg) {
@@ -98,6 +114,15 @@ void emit_store_edx_state(
     std::uint32_t offset) {
     emit_u8(out, 0x89u);
     emit_u8(out, 0x91u);
+    emit_u32(out, offset);
+}
+
+void emit_store_r8d_state(
+    std::vector<std::uint8_t>& out,
+    std::uint32_t offset) {
+    emit_u8(out, 0x44u);
+    emit_u8(out, 0x89u);
+    emit_u8(out, 0x81u);
     emit_u32(out, offset);
 }
 
@@ -164,6 +189,24 @@ constexpr std::uint32_t delay_target_offset() noexcept {
         offsetof(R3000aDelaySlot, target));
 }
 
+constexpr std::uint32_t pending_valid_offset() noexcept {
+    return static_cast<std::uint32_t>(
+        offsetof(R3000aState, pending_load) +
+        offsetof(R3000aDelayedLoad, valid));
+}
+
+constexpr std::uint32_t pending_reg_offset() noexcept {
+    return static_cast<std::uint32_t>(
+        offsetof(R3000aState, pending_load) +
+        offsetof(R3000aDelayedLoad, reg));
+}
+
+constexpr std::uint32_t pending_value_offset() noexcept {
+    return static_cast<std::uint32_t>(
+        offsetof(R3000aState, pending_load) +
+        offsetof(R3000aDelayedLoad, value));
+}
+
 std::uint32_t sign_extend16(std::uint16_t value) noexcept {
     return (value & 0x8000u) != 0u
         ? (0xFFFF0000u | static_cast<std::uint32_t>(value))
@@ -217,13 +260,40 @@ Result<void> materialize_executable(
 
 bool state_is_safe_for_x64(
     const R3000aX64Code& code,
-    const R3000aState& state) noexcept {
+    const R3000aState& state,
+    const std::uint8_t* main_ram) noexcept {
     if (code.bytes.empty() || code.instruction_count == 0u) return false;
     if (state.pc != code.entry_pc ||
         state.next_pc != code.entry_pc + 4u) {
         return false;
     }
     if (state.pending_load.valid || state.delay_slot.active) return false;
+
+    if (code.memory_access) {
+        if (!main_ram) return false;
+        const auto& access = *code.memory_access;
+        const auto guest =
+            state.gpr[access.rs] + sign_extend16(access.immediate);
+
+        std::uint32_t physical = 0u;
+        if (guest < 0x80000000u) {
+            physical = guest;
+        } else if (guest < 0xC0000000u) {
+            physical = guest & 0x1FFFFFFFu;
+        } else {
+            return false;
+        }
+
+        constexpr std::uint32_t kMainRamSize = 2u * 1024u * 1024u;
+        if (physical >= kMainRamSize ||
+            access.width > kMainRamSize - physical) {
+            return false;
+        }
+        if ((access.width == 2u && (guest & 1u) != 0u) ||
+            (access.width == 4u && (guest & 3u) != 0u)) {
+            return false;
+        }
+    }
 
     const auto cause_with_external =
         (state.cop0.cause & ~0x0000FC00u) |
@@ -666,8 +736,9 @@ Result<R3000aX64Code> emit_r3000a_x64_alu_block(
 
 R3000aX64ExecutionResult execute_r3000a_x64_block(
     const R3000aX64Code& code,
-    R3000aState& state) noexcept {
-    if (!state_is_safe_for_x64(code, state)) {
+    R3000aState& state,
+    std::uint8_t* main_ram) noexcept {
+    if (!state_is_safe_for_x64(code, state, main_ram)) {
         return {R3000aX64ExecutionStatus::reference_required, 0u};
     }
 
@@ -681,10 +752,10 @@ R3000aX64ExecutionResult execute_r3000a_x64_block(
         return {R3000aX64ExecutionStatus::host_error, 0u};
     }
 
-    using Entry = std::uint32_t (*)(R3000aState*);
+    using Entry = std::uint32_t (*)(R3000aState*, std::uint8_t*);
     const auto entry = reinterpret_cast<Entry>(
         const_cast<void*>(code.executable_entry));
-    const auto retired = entry(&state);
+    const auto retired = entry(&state, main_ram);
 
     if (retired != code.instruction_count) {
         return {R3000aX64ExecutionStatus::host_error, retired};
