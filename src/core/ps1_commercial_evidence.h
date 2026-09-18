@@ -69,6 +69,7 @@ struct Ps1CommercialRuntimeCounters {
     std::array<std::uint64_t, 2> pad_pressed_poll_count{};
     std::array<std::uint64_t, 2> memory_card_read_sector_count{};
     std::array<std::uint64_t, 2> memory_card_write_sector_count{};
+    std::array<std::uint64_t, 2> memory_card_changed_write_sector_count{};
     std::uint64_t dma_transfer_count{};
     std::uint64_t cdrom_command_count{};
     std::uint64_t gpu_gp0_word_count{};
@@ -94,6 +95,7 @@ struct Ps1CommercialEvidenceReport {
     std::array<std::uint64_t, 2> pad_pressed_poll_count{};
     std::array<std::uint64_t, 2> memory_card_read_sector_count{};
     std::array<std::uint64_t, 2> memory_card_write_sector_count{};
+    std::array<std::uint64_t, 2> memory_card_changed_write_sector_count{};
     std::uint64_t session_dma_transfer_count{};
     std::uint64_t session_cdrom_command_count{};
     std::uint64_t session_gpu_gp0_word_count{};
@@ -114,6 +116,7 @@ struct Ps1GameplayValidationSummary {
     bool audio_non_silent_observed{};
     bool memory_card_read_observed{};
     bool memory_card_write_observed{};
+    bool memory_card_content_change_observed{};
 };
 
 [[nodiscard]] Ps1GameplayValidationSummary
