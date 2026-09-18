@@ -87,6 +87,15 @@ std::string format_ps1_boot_report(const Ps1BootReport& report) {
         << report.native_x64_instructions_retired << '\n';
     out << "reference_instructions_retired="
         << report.reference_instructions_retired << '\n';
+    out << "native_x64_enabled=" << (report.native_x64_enabled ? 1 : 0) << '\n';
+    out << "native_x64_cache_compilations="
+        << report.native_x64_cache_compilations << '\n';
+    out << "native_x64_cache_reuses="
+        << report.native_x64_cache_reuses << '\n';
+    out << "native_x64_cache_invalidations="
+        << report.native_x64_cache_invalidations << '\n';
+    out << "native_x64_cache_evictions="
+        << report.native_x64_cache_evictions << '\n';
     out << "last_pc=" << hex32(report.last_pc) << '\n';
     out << "last_opcode=" << optional_hex32(report.last_opcode) << '\n';
     out << "diagnostic_probe_mode=" << (report.diagnostic_probe_mode ? 1 : 0) << '\n';
