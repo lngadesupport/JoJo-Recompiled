@@ -197,14 +197,7 @@ std::vector<std::uint8_t> encode_match_found(
     return out;
 }
 
-bool compatible(
-    const OnlineDirectoryServer::MatchRecord& lhs,
-    const OnlineDirectoryServer::MatchRecord& rhs) noexcept {
-    return lhs.queue == rhs.queue &&
-        lhs.region == rhs.region &&
-        lhs.game_revision == rhs.game_revision &&
-        lhs.source != rhs.source;
-}
+
 
 } // namespace
 
@@ -514,7 +507,11 @@ Result<void> OnlineDirectoryServer::poll(
             auto peer = std::find_if(
                 matches_.begin(), matches_.end(),
                 [&](const MatchRecord& candidate) {
-                    return compatible(request, candidate);
+                    return request.queue == candidate.queue &&
+                        request.region == candidate.region &&
+                        request.game_revision ==
+                            candidate.game_revision &&
+                        request.source != candidate.source;
                 });
             if (peer == matches_.end()) {
                 matches_.push_back(std::move(request));
