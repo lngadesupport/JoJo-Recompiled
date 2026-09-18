@@ -324,11 +324,13 @@ void draw_searching(Gdiplus::Graphics& g, const OnlineLobbyModel& model) {
 
     Gdiplus::Pen ring(kWhite, 5.0f);
     g.DrawEllipse(&ring, 690.0f, 390.0f, 220.0f, 220.0f);
-    Gdiplus::SolidBrush dot(kBlue);
+    const int active_dot=static_cast<int>((GetTickCount64()/120u)%8u);
     for (int i = 0; i < 8; ++i) {
         const double angle = i * 3.14159265358979323846 / 4.0;
         const float px = 800.0f + static_cast<float>(std::cos(angle) * 95.0) - 8.0f;
         const float py = 500.0f + static_cast<float>(std::sin(angle) * 95.0) - 8.0f;
+        Gdiplus::SolidBrush dot(
+            i==active_dot ? kBlue : Gdiplus::Color(255,75,75,75));
         g.FillEllipse(&dot, px, py, 16.0f, 16.0f);
     }
     if (!model.status.empty()) {
