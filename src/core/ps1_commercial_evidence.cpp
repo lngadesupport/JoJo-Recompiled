@@ -56,6 +56,42 @@ make_ps1_commercial_frame_evidence(const Ps1DisplayFrame& frame) noexcept {
 }
 
 
+
+void Ps1CommercialFrameProgress::observe(
+    const Ps1DisplayFrame& frame) noexcept {
+    const auto evidence = make_ps1_commercial_frame_evidence(frame);
+    if (!evidence) return;
+
+    ++observed_non_black_frames_;
+    if (last_frame_hash_ &&
+        *last_frame_hash_ != evidence->frame_hash_fnv1a64) {
+        ++frame_change_count_;
+    }
+    last_frame_hash_ = evidence->frame_hash_fnv1a64;
+    if (!first_frame_) first_frame_ = *evidence;
+}
+
+void Ps1CommercialFrameProgress::reset() noexcept {
+    observed_non_black_frames_ = 0u;
+    frame_change_count_ = 0u;
+    last_frame_hash_.reset();
+    first_frame_.reset();
+}
+
+std::uint64_t
+Ps1CommercialFrameProgress::observed_non_black_frames() const noexcept {
+    return observed_non_black_frames_;
+}
+
+std::uint64_t Ps1CommercialFrameProgress::frame_change_count() const noexcept {
+    return frame_change_count_;
+}
+
+const std::optional<Ps1CommercialFrameEvidence>&
+Ps1CommercialFrameProgress::first_frame() const noexcept {
+    return first_frame_;
+}
+
 Ps1GameplayValidationSummary summarize_ps1_gameplay_validation(
     const Ps1CommercialEvidenceReport& report) noexcept {
     Ps1GameplayValidationSummary summary{};
