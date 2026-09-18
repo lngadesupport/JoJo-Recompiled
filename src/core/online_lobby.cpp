@@ -25,6 +25,17 @@ bool valid_online_room_name(std::string_view value) noexcept {
     return valid_text(value, 40u);
 }
 
+std::string_view online_room_status_name(
+    OnlineRoomStatus status) noexcept {
+    switch (status) {
+        case OnlineRoomStatus::wait: return "WAIT";
+        case OnlineRoomStatus::full: return "FULL";
+        case OnlineRoomStatus::in_game: return "IN GAME";
+        case OnlineRoomStatus::version_mismatch: return "VER";
+    }
+    return "WAIT";
+}
+
 Result<void> set_online_player_name(
     OnlineLobbyModel& model,
     std::string name) {
@@ -118,6 +129,7 @@ Result<void> online_select_room(
             "online room index is outside the available room list");
     }
     if (!model.rooms[index].available ||
+        model.rooms[index].status != OnlineRoomStatus::wait ||
         model.rooms[index].players >= model.rooms[index].max_players) {
         return Result<void>::failure(
             ErrorCode::invalid_argument,

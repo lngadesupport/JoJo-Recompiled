@@ -232,6 +232,7 @@ Result<AppSettings> load_settings(const std::filesystem::path& path) {
         const auto value = trim(line.substr(eq + 1));
 
         if (key == "source_binding_path") result.source_binding_path = value;
+        else if (key == "online_directory_endpoint") result.online_directory_endpoint = value;
         else if (key == "selected_device" || key == "selected_device.p1") result.input.players[0].selected_device = value;
         else if (key == "selected_device.p2") result.input.players[1].selected_device = value;
         else if (key.rfind("bind.p1.", 0) == 0) {
@@ -324,6 +325,8 @@ Result<void> save_settings_atomic(const std::filesystem::path& path, const AppSe
         if (!out) return Result<void>::failure(ErrorCode::io_error, "failed to open temporary settings file");
         out << "# JOJO Recompiled settings\n";
         out << "source_binding_path=" << settings.source_binding_path << '\n';
+        out << "online_directory_endpoint="
+            << settings.online_directory_endpoint << '\n';
         out << "width=" << settings.graphics.width << '\n';
         out << "height=" << settings.graphics.height << '\n';
         out << "aspect_ratio=" << to_string(settings.graphics.aspect_ratio) << '\n';

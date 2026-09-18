@@ -22,6 +22,7 @@ add_library(jojo_core STATIC
   src/core/network_protocol.cpp
   src/core/online_session.cpp
   src/core/online_lobby.cpp
+  src/core/online_directory.cpp
   src/core/lan_lobby_discovery.cpp
   src/core/disc_image.cpp
   src/core/disc_media.cpp
@@ -78,6 +79,12 @@ endif()
 
 add_executable(jojo_ps1_commercial_probe src/tools/ps1_commercial_probe.cpp)
 target_link_libraries(jojo_ps1_commercial_probe PRIVATE jojo_core)
+
+add_executable(jojo_online_directory_server src/tools/online_directory_server.cpp)
+target_link_libraries(jojo_online_directory_server PRIVATE jojo_core)
+if(WIN32)
+  target_link_libraries(jojo_online_directory_server PRIVATE ws2_32)
+endif()
 
 if(WIN32)
   add_library(jojo_win32_input_host STATIC src/platform/windows/controller_win32.cpp)
@@ -210,6 +217,7 @@ add_jojo_test(jojo_training_tests tests/test_training.cpp)
 add_jojo_test(jojo_rollback_tests tests/test_rollback.cpp)
 add_jojo_test(jojo_online_session_tests tests/test_online_session.cpp)
 add_jojo_test(jojo_online_lobby_tests tests/test_online_lobby.cpp)
+add_jojo_test(jojo_online_directory_tests tests/test_online_directory.cpp)
 add_jojo_test(jojo_lan_lobby_discovery_tests tests/test_lan_lobby_discovery.cpp)
 add_jojo_test(jojo_mod_policy_tests tests/test_mod_policy.cpp)
 

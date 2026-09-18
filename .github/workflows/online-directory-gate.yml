@@ -1,0 +1,53 @@
+name: Online Directory Gate
+
+on:
+  push:
+    branches:
+      - feature/online-directory-service
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux-online:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure Release
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+      - name: Build online targets
+        run: >-
+          cmake --build build --target
+          jojo_online_directory_server
+          jojo_online_directory_tests
+          jojo_lan_lobby_discovery_tests
+          jojo_online_lobby_tests
+          jojo_m5_settings_input_tests
+          -j2
+      - name: Run online tests
+        run: >-
+          ctest --test-dir build -R
+          "jojo_(online_directory|lan_lobby_discovery|online_lobby|m5_settings_input)_tests"
+          --output-on-failure
+
+  windows-online:
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure Release x64
+        run: cmake -S . -B build -A x64
+      - name: Build online targets and launcher
+        run: >-
+          cmake --build build --config Release --target
+          jojo_online_directory_server
+          jojo_online_directory_tests
+          jojo_lan_lobby_discovery_tests
+          jojo_online_lobby_tests
+          jojo_m5_settings_input_tests
+          jojo_recompiled
+      - name: Run online tests
+        run: >-
+          ctest --test-dir build -C Release -R
+          "jojo_(online_directory|lan_lobby_discovery|online_lobby|m5_settings_input)_tests"
+          --output-on-failure

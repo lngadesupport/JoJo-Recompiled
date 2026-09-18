@@ -290,13 +290,18 @@ void draw_online_home(Gdiplus::Graphics& g, const OnlineLobbyModel& model) {
 }
 
 void draw_public_servers(Gdiplus::Graphics& g, const OnlineLobbyModel& model) {
-    draw_text(g, L"LAN / DIRECT SERVERS", 520.0f, 70.0f, 560.0f, 70.0f, 54.0f, kWhite, true,
+    draw_text(g, L"ONLINE ROOMS", 520.0f, 70.0f, 560.0f, 70.0f, 54.0f, kWhite, true,
               Gdiplus::StringAlignmentCenter);
 
     const float x = 540.0f;
     const float y = 150.0f;
     const float w = 520.0f;
     draw_header_bars(g, x, y, w, 44.0f);
+    draw_text(g, L"OWNER", x + 48.0f, y, 180.0f, 44.0f, 16.0f, kMuted, true);
+    draw_text(g, L"STATUS", x + 235.0f, y, 90.0f, 44.0f, 16.0f, kMuted, true);
+    draw_text(g, L"PLAYERS", x + 330.0f, y, 80.0f, 44.0f, 16.0f, kMuted, true);
+    draw_text(g, L"PING", x + 420.0f, y, 75.0f, 44.0f, 16.0f, kMuted, true,
+              Gdiplus::StringAlignmentFar);
 
     const std::size_t max_rows = 7u;
     for (std::size_t i = 0; i < max_rows; ++i) {
@@ -311,22 +316,35 @@ void draw_public_servers(Gdiplus::Graphics& g, const OnlineLobbyModel& model) {
         }
         Gdiplus::SolidBrush dot(room.available ? kGreen : kRed);
         g.FillEllipse(&dot, x + 14.0f, row_y + 16.0f, 20.0f, 20.0f);
-        draw_text(g, widen(room.name), x + 48.0f, row_y, 345.0f, 52.0f, 22.0f, kWhite, true);
+        const auto owner = room.owner.empty() ? room.name : room.owner;
+        draw_text(g, widen(owner), x + 48.0f, row_y, 180.0f, 52.0f, 20.0f, kWhite, true);
+        draw_text(g, widen(std::string(online_room_status_name(room.status))),
+                  x + 235.0f, row_y, 90.0f, 52.0f, 18.0f,
+                  room.status == OnlineRoomStatus::wait ? kGreen :
+                  (room.status == OnlineRoomStatus::version_mismatch ? kOrange : kMuted),
+                  true);
         draw_text(
             g,
             std::to_wstring(room.players) + L"/" + std::to_wstring(room.max_players),
-            x + 415.0f,
+            x + 330.0f,
             row_y,
-            90.0f,
+            80.0f,
             52.0f,
-            22.0f,
+            18.0f,
             kWhite,
-            true,
-            Gdiplus::StringAlignmentFar);
+            true);
+        const std::wstring ping_text = room.lan
+            ? L"LAN"
+            : (room.ping_ms
+                ? std::to_wstring(*room.ping_ms) + L" ms"
+                : L"--");
+        draw_text(g, ping_text, x + 420.0f, row_y, 75.0f, 52.0f, 18.0f,
+                  room.lan ? kGreen : kWhite, true,
+                  Gdiplus::StringAlignmentFar);
     }
 
     if (model.rooms.empty()) {
-        draw_text(g, L"NO LAN LOBBIES FOUND", x, y + 190.0f, w, 80.0f, 27.0f, kMuted, true,
+        draw_text(g, L"NO ONLINE ROOMS FOUND", x, y + 190.0f, w, 80.0f, 27.0f, kMuted, true,
                   Gdiplus::StringAlignmentCenter);
     }
 

@@ -29,10 +29,27 @@ void test_home_and_matchmaking_flow() {
 void test_public_room_selection_and_join() {
     jojo::OnlineLobbyModel model{};
     jojo::online_open_public_servers(model);
-    jojo::online_set_rooms(model, {
-        {"room-a", "First Room", "SOUTH AMERICA", 1u, 2u, false, true},
-        {"room-b", "Full Room", "SOUTH AMERICA", 2u, 2u, false, true},
-    });
+    jojo::OnlineRoomInfo first{};
+    first.id = "room-a";
+    first.name = "First Room";
+    first.owner = "PLAYER A";
+    first.region = "SOUTH AMERICA";
+    first.players = 1u;
+    first.max_players = 2u;
+    first.available = true;
+    first.status = jojo::OnlineRoomStatus::wait;
+
+    jojo::OnlineRoomInfo full{};
+    full.id = "room-b";
+    full.name = "Full Room";
+    full.owner = "PLAYER B";
+    full.region = "SOUTH AMERICA";
+    full.players = 2u;
+    full.max_players = 2u;
+    full.available = false;
+    full.status = jojo::OnlineRoomStatus::full;
+
+    jojo::online_set_rooms(model, {first, full});
 
     CHECK(jojo::online_select_room(model, 0u));
     CHECK(model.selected_room && *model.selected_room == 0u);
@@ -42,6 +59,46 @@ void test_public_room_selection_and_join() {
 
     jojo::online_open_public_servers(model);
     CHECK(!jojo::online_select_room(model, 1u));
+}
+
+void test_united_style_room_status_labels_and_joinability() {
+    CHECK(jojo::online_room_status_name(
+              jojo::OnlineRoomStatus::wait) == "WAIT");
+    CHECK(jojo::online_room_status_name(
+              jojo::OnlineRoomStatus::full) == "FULL");
+    CHECK(jojo::online_room_status_name(
+              jojo::OnlineRoomStatus::in_game) == "IN GAME");
+    CHECK(jojo::online_room_status_name(
+              jojo::OnlineRoomStatus::version_mismatch) == "VER");
+
+    jojo::OnlineLobbyModel model{};
+    model.rooms = {
+        jojo::OnlineRoomInfo{
+            .id="wait", .name="A", .owner="JOTARO",
+            .players=1u, .max_players=2u,
+            .available=true,
+            .status=jojo::OnlineRoomStatus::wait},
+        jojo::OnlineRoomInfo{
+            .id="full", .name="B", .owner="DIO",
+            .players=2u, .max_players=2u,
+            .available=false,
+            .status=jojo::OnlineRoomStatus::full},
+        jojo::OnlineRoomInfo{
+            .id="game", .name="C", .owner="KAKYOIN",
+            .players=2u, .max_players=2u,
+            .available=false,
+            .status=jojo::OnlineRoomStatus::in_game},
+        jojo::OnlineRoomInfo{
+            .id="ver", .name="D", .owner="POLNAREFF",
+            .players=1u, .max_players=2u,
+            .available=false,
+            .status=jojo::OnlineRoomStatus::version_mismatch},
+    };
+
+    CHECK(jojo::online_select_room(model, 0u));
+    CHECK(!jojo::online_select_room(model, 1u));
+    CHECK(!jojo::online_select_room(model, 2u));
+    CHECK(!jojo::online_select_room(model, 3u));
 }
 
 void test_direct_lobby_entry_does_not_require_public_room() {
@@ -140,6 +197,7 @@ void test_invalid_fields_are_rejected() {
 int main() {
     test_home_and_matchmaking_flow();
     test_public_room_selection_and_join();
+    test_united_style_room_status_labels_and_joinability();
     test_direct_lobby_entry_does_not_require_public_room();
     test_game_revision_requires_exact_nonempty_match();
     test_create_lobby_validation_and_host_flow();
