@@ -3,6 +3,7 @@
 #include "core/ps1_disc_session.h"
 #include "core/r3000a_bus.h"
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <deque>
@@ -36,6 +37,9 @@ public:
     [[nodiscard]] std::size_t deferred_response_count() const noexcept;
     [[nodiscard]] bool muted() const noexcept;
     [[nodiscard]] bool adpcm_muted() const noexcept;
+    [[nodiscard]] std::uint8_t mode() const noexcept;
+    [[nodiscard]] std::uint8_t filter_file() const noexcept;
+    [[nodiscard]] std::uint8_t filter_channel() const noexcept;
     [[nodiscard]] const std::array<std::uint8_t, 4>&
     pending_audio_matrix() const noexcept;
     [[nodiscard]] const std::array<std::uint8_t, 4>&
@@ -70,6 +74,9 @@ private:
     std::uint8_t status_byte_{};
     bool muted_{};
     bool adpcm_muted_{};
+    std::uint8_t mode_{0x20u};
+    std::uint8_t filter_file_{};
+    std::uint8_t filter_channel_{};
     std::array<std::uint8_t, 4> pending_audio_matrix_{
         0x80u, 0x00u, 0x80u, 0x00u};
     std::array<std::uint8_t, 4> active_audio_matrix_{
