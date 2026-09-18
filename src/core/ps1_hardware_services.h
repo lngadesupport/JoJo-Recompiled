@@ -31,6 +31,7 @@ struct Ps1DmaTransferRequest {
     std::uint32_t madr{};
     std::uint32_t words{};
     bool from_ram{};
+    std::uint8_t sync_mode{};
 };
 
 class Ps1HardwareServices {
