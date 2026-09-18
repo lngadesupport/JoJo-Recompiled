@@ -25,6 +25,106 @@ void test_direct_branch_instruction_is_lowerable() {
 
 
 
+
+#if defined(_WIN32) && defined(_M_X64)
+void test_x64_direct_byte_and_halfword_loads_match_reference() {
+    struct Case {
+        std::uint32_t raw;
+        std::uint32_t stored;
+        std::uint8_t width;
+    };
+    const std::array<Case, 4> cases{{
+        {test_mips::i(0x20u, 8u, 9u, 0u), 0x00000080u, 1u}, // LB
+        {test_mips::i(0x24u, 8u, 9u, 0u), 0x00000080u, 1u}, // LBU
+        {test_mips::i(0x21u, 8u, 9u, 0u), 0x00008001u, 2u}, // LH
+        {test_mips::i(0x25u, 8u, 9u, 0u), 0x00008001u, 2u}, // LHU
+    }};
+
+    for (const auto& item : cases) {
+        const auto decoded = jojo::decode_mips(item.raw);
+        const auto code =
+            jojo::emit_r3000a_x64_instruction(0x80010000u, decoded);
+        CHECK(code);
+        if (!code) continue;
+
+        jojo::R3000aState native{};
+        native.pc = 0x80010000u;
+        native.next_pc = 0x80010004u;
+        native.gpr[8] = 0x80000100u;
+        auto reference = native;
+
+        jojo::Ps1MemoryBus native_bus;
+        jojo::Ps1MemoryBus reference_bus;
+        if (item.width == 1u) {
+            native_bus.write8(0x100u, static_cast<std::uint8_t>(item.stored));
+            reference_bus.write8(0x100u, static_cast<std::uint8_t>(item.stored));
+        } else {
+            native_bus.write16(0x100u, static_cast<std::uint16_t>(item.stored));
+            reference_bus.write16(0x100u, static_cast<std::uint16_t>(item.stored));
+        }
+        reference_bus.write32(0x80010000u, item.raw);
+
+        CHECK(jojo::execute_r3000a_x64_block(
+                  code.value,
+                  native,
+                  native_bus.main_ram_data()).status ==
+              jojo::R3000aX64ExecutionStatus::executed);
+        CHECK(jojo::step_r3000a(reference, reference_bus).status ==
+              jojo::R3000aStepStatus::retired);
+
+        CHECK(native.pending_load.valid == reference.pending_load.valid);
+        CHECK(native.pending_load.reg == reference.pending_load.reg);
+        CHECK(native.pending_load.value == reference.pending_load.value);
+    }
+}
+
+void test_x64_direct_byte_and_halfword_stores_match_reference() {
+    struct Case {
+        std::uint32_t raw;
+        std::uint8_t width;
+    };
+    const std::array<Case, 2> cases{{
+        {test_mips::i(0x28u, 8u, 9u, 0u), 1u}, // SB
+        {test_mips::i(0x29u, 8u, 9u, 0u), 2u}, // SH
+    }};
+
+    for (const auto& item : cases) {
+        const auto decoded = jojo::decode_mips(item.raw);
+        const auto code =
+            jojo::emit_r3000a_x64_instruction(0x80010000u, decoded);
+        CHECK(code);
+        if (!code) continue;
+
+        jojo::R3000aState native{};
+        native.pc = 0x80010000u;
+        native.next_pc = 0x80010004u;
+        native.gpr[8] = 0xA0000100u;
+        native.gpr[9] = 0xAABBCCDDu;
+        auto reference = native;
+
+        jojo::Ps1MemoryBus native_bus;
+        jojo::Ps1MemoryBus reference_bus;
+        reference_bus.write32(0x80010000u, item.raw);
+
+        CHECK(jojo::execute_r3000a_x64_block(
+                  code.value,
+                  native,
+                  native_bus.main_ram_data()).status ==
+              jojo::R3000aX64ExecutionStatus::executed);
+        CHECK(jojo::step_r3000a(reference, reference_bus).status ==
+              jojo::R3000aStepStatus::retired);
+
+        if (item.width == 1u) {
+            CHECK(native_bus.read8(0x100u).value ==
+                  reference_bus.read8(0x100u).value);
+        } else {
+            CHECK(native_bus.read16(0x100u).value ==
+                  reference_bus.read16(0x100u).value);
+        }
+    }
+}
+#endif
+
 #if defined(_WIN32) && defined(_M_X64)
 void test_x64_direct_lw_main_ram_matches_reference_load_delay() {
     const auto raw = test_mips::i(0x23u, 8u, 9u, 0u); // LW $9,0($8)
@@ -452,6 +552,8 @@ int main() {
     test_direct_branch_instruction_is_lowerable();
     test_x64_emitter_accepts_only_v0_safe_subset();
 #if defined(_WIN32) && defined(_M_X64)
+    test_x64_direct_byte_and_halfword_loads_match_reference();
+    test_x64_direct_byte_and_halfword_stores_match_reference();
     test_x64_direct_lw_main_ram_matches_reference_load_delay();
     test_x64_direct_sw_main_ram_alias_matches_reference();
     test_x64_memory_falls_back_before_mmio_or_misaligned_access();
