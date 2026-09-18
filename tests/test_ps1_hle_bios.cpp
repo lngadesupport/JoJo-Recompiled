@@ -82,6 +82,40 @@ static void test_unknown_syscall_is_non_mutating() {
 
 
 
+
+static void test_card2_lifecycle_tracks_pad_enable_and_start_stop() {
+    jojo::Ps1HleBios bios{};
+
+    auto init = make_cpu();
+    init.gpr[4] = 0u;
+    CHECK(bios.dispatch(init, 0xB0u, 0x4Au) ==
+          jojo::Ps1HleBiosDispatchStatus::handled);
+    CHECK(bios.card_initialized());
+    CHECK(!bios.card_started());
+    CHECK(!bios.card_pad_enabled());
+    check_returned_through_ra(init);
+
+    auto start = make_cpu();
+    CHECK(bios.dispatch(start, 0xB0u, 0x4Bu) ==
+          jojo::Ps1HleBiosDispatchStatus::handled);
+    CHECK(bios.card_started());
+    check_returned_through_ra(start);
+
+    auto stop = make_cpu();
+    CHECK(bios.dispatch(stop, 0xB0u, 0x4Cu) ==
+          jojo::Ps1HleBiosDispatchStatus::handled);
+    CHECK(!bios.card_started());
+    check_returned_through_ra(stop);
+
+    jojo::Ps1HleBios uninitialized{};
+    auto invalid_start = make_cpu();
+    const auto before = invalid_start;
+    CHECK(uninitialized.dispatch(invalid_start, 0xB0u, 0x4Bu) ==
+          jojo::Ps1HleBiosDispatchStatus::unimplemented);
+    CHECK(invalid_start.pc == before.pc);
+    CHECK(invalid_start.gpr == before.gpr);
+}
+
 static void test_stdout_write_aliases_return_requested_length() {
     for (const auto call : std::array<std::pair<std::uint32_t, std::uint32_t>, 2>{{
              {0xA0u, 0x03u},
@@ -329,6 +363,7 @@ int main() {
     test_sys_01_entercriticalsection();
     test_sys_02_exitcriticalsection();
     test_unknown_syscall_is_non_mutating();
+    test_card2_lifecycle_tracks_pad_enable_and_start_stop();
     test_stdout_write_aliases_return_requested_length();
     test_a0_44_flushcache_returns_without_mutating_result();
     test_b0_56_getc0table_returns_clean_room_table();
