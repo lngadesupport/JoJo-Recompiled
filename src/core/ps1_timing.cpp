@@ -37,4 +37,40 @@ std::uint64_t Ps1VideoReferenceClock::remainder() const noexcept {
     return remainder_;
 }
 
+std::uint64_t Ps1FrameSliceBudget::begin_frame(
+    Ps1VideoTimingMode mode) noexcept {
+    clock_.set_mode(mode);
+    remaining_ticks_ = clock_.next_frame_ticks();
+    return remaining_ticks_;
+}
+
+std::uint64_t Ps1FrameSliceBudget::next_slice_ticks() const noexcept {
+    return remaining_ticks_ < max_slice_ticks_
+        ? remaining_ticks_
+        : max_slice_ticks_;
+}
+
+bool Ps1FrameSliceBudget::consume(std::uint64_t ticks) noexcept {
+    if (ticks == 0u || ticks > remaining_ticks_) return false;
+    remaining_ticks_ -= ticks;
+    return true;
+}
+
+bool Ps1FrameSliceBudget::frame_complete() const noexcept {
+    return remaining_ticks_ == 0u;
+}
+
+std::uint64_t Ps1FrameSliceBudget::remaining_ticks() const noexcept {
+    return remaining_ticks_;
+}
+
+Ps1VideoTimingMode Ps1FrameSliceBudget::mode() const noexcept {
+    return clock_.mode();
+}
+
+void Ps1FrameSliceBudget::reset() noexcept {
+    clock_.reset();
+    remaining_ticks_ = 0u;
+}
+
 } // namespace jojo
