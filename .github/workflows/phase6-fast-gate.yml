@@ -1,0 +1,28 @@
+name: Phase 6 Fast Gate
+
+on:
+  push:
+    branches:
+      - feature/ps1-controls-timing-saves-phase6
+
+permissions:
+  contents: read
+
+jobs:
+  phase6-fast-linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure Release
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+      - name: Build Phase 6 focused targets
+        run: >-
+          cmake --build build --target
+          jojo_ps1_sio0_tests
+          jojo_ps1_memory_bus_tests
+          -j2
+      - name: Run Phase 6 focused tests
+        run: >-
+          ctest --test-dir build -R
+          "jojo_ps1_(sio0|memory_bus)_tests"
+          --output-on-failure
