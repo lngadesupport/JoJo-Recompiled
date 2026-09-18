@@ -75,6 +75,35 @@ int main() {
         CHECK(draw_gpu.vram_write_count() == 6u);
     }
 
+    // GP0(65h): raw-textured variable rectangle in 15-bit texture mode.
+    // Texture source lives in VRAM and zero texels remain transparent.
+    {
+        jojo::Ps1GpuIngress sprite_gpu;
+
+        CHECK(sprite_gpu.write_gp0(0xA0000000u).status == jojo::R3000aBusStatus::ok);
+        CHECK(sprite_gpu.write_gp0((50u << 16u) | 100u).status == jojo::R3000aBusStatus::ok);
+        CHECK(sprite_gpu.write_gp0((2u << 16u) | 2u).status == jojo::R3000aBusStatus::ok);
+        CHECK(sprite_gpu.write_gp0(0x03E0001Fu).status == jojo::R3000aBusStatus::ok);
+        CHECK(sprite_gpu.write_gp0(0x7FFF7C00u).status == jojo::R3000aBusStatus::ok);
+
+        CHECK(sprite_gpu.write_gp0(0xE1000100u).status == jojo::R3000aBusStatus::ok);
+        CHECK(sprite_gpu.write_gp0(0xE3000000u).status == jojo::R3000aBusStatus::ok);
+        CHECK(sprite_gpu.write_gp0(0xE4000000u | 1023u | (511u << 10u)).status ==
+              jojo::R3000aBusStatus::ok);
+
+        const auto writes_before_sprite = sprite_gpu.vram_write_count();
+        CHECK(sprite_gpu.write_gp0(0x65FFFFFFu).status == jojo::R3000aBusStatus::ok);
+        CHECK(sprite_gpu.write_gp0((30u << 16u) | 20u).status == jojo::R3000aBusStatus::ok);
+        CHECK(sprite_gpu.write_gp0((50u << 8u) | 100u).status == jojo::R3000aBusStatus::ok);
+        CHECK(sprite_gpu.write_gp0((2u << 16u) | 2u).status == jojo::R3000aBusStatus::ok);
+
+        CHECK(sprite_gpu.vram_pixel(20u, 30u) == 0x001Fu);
+        CHECK(sprite_gpu.vram_pixel(21u, 30u) == 0x03E0u);
+        CHECK(sprite_gpu.vram_pixel(20u, 31u) == 0x7C00u);
+        CHECK(sprite_gpu.vram_pixel(21u, 31u) == 0x7FFFu);
+        CHECK(sprite_gpu.vram_write_count() == writes_before_sprite + 4u);
+    }
+
     // GP0(02h): Fill Rectangle. Keep X/width aligned here so this test isolates
     // packet assembly, color conversion and deterministic in-bounds raster writes.
     {
