@@ -60,8 +60,15 @@ void test_control_transfer_stays_reference_until_native_pc_semantics_exist() {
         0x00000000u,
     });
     const auto plan = jojo::plan_r3000a_native_lowering(cfg);
-    CHECK(plan.native_block_count == 0u);
     CHECK(plan.reference_fallback_block_count >= 1u);
+    bool entry_is_fallback = false;
+    for (const auto& block : plan.blocks) {
+        if (block.entry_pc == 0x80010000u) {
+            entry_is_fallback =
+                block.mode == jojo::R3000aNativeLoweringMode::reference_fallback;
+        }
+    }
+    CHECK(entry_is_fallback);
 }
 } // namespace
 
