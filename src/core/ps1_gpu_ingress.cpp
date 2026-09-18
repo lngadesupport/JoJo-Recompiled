@@ -482,7 +482,7 @@ void Ps1GpuIngress::copy_vram_rectangle(
 
 R3000aBusResult Ps1GpuIngress::read_gp0() noexcept {
     if (readback_pixels_remaining_ == 0u || readback_width_ == 0u) {
-        return {R3000aBusStatus::unsupported, 0u};
+        return {R3000aBusStatus::ok, gpuread_latch_};
     }
 
     const auto read_pixel = [&]() noexcept -> std::uint16_t {
@@ -761,9 +761,46 @@ R3000aBusResult Ps1GpuIngress::write_gp1(std::uint32_t value) noexcept {
     const auto parameter = value & 0x00FFFFFFu;
     last_unsupported_gp1_command_.reset();
 
+    if (command >= 0x10u && command <= 0x1Fu) {
+        switch (parameter & 0x00FFFFFFu) {
+            case 0x02u:
+                gpuread_latch_ =
+                    static_cast<std::uint32_t>(texture_window_mask_x_) |
+                    (static_cast<std::uint32_t>(texture_window_mask_y_) << 5u) |
+                    (static_cast<std::uint32_t>(texture_window_offset_x_) << 10u) |
+                    (static_cast<std::uint32_t>(texture_window_offset_y_) << 15u);
+                break;
+            case 0x03u:
+                gpuread_latch_ =
+                    (draw_area_left_ & 0x3FFu) |
+                    ((draw_area_top_ & 0x3FFu) << 10u);
+                break;
+            case 0x04u:
+                gpuread_latch_ =
+                    (draw_area_right_ & 0x3FFu) |
+                    ((draw_area_bottom_ & 0x3FFu) << 10u);
+                break;
+            case 0x05u:
+                gpuread_latch_ =
+                    (static_cast<std::uint32_t>(draw_offset_x_) & 0x7FFu) |
+                    ((static_cast<std::uint32_t>(draw_offset_y_) & 0x7FFu) << 11u);
+                break;
+            case 0x07u:
+                gpuread_latch_ = 0x00000002u; // retail/v2 GPU
+                break;
+            default:
+                // Real hardware keeps the previous GPUREAD latch for
+                // unsupported internal-register indices.
+                break;
+        }
+        ++gp1_command_count_;
+        return {R3000aBusStatus::ok, 0u};
+    }
+
     switch (command) {
         case 0x00u: // Reset GPU
             status_ = reset_status;
+            gpuread_latch_ = 0u;
             reset_command_buffer();
             reset_display_state();
             readback_x_ = 0u;
