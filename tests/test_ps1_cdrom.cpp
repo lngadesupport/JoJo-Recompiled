@@ -168,10 +168,12 @@ int main() {
           jojo::R3000aBusStatus::ok); // ATV2 R->R
     CHECK(cd.write8(0x1F801802u, 0x20u).status ==
           jojo::R3000aBusStatus::ok); // ATV3 R->L
-    CHECK(cd.pending_audio_matrix() ==
-          std::array<std::uint8_t, 4>{0x70u,0x10u,0x60u,0x20u});
-    CHECK(cd.active_audio_matrix() ==
-          std::array<std::uint8_t, 4>{0x80u,0x00u,0x80u,0x00u});
+    const std::array<std::uint8_t, 4> expected_pending_matrix{
+        0x70u, 0x10u, 0x60u, 0x20u};
+    const std::array<std::uint8_t, 4> expected_default_matrix{
+        0x80u, 0x00u, 0x80u, 0x00u};
+    CHECK(cd.pending_audio_matrix() == expected_pending_matrix);
+    CHECK(cd.active_audio_matrix() == expected_default_matrix);
 
     CHECK(cd.write8(0x1F801803u, 0x21u).status ==
           jojo::R3000aBusStatus::ok); // ADPMUTE + CHNGATV
