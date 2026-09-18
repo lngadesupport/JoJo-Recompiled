@@ -41,6 +41,7 @@ private:
     struct Entry {
         std::uint64_t fingerprint{};
         std::uint32_t abi_version{};
+        std::uint64_t last_use_serial{};
         R3000aX64Code code{};
     };
 
@@ -52,6 +53,7 @@ private:
     std::uint64_t reuses_{};
     std::uint64_t invalidations_{};
     std::uint64_t evictions_{};
+    std::uint64_t use_serial_{};
 };
 
 } // namespace jojo
