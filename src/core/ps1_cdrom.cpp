@@ -48,6 +48,12 @@ bool bcd_to_binary(std::uint8_t bcd, std::uint32_t& out) noexcept {
     return true;
 }
 
+std::uint8_t binary_to_bcd(std::uint32_t value) noexcept {
+    value %= 100u;
+    return static_cast<std::uint8_t>(
+        ((value / 10u) << 4u) | (value % 10u));
+}
+
 } // namespace
 
 void Ps1CdromController::attach_disc(const Ps1DiscSession* disc) noexcept {
@@ -446,6 +452,55 @@ R3000aBusResult Ps1CdromController::execute_command(std::uint8_t command) noexce
             }
             interrupt_flags_ = 0x03u;
             return {R3000aBusStatus::ok, 0u};
+
+        case 0x13u: // GetTN: title disc has one data track.
+            parameters_.clear();
+            if (!push_response(status_byte_) ||
+                !push_response(0x01u) ||
+                !push_response(0x01u)) {
+                return {R3000aBusStatus::unsupported, 0u};
+            }
+            interrupt_flags_ = 0x03u;
+            return {R3000aBusStatus::ok, 0u};
+
+        case 0x14u: { // GetTD(track): track 01 or 00=lead-out.
+            if (disc_ == nullptr || parameters_.size() != 1u) {
+                return {R3000aBusStatus::unsupported, 0u};
+            }
+            const auto track_bcd = parameters_.front();
+            parameters_.clear();
+
+            std::uint32_t track = 0u;
+            if (!bcd_to_binary(track_bcd, track) || track > 1u) {
+                const auto error_status =
+                    static_cast<std::uint8_t>(status_byte_ | 0x01u);
+                if (!push_response(error_status) ||
+                    !push_response(0x10u)) {
+                    return {R3000aBusStatus::unsupported, 0u};
+                }
+                interrupt_flags_ = 0x05u;
+                return {R3000aBusStatus::ok, 0u};
+            }
+
+            std::uint64_t absolute_frames = 150u;
+            if (track == 0u) {
+                absolute_frames += disc_->logical_sector_count();
+            }
+            const auto total_seconds =
+                absolute_frames / 75u;
+            const auto minute = static_cast<std::uint32_t>(
+                total_seconds / 60u);
+            const auto second = static_cast<std::uint32_t>(
+                total_seconds % 60u);
+
+            if (!push_response(status_byte_) ||
+                !push_response(binary_to_bcd(minute)) ||
+                !push_response(binary_to_bcd(second))) {
+                return {R3000aBusStatus::unsupported, 0u};
+            }
+            interrupt_flags_ = 0x03u;
+            return {R3000aBusStatus::ok, 0u};
+        }
 
         case 0x0Au: { // Init: preserve host HINTMSK, INT3 then INT2
             const auto* attached = disc_;
