@@ -14,7 +14,28 @@ static std::uint8_t exchange(jojo::Ps1Sio0& sio, std::uint8_t value) {
     return static_cast<std::uint8_t>(received.value);
 }
 
+
+static void test_observation_counters_do_not_change_guest_state_hash() {
+    jojo::Ps1Sio0 observed;
+    jojo::Ps1Sio0 pristine;
+
+    CHECK(observed.write16(0x1F80104Au, 0x0003u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(exchange(observed, 0x01u) == 0xFFu);
+    CHECK(exchange(observed, 0x42u) == 0x41u);
+    CHECK(exchange(observed, 0x00u) == 0x5Au);
+    CHECK(exchange(observed, 0x00u) == 0xFFu);
+    CHECK(exchange(observed, 0x00u) == 0xFFu);
+    CHECK(observed.digital_pad_poll_count(0u) == 1u);
+
+    // Reset guest-visible SIO state; observation history intentionally survives.
+    CHECK(observed.write16(0x1F80104Au, 0x0040u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(observed.diagnostic_state_hash() == pristine.diagnostic_state_hash());
+}
+
 int main() {
+    test_observation_counters_do_not_change_guest_state_hash();
     jojo::Ps1Sio0 sio;
     CHECK(sio.write16(0x1F801048u, 0x000Du).status == jojo::R3000aBusStatus::ok);
     CHECK(sio.write16(0x1F80104Eu, 0x0088u).status == jojo::R3000aBusStatus::ok);
