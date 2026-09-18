@@ -138,6 +138,8 @@ public:
     [[nodiscard]] Ps1DisplayFrame display_frame() const;
     [[nodiscard]] Ps1GpuDisplayState gpu_display_state() const noexcept;
     [[nodiscard]] Ps1CommercialRuntimeCounters validation_counters() const noexcept;
+    [[nodiscard]] std::vector<Ps1CdromCommandSummary>
+    recent_cdrom_commands() const;
     [[nodiscard]] std::vector<std::int16_t> drain_audio_samples();
     void set_pad_buttons(
         std::uint32_t port,
