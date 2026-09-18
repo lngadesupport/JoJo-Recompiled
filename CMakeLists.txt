@@ -85,6 +85,7 @@ if(WIN32)
   add_executable(jojo_recompiled WIN32
     src/app_win32/main.cpp
     src/app_win32/launcher_ui.cpp
+    src/app_win32/online_ui.cpp
     src/app_win32/presentation_host.cpp
     src/app_win32/audio_host.cpp
   )
@@ -106,6 +107,7 @@ if(WIN32)
     tests/test_win32_image_selection.cpp
     src/app_win32/main.cpp
     src/app_win32/launcher_ui.cpp
+    src/app_win32/online_ui.cpp
     src/app_win32/presentation_host.cpp
     src/app_win32/audio_host.cpp
   )
