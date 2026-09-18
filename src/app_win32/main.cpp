@@ -79,9 +79,7 @@ jojo::Ps1DisplayFrame game_frame{};
 std::uint64_t game_total_instructions{};
 std::uint32_t game_execution_segments{};
 std::uint64_t game_completed_frames{};
-std::uint64_t game_observed_non_black_frames{};
-std::uint64_t game_frame_change_count{};
-std::optional<std::uint64_t> game_last_frame_hash{};
+jojo::Ps1CommercialFrameProgress game_frame_progress{};
 std::optional<jojo::Ps1BootReport> game_last_segment{};
 jojo::Ps1FrameSliceBudget game_frame_budget{65536u};
 std::chrono::steady_clock::time_point next_game_tick{};
@@ -321,17 +319,6 @@ void apply_current_input(jojo::Ps1CommercialEvidenceRunner& runner){
 
 
 
-void record_game_frame_progress(const jojo::Ps1DisplayFrame& frame){
-    const auto evidence=jojo::make_ps1_commercial_frame_evidence(frame);
-    if(!evidence) return;
-    ++game_observed_non_black_frames;
-    if(game_last_frame_hash &&
-       *game_last_frame_hash!=evidence->frame_hash_fnv1a64){
-        ++game_frame_change_count;
-    }
-    game_last_frame_hash=evidence->frame_hash_fnv1a64;
-}
-
 jojo::Ps1CommercialEvidenceReport make_game_session_report(
     jojo::Ps1CommercialSessionTermination termination,
     const jojo::Ps1BootReport* boot_override=nullptr){
@@ -344,8 +331,9 @@ jojo::Ps1CommercialEvidenceReport make_game_session_report(
     report.total_instructions_retired=game_total_instructions;
     report.execution_segments=game_execution_segments;
     report.completed_frames=game_completed_frames;
-    report.observed_non_black_frames=game_observed_non_black_frames;
-    report.frame_change_count=game_frame_change_count;
+    report.observed_non_black_frames=
+        game_frame_progress.observed_non_black_frames();
+    report.frame_change_count=game_frame_progress.frame_change_count();
     const auto validation=game_runner->validation_counters();
     report.pad_poll_count=validation.pad_poll_count;
     report.pad_pressed_poll_count=validation.pad_pressed_poll_count;
@@ -361,8 +349,7 @@ jojo::Ps1CommercialEvidenceReport make_game_session_report(
     report.session_vblank_count=validation.vblank_count;
     report.spu_sample_frames=validation.spu_sample_frames;
     report.spu_nonzero_samples=validation.spu_nonzero_samples;
-    report.first_frame=jojo::make_ps1_commercial_frame_evidence(
-        game_runner->display_frame());
+    report.first_frame=game_frame_progress.first_frame();
     return report;
 }
 
@@ -486,7 +473,7 @@ void game_tick(){
     if(frontier!=jojo::Ps1CommercialFrontierClass::execution_budget){
         service_game_audio();
         const auto frame=game_runner->display_frame();
-        record_game_frame_progress(frame);
+        game_frame_progress.observe(frame);
         if(frame.width!=0u&&frame.height!=0u&&!frame.rgba8.empty()){
             (void)show_game_frame(frame);
         }
@@ -509,7 +496,7 @@ void game_tick(){
     ++game_completed_frames;
 
     const auto frame=game_runner->display_frame();
-    record_game_frame_progress(frame);
+    game_frame_progress.observe(frame);
     if(frame.width!=0u&&frame.height!=0u&&!frame.rgba8.empty()){
         (void)show_game_frame(frame);
     }
@@ -567,9 +554,7 @@ void run_checkpoint(){
     game_total_instructions=0u;
     game_execution_segments=0u;
     game_completed_frames=0u;
-    game_observed_non_black_frames=0u;
-    game_frame_change_count=0u;
-    game_last_frame_hash.reset();
+    game_frame_progress.reset();
     game_last_segment.reset();
     game_frame_budget.reset();
     next_game_tick=std::chrono::steady_clock::now();
