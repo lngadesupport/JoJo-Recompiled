@@ -229,6 +229,12 @@ Ps1HleBiosDispatchStatus Ps1HleBios::dispatch(
             }
             if (event.mode == kEventModeReady) {
                 event.ready = true;
+            } else if (event.mode == kEventModeCallback) {
+                // Callback-mode delivery is intentionally conservative here.
+                // Preserve the registered callback address, but do not fake a
+                // callback transfer until interrupt/callback entry semantics
+                // are modeled by the runtime.
+                event.ready = false;
             }
         }
         cpu.gpr[2] = 1u;
