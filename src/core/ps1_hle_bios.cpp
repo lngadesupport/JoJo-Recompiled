@@ -22,6 +22,9 @@ constexpr std::uint32_t kB0WaitEvent = 0x0000000Au;
 constexpr std::uint32_t kB0TestEvent = 0x0000000Bu;
 constexpr std::uint32_t kB0EnableEvent = 0x0000000Cu;
 constexpr std::uint32_t kB0DisableEvent = 0x0000000Du;
+constexpr std::uint32_t kB0OpenThread = 0x0000000Eu;
+constexpr std::uint32_t kB0CloseThread = 0x0000000Fu;
+constexpr std::uint32_t kB0ChangeThread = 0x00000010u;
 constexpr std::uint32_t kB0ReturnFromException = 0x00000017u;
 constexpr std::uint32_t kB0ResetEntryInt = 0x00000018u;
 constexpr std::uint32_t kB0HookEntryInt = 0x00000019u;
@@ -39,6 +42,7 @@ constexpr std::uint32_t kSysEnterCriticalSection = 0x00000001u;
 constexpr std::uint32_t kSysExitCriticalSection = 0x00000002u;
 constexpr std::uint32_t kCriticalStatusMask = (1u << 0u) | (1u << 10u);
 constexpr std::uint32_t kEventDescriptorBase = 0xF1000000u;
+constexpr std::uint32_t kThreadHandleBase = 0xFF000000u;
 constexpr std::uint32_t kEventModeCallback = 0x00001000u;
 constexpr std::uint32_t kEventModeReady = 0x00002000u;
 constexpr std::uint64_t kFnvOffset = 14695981039346656037ull;
@@ -119,6 +123,10 @@ void hash_r3000a_state(
 }
 
 } // namespace
+
+Ps1HleBios::Ps1HleBios() noexcept {
+    threads_[0].allocated = true;
+}
 
 Ps1HleBiosDispatchStatus Ps1HleBios::dispatch(
     R3000aState& cpu,
@@ -219,6 +227,76 @@ Ps1HleBiosDispatchStatus Ps1HleBios::dispatch(
             event->ready = false;
         }
         return_from_bios_call(cpu);
+        return Ps1HleBiosDispatchStatus::handled;
+    }
+
+    const auto decode_thread = [this](std::uint32_t handle)
+        -> Ps1BiosThreadState* {
+        if (handle < kThreadHandleBase) return nullptr;
+        const auto index = handle - kThreadHandleBase;
+        if (index >= threads_.size()) return nullptr;
+        auto& thread = threads_[static_cast<std::size_t>(index)];
+        return thread.allocated ? &thread : nullptr;
+    };
+
+    if (table_physical == kBiosB0 && selector == kB0OpenThread) {
+        std::size_t free_index = threads_.size();
+        for (std::size_t i = 0u; i < threads_.size(); ++i) {
+            if (!threads_[i].allocated) {
+                free_index = i;
+                break;
+            }
+        }
+
+        if (free_index == threads_.size()) {
+            cpu.gpr[2] = 0xFFFFFFFFu;
+        } else {
+            auto& thread = threads_[free_index];
+            thread = {};
+            thread.allocated = true;
+            thread.cpu.pc = cpu.gpr[4];
+            thread.cpu.next_pc = cpu.gpr[4] + 4u;
+            thread.cpu.gpr[28] = cpu.gpr[6];
+            thread.cpu.gpr[29] = cpu.gpr[5];
+            thread.cpu.gpr[30] = cpu.gpr[5];
+            thread.cpu.gpr[0] = 0u;
+            cpu.gpr[2] =
+                kThreadHandleBase +
+                static_cast<std::uint32_t>(free_index);
+        }
+        return_from_bios_call(cpu);
+        return Ps1HleBiosDispatchStatus::handled;
+    }
+
+    if (table_physical == kBiosB0 && selector == kB0CloseThread) {
+        auto* thread = decode_thread(cpu.gpr[4]);
+        if (thread) {
+            thread->allocated = false;
+        }
+        cpu.gpr[2] = 1u;
+        return_from_bios_call(cpu);
+        return Ps1HleBiosDispatchStatus::handled;
+    }
+
+    if (table_physical == kBiosB0 && selector == kB0ChangeThread) {
+        auto* target = decode_thread(cpu.gpr[4]);
+        if (!target) {
+            return Ps1HleBiosDispatchStatus::unimplemented;
+        }
+
+        const auto target_index = static_cast<std::size_t>(
+            cpu.gpr[4] - kThreadHandleBase);
+        cpu.gpr[2] = 1u;
+        return_from_bios_call(cpu);
+
+        if (target_index == current_thread_index_) {
+            return Ps1HleBiosDispatchStatus::handled;
+        }
+
+        threads_[current_thread_index_].cpu = cpu;
+        cpu = target->cpu;
+        cpu.gpr[0] = 0u;
+        current_thread_index_ = target_index;
         return Ps1HleBiosDispatchStatus::handled;
     }
 
@@ -529,6 +607,13 @@ std::uint64_t Ps1HleBios::diagnostic_state_hash() const noexcept {
         hash_u32(hash, event.mode);
         hash_u32(hash, event.function);
     }
+    hash_u32(
+        hash,
+        static_cast<std::uint32_t>(current_thread_index_));
+    for (const auto& thread : threads_) {
+        hash_bool(hash, thread.allocated);
+        hash_r3000a_state(hash, thread.cpu);
+    }
     for (const auto& state : root_counter_auto_ack_enabled_) {
         hash_optional_bool(hash, state);
     }
@@ -569,6 +654,16 @@ bool Ps1HleBios::backup_unit_initialized() const noexcept {
 
 const std::array<Ps1BiosEventState, 16>& Ps1HleBios::events() const noexcept {
     return events_;
+}
+
+const std::array<Ps1BiosThreadState, 4>&
+Ps1HleBios::threads() const noexcept {
+    return threads_;
+}
+
+std::uint32_t Ps1HleBios::current_thread_handle() const noexcept {
+    return kThreadHandleBase +
+        static_cast<std::uint32_t>(current_thread_index_);
 }
 
 std::optional<bool> Ps1HleBios::root_counter_auto_ack_enabled(
