@@ -20,11 +20,14 @@ inline constexpr std::uint64_t kOnlineDirectoryMatchTtlMs = 15000u;
 struct OnlineDirectoryRoom {
     std::string id{};
     std::string name{};
+    std::string owner{};
     std::string region{};
     std::string game_revision{};
     NetworkEndpoint gameplay_endpoint{};
     std::uint8_t players{1u};
     std::uint8_t max_players{2u};
+    bool in_game{};
+    std::optional<std::uint32_t> directory_ping_ms{};
 
     friend bool operator==(
         const OnlineDirectoryRoom&,
@@ -61,11 +64,13 @@ public:
 
     [[nodiscard]] Result<void> publish_room(
         std::string_view name,
+        std::string_view owner,
         std::string_view region,
         std::string_view game_revision,
         std::uint16_t gameplay_port,
         std::uint8_t players = 1u,
-        std::uint8_t max_players = 2u);
+        std::uint8_t max_players = 2u,
+        bool in_game = false);
 
     [[nodiscard]] Result<void> request_rooms(
         std::string_view region,
@@ -88,6 +93,7 @@ private:
     NetworkEndpoint directory_{};
     UdpNetworkTransport transport_{};
     std::vector<OnlineDirectoryRoom> pending_rooms_{};
+    std::optional<std::uint64_t> room_request_started_ms_{};
 };
 
 class OnlineDirectoryServer {
