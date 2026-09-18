@@ -216,6 +216,11 @@ void test_packet_serialization_is_deterministic_and_round_trips() {
         jojo::NetworkPacketKind::session_hello,
         jojo::NetworkPacketKind::session_accept,
         jojo::NetworkPacketKind::disconnect,
+        jojo::NetworkPacketKind::lobby_profile,
+        jojo::NetworkPacketKind::lobby_ready,
+        jojo::NetworkPacketKind::lobby_chat,
+        jojo::NetworkPacketKind::lobby_start,
+        jojo::NetworkPacketKind::lobby_game_revision,
     };
 
     std::uint32_t sequence = 1;
@@ -270,6 +275,12 @@ void test_reliability_is_control_only_and_acknowledged() {
     CHECK(jojo::is_reliable_control(jojo::NetworkPacketKind::session_hello));
     CHECK(jojo::is_reliable_control(jojo::NetworkPacketKind::session_accept));
     CHECK(jojo::is_reliable_control(jojo::NetworkPacketKind::disconnect));
+    CHECK(jojo::is_reliable_control(jojo::NetworkPacketKind::lobby_profile));
+    CHECK(jojo::is_reliable_control(jojo::NetworkPacketKind::lobby_ready));
+    CHECK(jojo::is_reliable_control(jojo::NetworkPacketKind::lobby_chat));
+    CHECK(jojo::is_reliable_control(jojo::NetworkPacketKind::lobby_start));
+    CHECK(jojo::is_reliable_control(
+        jojo::NetworkPacketKind::lobby_game_revision));
 
     jojo::ControlReliabilityQueue queue(50);
     CHECK(!queue.track(packet_for(jojo::NetworkPacketKind::input, 1), 100));
