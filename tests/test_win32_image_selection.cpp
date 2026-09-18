@@ -256,7 +256,6 @@ void inspect_application(DWORD ui_thread) {
     PostMessageW(window, WM_CLOSE, 0, 0);
 }
 }
-}
 
 int main() {
     test_startup_source_priority();
