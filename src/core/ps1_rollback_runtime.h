@@ -22,6 +22,7 @@ class Ps1RollbackSimulation final : public IRollbackSimulation {
 public:
     explicit Ps1RollbackSimulation(
         Ps1CommercialEvidenceRunner& runner,
+        std::uint32_t local_player_port,
         std::size_t snapshot_capacity = 96u) noexcept;
 
     [[nodiscard]] std::vector<std::uint8_t> save_state() const override;
@@ -45,6 +46,7 @@ private:
     void prune_snapshots() const;
 
     Ps1CommercialEvidenceRunner& runner_;
+    std::uint32_t local_player_port_{};
     std::size_t snapshot_capacity_{96u};
     mutable std::uint64_t next_snapshot_id_{1u};
     mutable std::map<std::uint64_t, Ps1BootRuntimeState> snapshots_{};
