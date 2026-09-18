@@ -29,6 +29,7 @@ int main() {
     report.pad_pressed_poll_count = {5u, 2u};
     report.memory_card_read_sector_count = {3u, 1u};
     report.memory_card_write_sector_count = {2u, 0u};
+    report.memory_card_changed_write_sector_count = {1u, 0u};
     report.session_dma_transfer_count = 12u;
     report.session_cdrom_command_count = 34u;
     report.session_gpu_gp0_word_count = 56u;
@@ -99,6 +100,8 @@ int main() {
     CHECK(text.find("memory_card0_write_sector_count=2") != std::string::npos);
     CHECK(text.find("memory_card1_read_sector_count=1") != std::string::npos);
     CHECK(text.find("memory_card1_write_sector_count=0") != std::string::npos);
+    CHECK(text.find("memory_card0_changed_write_sector_count=1") != std::string::npos);
+    CHECK(text.find("memory_card1_changed_write_sector_count=0") != std::string::npos);
     CHECK(text.find("session_dma_transfer_count=12") != std::string::npos);
     CHECK(text.find("session_cdrom_command_count=34") != std::string::npos);
     CHECK(text.find("session_gpu_gp0_word_count=56") != std::string::npos);
@@ -114,6 +117,7 @@ int main() {
     CHECK(text.find("validation_audio_non_silent_observed=1") != std::string::npos);
     CHECK(text.find("validation_memory_card_read_observed=1") != std::string::npos);
     CHECK(text.find("validation_memory_card_write_observed=1") != std::string::npos);
+    CHECK(text.find("validation_memory_card_content_change_observed=1") != std::string::npos);
     CHECK(text.find("last_pc=0x000000a0") != std::string::npos);
     CHECK(text.find("bios_event_0_selector=0x00000033") != std::string::npos);
     CHECK(text.find("mmio_event_0_address=0x1f801810") != std::string::npos);
