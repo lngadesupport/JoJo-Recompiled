@@ -158,6 +158,16 @@ std::string format_ps1_commercial_evidence_report(
         << report.boot.native_x64_instructions_retired << '\n';
     out << "segment_reference_instructions_retired="
         << report.boot.reference_instructions_retired << '\n';
+    out << "segment_native_x64_enabled="
+        << (report.boot.native_x64_enabled ? 1 : 0) << '\n';
+    out << "segment_native_x64_cache_compilations="
+        << report.boot.native_x64_cache_compilations << '\n';
+    out << "segment_native_x64_cache_reuses="
+        << report.boot.native_x64_cache_reuses << '\n';
+    out << "segment_native_x64_cache_invalidations="
+        << report.boot.native_x64_cache_invalidations << '\n';
+    out << "segment_native_x64_cache_evictions="
+        << report.boot.native_x64_cache_evictions << '\n';
     out << "last_pc=" << hex32(report.boot.last_pc) << '\n';
     out << "last_opcode=" << optional_hex32(report.boot.last_opcode) << '\n';
     out << "diagnostic_probe_mode=" << (report.boot.diagnostic_probe_mode ? 1 : 0) << '\n';
