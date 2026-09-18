@@ -231,6 +231,30 @@ Ps1CommercialEvidenceReport Ps1CommercialEvidenceRunner::run(
             }
         }
 
+        const auto& spu =
+            runtime_.bus().hardware_services().spu();
+        report.spu_control = spu.control();
+        report.spu_status = spu.status();
+        report.spu_transfer_control = spu.transfer_control();
+        report.spu_transfer_current_address =
+            spu.transfer_current_address();
+        report.spu_keyed_on_voice_count = 0u;
+        for (std::size_t voice = 0u;
+             voice < Ps1Spu::voice_count;
+             ++voice) {
+            if (spu.voice(voice).keyed_on) {
+                ++report.spu_keyed_on_voice_count;
+            }
+        }
+        report.spu_nonzero_sound_ram_bytes = 0u;
+        for (std::uint32_t address = 0u;
+             address < Ps1Spu::sound_ram_size;
+             ++address) {
+            if (spu.sound_ram_byte(address) != 0u) {
+                ++report.spu_nonzero_sound_ram_bytes;
+            }
+        }
+
         if (report.gpu_display.width != 0u &&
             report.gpu_display.height != 0u) {
             for (std::uint32_t y = 0u;
