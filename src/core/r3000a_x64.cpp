@@ -92,6 +92,14 @@ void emit_store_eax_state(
     emit_u32(out, offset);
 }
 
+void emit_store_edx_state(
+    std::vector<std::uint8_t>& out,
+    std::uint32_t offset) {
+    emit_u8(out, 0x89u);
+    emit_u8(out, 0x91u);
+    emit_u32(out, offset);
+}
+
 void emit_variable_shift(
     std::vector<std::uint8_t>& out,
     std::uint8_t shift_modrm) {
@@ -152,6 +160,8 @@ bool r3000a_op_is_x64_lowerable(MipsOp op) noexcept {
         case MipsOp::mthi:
         case MipsOp::mflo:
         case MipsOp::mtlo:
+        case MipsOp::mult:
+        case MipsOp::multu:
         case MipsOp::addu:
         case MipsOp::subu:
         case MipsOp::bit_and:
@@ -251,6 +261,20 @@ Result<R3000aX64Code> emit_r3000a_x64_alu_block(
                 emit_store_eax_state(
                     out,
                     static_cast<std::uint32_t>(offsetof(R3000aState, lo)));
+                break;
+
+            case MipsOp::mult:
+            case MipsOp::multu:
+                emit_load_eax_gpr(out, ins.rs);
+                emit_load_edx_gpr(out, ins.rt);
+                emit_u8(out, 0xF7u);
+                emit_u8(out, ins.op == MipsOp::mult ? 0xEAu : 0xE2u);
+                emit_store_eax_state(
+                    out,
+                    static_cast<std::uint32_t>(offsetof(R3000aState, lo)));
+                emit_store_edx_state(
+                    out,
+                    static_cast<std::uint32_t>(offsetof(R3000aState, hi)));
                 break;
 
             case MipsOp::addu:
