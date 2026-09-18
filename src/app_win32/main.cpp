@@ -79,6 +79,9 @@ jojo::Ps1DisplayFrame game_frame{};
 std::uint64_t game_total_instructions{};
 std::uint32_t game_execution_segments{};
 std::uint64_t game_completed_frames{};
+std::uint64_t game_observed_non_black_frames{};
+std::uint64_t game_frame_change_count{};
+std::optional<std::uint64_t> game_last_frame_hash{};
 std::optional<jojo::Ps1BootReport> game_last_segment{};
 jojo::Ps1FrameSliceBudget game_frame_budget{65536u};
 std::chrono::steady_clock::time_point next_game_tick{};
@@ -317,6 +320,18 @@ void apply_current_input(jojo::Ps1CommercialEvidenceRunner& runner){
 }
 
 
+
+void record_game_frame_progress(const jojo::Ps1DisplayFrame& frame){
+    const auto evidence=jojo::make_ps1_commercial_frame_evidence(frame);
+    if(!evidence) return;
+    ++game_observed_non_black_frames;
+    if(game_last_frame_hash &&
+       *game_last_frame_hash!=evidence->frame_hash_fnv1a64){
+        ++game_frame_change_count;
+    }
+    game_last_frame_hash=evidence->frame_hash_fnv1a64;
+}
+
 jojo::Ps1CommercialEvidenceReport make_game_session_report(
     jojo::Ps1CommercialSessionTermination termination,
     const jojo::Ps1BootReport* boot_override=nullptr){
@@ -329,6 +344,8 @@ jojo::Ps1CommercialEvidenceReport make_game_session_report(
     report.total_instructions_retired=game_total_instructions;
     report.execution_segments=game_execution_segments;
     report.completed_frames=game_completed_frames;
+    report.observed_non_black_frames=game_observed_non_black_frames;
+    report.frame_change_count=game_frame_change_count;
     const auto validation=game_runner->validation_counters();
     report.pad_poll_count=validation.pad_poll_count;
     report.memory_card_read_sector_count=
@@ -462,6 +479,7 @@ void game_tick(){
     if(frontier!=jojo::Ps1CommercialFrontierClass::execution_budget){
         service_game_audio();
         const auto frame=game_runner->display_frame();
+        record_game_frame_progress(frame);
         if(frame.width!=0u&&frame.height!=0u&&!frame.rgba8.empty()){
             (void)show_game_frame(frame);
         }
@@ -484,6 +502,7 @@ void game_tick(){
     ++game_completed_frames;
 
     const auto frame=game_runner->display_frame();
+    record_game_frame_progress(frame);
     if(frame.width!=0u&&frame.height!=0u&&!frame.rgba8.empty()){
         (void)show_game_frame(frame);
     }
@@ -541,6 +560,10 @@ void run_checkpoint(){
     game_total_instructions=0u;
     game_execution_segments=0u;
     game_completed_frames=0u;
+    game_observed_non_black_frames=0u;
+    game_frame_change_count=0u;
+    game_last_frame_hash.reset();
+    game_last_segment.reset();
     game_frame_budget.reset();
     next_game_tick=std::chrono::steady_clock::now();
 
