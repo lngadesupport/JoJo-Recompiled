@@ -84,6 +84,68 @@ int main() {
         CHECK(s.gpr[11] == 0x0BADF00Du);
     }
 
+    // LWC2 moves a 32-bit RAM word into a GTE data register when CU2 is enabled.
+    {
+        TestR3000aBus bus;
+        auto s = base_state();
+        s.gpr[4] = 0x2000u;
+        bus.store32(0x2004u, 0x00007C1Fu);
+        bus.store32(0x1000u, (0x32u << 26) | (4u << 21) | (28u << 16) | 4u);
+        const auto r = jojo::step_r3000a(s, bus);
+        CHECK(r.status == jojo::R3000aStepStatus::retired);
+        CHECK(s.gte.data[9] == 0x00000F80u);
+        CHECK(s.gte.data[10] == 0u);
+        CHECK(s.gte.data[11] == 0x00000F80u);
+        CHECK(jojo::read_ps1_gte_data(s.gte, 29u) == 0x00007C1Fu);
+    }
+
+    // SWC2 stores the architecturally visible GTE data-register value to RAM.
+    {
+        TestR3000aBus bus;
+        auto s = base_state();
+        s.gpr[4] = 0x2000u;
+        jojo::write_ps1_gte_data(s.gte, 28u, 0x000003E0u);
+        bus.store32(0x1000u, (0x3Au << 26) | (4u << 21) | (29u << 16) | 8u);
+        const auto r = jojo::step_r3000a(s, bus);
+        CHECK(r.status == jojo::R3000aStepStatus::retired);
+        CHECK(bus.peek32(0x2008u) == jojo::read_ps1_gte_data(s.gte, 29u));
+    }
+
+    // CU2-disabled memory transfers raise Coprocessor Unusable with CE=2.
+    {
+        TestR3000aBus bus;
+        auto s = base_state(false);
+        s.gpr[4] = 0x2000u;
+        bus.store32(0x2000u, 0x12345678u);
+        bus.store32(0x1000u, (0x32u << 26) | (4u << 21) | (3u << 16));
+        const auto r = jojo::step_r3000a(s, bus);
+        CHECK(r.status == jojo::R3000aStepStatus::exception);
+        CHECK(r.diagnostic.exception_code == jojo::R3000aExceptionCode::coprocessor_unusable);
+        CHECK(r.diagnostic.coprocessor && *r.diagnostic.coprocessor == 2u);
+    }
+
+    // LWC2/SWC2 require word alignment before touching the data bus.
+    {
+        TestR3000aBus bus;
+        auto s = base_state();
+        s.gpr[4] = 0x2001u;
+        bus.store32(0x1000u, (0x32u << 26) | (4u << 21) | (3u << 16));
+        const auto r = jojo::step_r3000a(s, bus);
+        CHECK(r.status == jojo::R3000aStepStatus::exception);
+        CHECK(r.diagnostic.exception_code == jojo::R3000aExceptionCode::adel);
+        CHECK(s.cop0.bad_vaddr == 0x2001u);
+    }
+    {
+        TestR3000aBus bus;
+        auto s = base_state();
+        s.gpr[4] = 0x2001u;
+        bus.store32(0x1000u, (0x3Au << 26) | (4u << 21) | (3u << 16));
+        const auto r = jojo::step_r3000a(s, bus);
+        CHECK(r.status == jojo::R3000aStepStatus::exception);
+        CHECK(r.diagnostic.exception_code == jojo::R3000aExceptionCode::ades);
+        CHECK(s.cop0.bad_vaddr == 0x2001u);
+    }
+
     // Supported GTE commands retire through the ordinary CPU path.
     {
         TestR3000aBus bus;
