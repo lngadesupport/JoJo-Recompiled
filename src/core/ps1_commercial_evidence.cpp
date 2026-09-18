@@ -65,7 +65,8 @@ Ps1GameplayValidationSummary summarize_ps1_gameplay_validation(
     summary.controller_poll_observed =
         report.pad_poll_count[0] != 0u ||
         report.pad_poll_count[1] != 0u;
-    summary.audio_generated = report.spu_sample_frames != 0u;
+    summary.audio_non_silent_observed =
+        report.spu_nonzero_samples != 0u;
     summary.memory_card_read_observed =
         report.memory_card_read_sector_count[0] != 0u ||
         report.memory_card_read_sector_count[1] != 0u;
@@ -119,6 +120,7 @@ Ps1CommercialEvidenceReport Ps1CommercialEvidenceRunner::run(
         report.memory_card_write_sector_count =
             counters.memory_card_write_sector_count;
         report.spu_sample_frames = counters.spu_sample_frames;
+        report.spu_nonzero_samples = counters.spu_nonzero_samples;
         return report;
     };
 
@@ -198,6 +200,7 @@ Ps1CommercialEvidenceRunner::validation_counters() const noexcept {
             sio0.memory_card_write_sector_count(port);
     }
     counters.spu_sample_frames = hardware.spu().generated_sample_frames();
+    counters.spu_nonzero_samples = hardware.spu().nonzero_sample_count();
     return counters;
 }
 
