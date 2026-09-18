@@ -8,6 +8,12 @@ static int failures = 0;
 #define CHECK(x) do { if (!(x)) { std::cerr << __FILE__ << ':' << __LINE__ << " CHECK failed: " #x "\n"; ++failures; } } while (0)
 
 int main() {
+    CHECK(jojo::xaudio2_gain_from_percent(-10) == 0.0f);
+    CHECK(jojo::xaudio2_gain_from_percent(0) == 0.0f);
+    CHECK(jojo::xaudio2_gain_from_percent(50) == 0.5f);
+    CHECK(jojo::xaudio2_gain_from_percent(100) == 1.0f);
+    CHECK(jojo::xaudio2_gain_from_percent(150) == 1.0f);
+
     const std::array<std::int16_t, 4> samples{100, -100, 200, -200};
     const auto plan = jojo::make_xaudio2_pcm_plan(samples);
     CHECK(plan);
