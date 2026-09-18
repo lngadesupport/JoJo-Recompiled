@@ -120,6 +120,15 @@ Result<Ps1BootRuntime> Ps1BootRuntime::create(const Ps1Executable& executable) {
             "failed to initialize clean-room PS1 C0 HLE table");
     }
 
+    const auto b0_change_clear_pad_entry = runtime.bus_.write32(
+        kPs1HleB0TableAddress + 0x5Bu * sizeof(std::uint32_t),
+        kPs1HleChangeClearPadHandlerAddress);
+    if (b0_change_clear_pad_entry.status != R3000aBusStatus::ok) {
+        return Result<Ps1BootRuntime>::failure(
+            ErrorCode::invalid_installation,
+            "failed to initialize clean-room PS1 B0 HLE table");
+    }
+
     runtime.native_text_begin_ =
         static_cast<std::uint64_t>(executable.metadata.text_load_address);
     runtime.native_text_end_ =
