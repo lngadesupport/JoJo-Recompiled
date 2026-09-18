@@ -27,6 +27,9 @@ jobs:
           jojo_r3000a_x64_tests
           jojo_r3000a_x64_cache_tests
           jojo_r3000a_dispatch_tests
+          jojo_ps1_native_runtime_tests
+          jojo_ps1_boot_report_io_tests
+          jojo_ps1_commercial_evidence_io_tests
           jojo_r3000a_integer_tests
           jojo_r3000a_control_flow_tests
           jojo_r3000a_memory_tests
@@ -34,5 +37,5 @@ jobs:
       - name: Run Phase 8 focused tests
         run: >-
           ctest --test-dir build -R
-          "jojo_(mips_decoder|r3000a_(ir|cfg|native_plan|native_alu|x64|x64_cache|dispatch|integer|control_flow|memory))_tests"
+          "jojo_(mips_decoder|r3000a_(ir|cfg|native_plan|native_alu|x64|x64_cache|dispatch|integer|control_flow|memory)|ps1_(native_runtime|boot_report_io|commercial_evidence_io))_tests"
           --output-on-failure
