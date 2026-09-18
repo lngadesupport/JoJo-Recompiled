@@ -332,6 +332,19 @@ static void test_runtime_exposes_host_neutral_gpu_display_frame() {
     }
 }
 
+
+static void test_retired_instruction_advances_hardware_once() {
+    const std::vector<std::uint32_t> words{
+        test_mips::j(0x02u, 0x80010000u >> 2),
+        0x00000000u,
+    };
+    auto runtime = make_runtime(words);
+    CHECK(runtime.bus().hardware_services().timer_counter(0u) == 0u);
+    const auto report = runtime.run({1u});
+    CHECK(report.instructions_retired == 1u);
+    CHECK(runtime.bus().hardware_services().timer_counter(0u) == 1u);
+}
+
 static void test_deterministic_replay_matches_full_m3a_state() {
     const std::vector<std::uint32_t> words{
         test_mips::j(0x02u, 0x80010000u >> 2),
@@ -397,6 +410,7 @@ int main() {
     test_boot_report_captures_segment_gpu_activity();
     test_gpu_frontier_records_unsupported_gp0_command();
     test_runtime_exposes_host_neutral_gpu_display_frame();
+    test_retired_instruction_advances_hardware_once();
     test_deterministic_replay_matches_full_m3a_state();
     return failures ? 1 : 0;
 }
