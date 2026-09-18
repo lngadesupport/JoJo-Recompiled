@@ -24,6 +24,33 @@ static jojo::Ps1BootRuntime make_runtime(const std::vector<std::uint32_t>& words
 }
 
 
+static void test_vblank_routes_to_r3000a_hardware_irq2() {
+    auto executable = test_ps1::make_psx_exe_from_words({
+        test_mips::j(0x02u, 0x80010000u >> 2),
+        0x00000000u,
+    });
+    auto runtime = jojo::Ps1BootRuntime::create(executable);
+    CHECK(runtime);
+    if (!runtime) return;
+
+    // Enable VBlank in I_MASK and CPU IEc + IP2 mask.
+    CHECK(runtime.value.bus().write16(
+              0x1F801074u, 0x0001u).status ==
+          jojo::R3000aBusStatus::ok);
+    auto state = runtime.value.save_state();
+    state.cpu.cop0.status |= 0x00000401u;
+    CHECK(runtime.value.load_state(state));
+
+    runtime.value.signal_vblank();
+    CHECK(runtime.value.cpu_state().external_interrupt_pending ==
+          0x04u);
+
+    jojo::Ps1BootOptions options{};
+    options.instruction_budget = 1u;
+    const auto report = runtime.value.run(options);
+    CHECK(report.interrupts_accepted == 1u);
+}
+
 static void test_runtime_initializes_clean_room_c0_exception_entry() {
     const std::vector<std::uint32_t> words{
         0x00000000u,
@@ -560,6 +587,7 @@ static void test_deterministic_replay_matches_full_m3a_state() {
 }
 
 int main() {
+    test_vblank_routes_to_r3000a_hardware_irq2();
     test_runtime_initializes_clean_room_c0_exception_entry();
     test_instruction_budget_is_explicit_stop_reason();
     test_budget_exhaustion_keeps_bounded_recent_trace();
