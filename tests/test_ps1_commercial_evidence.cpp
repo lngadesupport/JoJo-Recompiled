@@ -168,6 +168,7 @@ void test_runner_continues_bounded_budget_until_real_frontier(const fs::path& te
     auto runner = jojo::Ps1CommercialEvidenceRunner::open(source, open_options);
     CHECK(runner);
     if (!runner) return;
+    runner.value.set_native_x64_enabled(true);
 
     jojo::Ps1CommercialEvidenceOptions options{};
     options.boot.instruction_budget = 2u;
@@ -178,6 +179,14 @@ void test_runner_continues_bounded_budget_until_real_frontier(const fs::path& te
     CHECK(report.boot.stop_reason == jojo::Ps1BootStopReason::mmio_unimplemented);
     CHECK(report.total_instructions_retired > options.boot.instruction_budget);
     CHECK(report.total_instructions_retired == 6u);
+    CHECK(report.total_native_x64_instructions_retired +
+              report.total_reference_instructions_retired ==
+          report.total_instructions_retired);
+#if defined(_WIN32) && defined(_M_X64)
+    CHECK(report.total_native_x64_instructions_retired > 0u);
+#else
+    CHECK(report.total_native_x64_instructions_retired == 0u);
+#endif
     CHECK(report.execution_segments == 4u);
     CHECK(report.boot.unsupported_access.has_value());
     if (report.boot.unsupported_access) {
