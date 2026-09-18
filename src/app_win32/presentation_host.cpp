@@ -613,6 +613,11 @@ Result<D3d11Ps1Presenter> D3d11Ps1Presenter::create(HWND window) {
     if (!target) {
         return Result<D3d11Ps1Presenter>::failure(target.error, target.detail);
     }
+    const auto pipeline = presenter.initialize_pipeline();
+    if (!pipeline) {
+        return Result<D3d11Ps1Presenter>::failure(
+            pipeline.error, pipeline.detail);
+    }
     return Result<D3d11Ps1Presenter>::success(std::move(presenter));
 }
 
@@ -690,22 +695,362 @@ Result<void> D3d11Ps1Presenter::resize_to_client() {
     return recreate_render_target();
 }
 
+Result<void> D3d11Ps1Presenter::initialize_pipeline() {
+    if (!device_) {
+        return Result<void>::failure(
+            ErrorCode::backend_unavailable,
+            "D3D11 presenter pipeline requires an active device");
+    }
+
+    constexpr const char* kVertexShader = R"(
+struct VSOutput {
+    float4 position : SV_Position;
+    float2 uv : TEXCOORD0;
+};
+
+VSOutput main(uint vertex_id : SV_VertexID) {
+    float2 uv = float2((vertex_id << 1) & 2, vertex_id & 2);
+    VSOutput output;
+    output.position = float4(
+        uv.x * 2.0f - 1.0f,
+        1.0f - uv.y * 2.0f,
+        0.0f,
+        1.0f);
+    output.uv = uv;
+    return output;
+}
+)";
+
+    constexpr const char* kPixelShader = R"(
+Texture2D frame_texture : register(t0);
+SamplerState frame_sampler : register(s0);
+
+cbuffer PresentationConstants : register(b0) {
+    float2 texel_size;
+    uint aa_samples;
+    float padding;
+};
+
+struct PSInput {
+    float4 position : SV_Position;
+    float2 uv : TEXCOORD0;
+};
+
+float4 main(PSInput input) : SV_Target {
+    if (aa_samples <= 1u) {
+        return frame_texture.Sample(frame_sampler, input.uv);
+    }
+
+    float4 accumulated = float4(0.0f, 0.0f, 0.0f, 0.0f);
+    const float tau = 6.28318530718f;
+    [loop]
+    for (uint i = 0u; i < aa_samples; ++i) {
+        const float fi = (float)i;
+        const float angle =
+            tau * (fi + 0.5f) / (float)aa_samples;
+        const float radius =
+            0.30f + 0.18f * frac((fi + 1.0f) * 0.61803398875f);
+        const float2 offset =
+            float2(cos(angle), sin(angle)) * radius * texel_size;
+        accumulated +=
+            frame_texture.Sample(frame_sampler, input.uv + offset);
+    }
+    return accumulated / (float)aa_samples;
+}
+)";
+
+    const auto vertex_bytecode =
+        compile_d3d11_shader(kVertexShader, "vs_4_0");
+    if (!vertex_bytecode) {
+        return Result<void>::failure(
+            vertex_bytecode.error, vertex_bytecode.detail);
+    }
+
+    const auto pixel_bytecode =
+        compile_d3d11_shader(kPixelShader, "ps_4_0");
+    if (!pixel_bytecode) {
+        vertex_bytecode.value->Release();
+        return Result<void>::failure(
+            pixel_bytecode.error, pixel_bytecode.detail);
+    }
+
+    const HRESULT vs_hr = device_->CreateVertexShader(
+        vertex_bytecode.value->GetBufferPointer(),
+        vertex_bytecode.value->GetBufferSize(),
+        nullptr,
+        vertex_shader_.ReleaseAndGetAddressOf());
+    if (FAILED(vs_hr) || !vertex_shader_) {
+        pixel_bytecode.value->Release();
+        vertex_bytecode.value->Release();
+        return Result<void>::failure(
+            ErrorCode::backend_unavailable,
+            "D3D11 failed to create cached presentation vertex shader");
+    }
+
+    const HRESULT ps_hr = device_->CreatePixelShader(
+        pixel_bytecode.value->GetBufferPointer(),
+        pixel_bytecode.value->GetBufferSize(),
+        nullptr,
+        pixel_shader_.ReleaseAndGetAddressOf());
+    pixel_bytecode.value->Release();
+    vertex_bytecode.value->Release();
+    if (FAILED(ps_hr) || !pixel_shader_) {
+        vertex_shader_.Reset();
+        return Result<void>::failure(
+            ErrorCode::backend_unavailable,
+            "D3D11 failed to create cached presentation pixel shader");
+    }
+
+    D3D11_BUFFER_DESC constant_desc{};
+    constant_desc.ByteWidth = 16u;
+    constant_desc.Usage = D3D11_USAGE_DYNAMIC;
+    constant_desc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+    constant_desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+    const HRESULT constant_hr = device_->CreateBuffer(
+        &constant_desc,
+        nullptr,
+        pixel_constants_.ReleaseAndGetAddressOf());
+    if (FAILED(constant_hr) || !pixel_constants_) {
+        pixel_shader_.Reset();
+        vertex_shader_.Reset();
+        return Result<void>::failure(
+            ErrorCode::backend_unavailable,
+            "D3D11 failed to create presentation constant buffer");
+    }
+
+    return Result<void>::success();
+}
+
+Result<void> D3d11Ps1Presenter::ensure_source_texture(
+    std::uint32_t width,
+    std::uint32_t height) {
+    if (width == 0u || height == 0u) {
+        return Result<void>::failure(
+            ErrorCode::invalid_argument,
+            "D3D11 source texture dimensions must be non-zero");
+    }
+    if (source_texture_ && source_srv_ &&
+        source_width_ == width && source_height_ == height) {
+        return Result<void>::success();
+    }
+
+    source_srv_.Reset();
+    source_texture_.Reset();
+
+    D3D11_TEXTURE2D_DESC desc{};
+    desc.Width = width;
+    desc.Height = height;
+    desc.MipLevels = 1u;
+    desc.ArraySize = 1u;
+    desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    desc.SampleDesc.Count = 1u;
+    desc.Usage = D3D11_USAGE_DYNAMIC;
+    desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+    desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+
+    const HRESULT texture_hr = device_->CreateTexture2D(
+        &desc,
+        nullptr,
+        source_texture_.ReleaseAndGetAddressOf());
+    if (FAILED(texture_hr) || !source_texture_) {
+        return Result<void>::failure(
+            ErrorCode::backend_unavailable,
+            "D3D11 failed to allocate persistent PS1 display texture");
+    }
+
+    const HRESULT srv_hr = device_->CreateShaderResourceView(
+        source_texture_.Get(),
+        nullptr,
+        source_srv_.ReleaseAndGetAddressOf());
+    if (FAILED(srv_hr) || !source_srv_) {
+        source_texture_.Reset();
+        return Result<void>::failure(
+            ErrorCode::backend_unavailable,
+            "D3D11 failed to create persistent PS1 display SRV");
+    }
+
+    source_width_ = width;
+    source_height_ = height;
+    return Result<void>::success();
+}
+
+Result<void> D3d11Ps1Presenter::update_source_texture(
+    const Ps1DisplayFrame& frame) {
+    const auto plan = make_d3d11_frame_upload_plan(frame);
+    if (!plan) {
+        return Result<void>::failure(plan.error, plan.detail);
+    }
+
+    const auto texture_ready =
+        ensure_source_texture(plan.value.width, plan.value.height);
+    if (!texture_ready) return texture_ready;
+
+    D3D11_MAPPED_SUBRESOURCE mapped{};
+    const HRESULT mapped_hr = context_->Map(
+        source_texture_.Get(),
+        0u,
+        D3D11_MAP_WRITE_DISCARD,
+        0u,
+        &mapped);
+    if (FAILED(mapped_hr) || !mapped.pData) {
+        return Result<void>::failure(
+            ErrorCode::backend_unavailable,
+            "D3D11 failed to map persistent PS1 display texture");
+    }
+
+    const auto* source =
+        static_cast<const std::uint8_t*>(plan.value.pixels);
+    auto* destination =
+        static_cast<std::uint8_t*>(mapped.pData);
+    for (std::uint32_t row = 0u; row < plan.value.height; ++row) {
+        std::memcpy(
+            destination +
+                static_cast<std::size_t>(row) * mapped.RowPitch,
+            source +
+                static_cast<std::size_t>(row) * plan.value.row_pitch,
+            plan.value.row_pitch);
+    }
+    context_->Unmap(source_texture_.Get(), 0u);
+    return Result<void>::success();
+}
+
+Result<void> D3d11Ps1Presenter::update_sampler(
+    TextureFilter texture_filter) {
+    if (sampler_initialized_ &&
+        sampler_ &&
+        active_texture_filter_ == texture_filter) {
+        return Result<void>::success();
+    }
+
+    const auto quality =
+        make_d3d11_presentation_quality(texture_filter, Msaa::off);
+
+    D3D11_SAMPLER_DESC desc{};
+    desc.Filter = quality.sampler_filter;
+    desc.AddressU = D3D11_TEXTURE_ADDRESS_CLAMP;
+    desc.AddressV = D3D11_TEXTURE_ADDRESS_CLAMP;
+    desc.AddressW = D3D11_TEXTURE_ADDRESS_CLAMP;
+    desc.MaxAnisotropy = quality.max_anisotropy;
+    desc.MinLOD = 0.0f;
+    desc.MaxLOD = D3D11_FLOAT32_MAX;
+
+    Microsoft::WRL::ComPtr<ID3D11SamplerState> sampler;
+    const HRESULT hr = device_->CreateSamplerState(
+        &desc,
+        sampler.GetAddressOf());
+    if (FAILED(hr) || !sampler) {
+        return Result<void>::failure(
+            ErrorCode::backend_unavailable,
+            "D3D11 failed to create presentation sampler");
+    }
+
+    sampler_ = std::move(sampler);
+    active_texture_filter_ = texture_filter;
+    sampler_initialized_ = true;
+    return Result<void>::success();
+}
+
+Result<void> D3d11Ps1Presenter::draw_frame(
+    const Ps1DisplayFrame& frame,
+    TextureFilter texture_filter,
+    Msaa anti_aliasing) {
+    if (!context_ || !render_target_ ||
+        !vertex_shader_ || !pixel_shader_ ||
+        !pixel_constants_) {
+        return Result<void>::failure(
+            ErrorCode::backend_unavailable,
+            "D3D11 cached presentation pipeline is incomplete");
+    }
+
+    const auto uploaded = update_source_texture(frame);
+    if (!uploaded) return uploaded;
+
+    const auto sampler_ready = update_sampler(texture_filter);
+    if (!sampler_ready) return sampler_ready;
+
+    const auto quality =
+        make_d3d11_presentation_quality(
+            texture_filter, anti_aliasing);
+
+    struct alignas(16) PixelConstants {
+        float texel_x{};
+        float texel_y{};
+        std::uint32_t aa_samples{1u};
+        float padding{};
+    };
+    static_assert(sizeof(PixelConstants) == 16u);
+
+    D3D11_MAPPED_SUBRESOURCE mapped{};
+    const HRESULT mapped_hr = context_->Map(
+        pixel_constants_.Get(),
+        0u,
+        D3D11_MAP_WRITE_DISCARD,
+        0u,
+        &mapped);
+    if (FAILED(mapped_hr) || !mapped.pData) {
+        return Result<void>::failure(
+            ErrorCode::backend_unavailable,
+            "D3D11 failed to update presentation constants");
+    }
+
+    const PixelConstants constants{
+        1.0f / static_cast<float>(source_width_),
+        1.0f / static_cast<float>(source_height_),
+        quality.aa_samples,
+        0.0f,
+    };
+    std::memcpy(mapped.pData, &constants, sizeof(constants));
+    context_->Unmap(pixel_constants_.Get(), 0u);
+
+    const float clear[4]{0.0f, 0.0f, 0.0f, 1.0f};
+    context_->ClearRenderTargetView(render_target_.Get(), clear);
+
+    const D3D11_VIEWPORT viewport{
+        0.0f,
+        0.0f,
+        static_cast<float>(back_buffer_width_),
+        static_cast<float>(back_buffer_height_),
+        0.0f,
+        1.0f,
+    };
+
+    ID3D11RenderTargetView* target = render_target_.Get();
+    ID3D11ShaderResourceView* srv = source_srv_.Get();
+    ID3D11SamplerState* sampler = sampler_.Get();
+    ID3D11Buffer* constants_buffer = pixel_constants_.Get();
+
+    context_->OMSetRenderTargets(1u, &target, nullptr);
+    context_->RSSetViewports(1u, &viewport);
+    context_->IASetInputLayout(nullptr);
+    context_->IASetPrimitiveTopology(
+        D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    context_->VSSetShader(vertex_shader_.Get(), nullptr, 0u);
+    context_->PSSetShader(pixel_shader_.Get(), nullptr, 0u);
+    context_->PSSetShaderResources(0u, 1u, &srv);
+    context_->PSSetSamplers(0u, 1u, &sampler);
+    context_->PSSetConstantBuffers(0u, 1u, &constants_buffer);
+    context_->Draw(3u, 0u);
+
+    ID3D11ShaderResourceView* null_srv = nullptr;
+    context_->PSSetShaderResources(0u, 1u, &null_srv);
+    return Result<void>::success();
+}
+
 Result<void> D3d11Ps1Presenter::present(
     const Ps1DisplayFrame& frame,
-    bool vsync) {
+    bool vsync,
+    TextureFilter texture_filter,
+    Msaa anti_aliasing) {
     const auto resized = resize_to_client();
     if (!resized) return resized;
 
-    const auto blitted = blit_d3d11_ps1_frame(
-        device_.Get(),
-        context_.Get(),
-        frame,
-        render_target_.Get(),
-        back_buffer_width_,
-        back_buffer_height_);
-    if (!blitted) return blitted;
+    const auto drawn =
+        draw_frame(frame, texture_filter, anti_aliasing);
+    if (!drawn) return drawn;
 
-    const HRESULT hr = swap_chain_->Present(vsync ? 1u : 0u, 0u);
+    const HRESULT hr = swap_chain_->Present(
+        vsync ? 1u : 0u,
+        0u);
     if (FAILED(hr)) {
         return Result<void>::failure(
             ErrorCode::backend_unavailable,
