@@ -26,6 +26,84 @@ void test_direct_branch_instruction_is_lowerable() {
 
 
 
+
+#if defined(_WIN32) && defined(_M_X64)
+void test_x64_direct_divisions_match_reference_for_safe_operands() {
+    const std::array<std::uint32_t, 2> raws{
+        test_mips::r(8u, 9u, 0u, 0u, 0x1Au), // DIV
+        test_mips::r(8u, 9u, 0u, 0u, 0x1Bu), // DIVU
+    };
+
+    for (const auto raw : raws) {
+        const auto decoded = jojo::decode_mips(raw);
+        const auto code =
+            jojo::emit_r3000a_x64_instruction(0x80010000u, decoded);
+        CHECK(code);
+        if (!code) continue;
+
+        jojo::R3000aState native{};
+        native.pc = 0x80010000u;
+        native.next_pc = 0x80010004u;
+        native.gpr[8] = 0xFFFFFFF6u;
+        native.gpr[9] = 3u;
+        auto reference = native;
+
+        CHECK(jojo::execute_r3000a_x64_block(code.value, native).status ==
+              jojo::R3000aX64ExecutionStatus::executed);
+
+        TestR3000aBus bus;
+        bus.store32(0x80010000u, raw);
+        CHECK(jojo::step_r3000a(reference, bus).status ==
+              jojo::R3000aStepStatus::retired);
+
+        CHECK(native.gpr == reference.gpr);
+        CHECK(native.hi == reference.hi);
+        CHECK(native.lo == reference.lo);
+        CHECK(native.pc == reference.pc);
+        CHECK(native.next_pc == reference.next_pc);
+    }
+}
+
+void test_x64_division_host_trap_cases_fall_back_before_mutation() {
+    const auto div_raw = test_mips::r(8u, 9u, 0u, 0u, 0x1Au);
+    const auto divu_raw = test_mips::r(8u, 9u, 0u, 0u, 0x1Bu);
+    const auto div_code = jojo::emit_r3000a_x64_instruction(
+        0x80010000u, jojo::decode_mips(div_raw));
+    const auto divu_code = jojo::emit_r3000a_x64_instruction(
+        0x80010000u, jojo::decode_mips(divu_raw));
+    CHECK(div_code);
+    CHECK(divu_code);
+    if (!div_code || !divu_code) return;
+
+    jojo::R3000aState state{};
+    state.pc = 0x80010000u;
+    state.next_pc = 0x80010004u;
+    state.gpr[8] = 123u;
+    state.gpr[9] = 0u;
+    auto before = state;
+    CHECK(jojo::execute_r3000a_x64_block(div_code.value, state).status ==
+          jojo::R3000aX64ExecutionStatus::reference_required);
+    CHECK(state.gpr == before.gpr);
+    CHECK(state.pc == before.pc);
+    CHECK(state.next_pc == before.next_pc);
+
+    state = before;
+    CHECK(jojo::execute_r3000a_x64_block(divu_code.value, state).status ==
+          jojo::R3000aX64ExecutionStatus::reference_required);
+    CHECK(state.gpr == before.gpr);
+
+    state = before;
+    state.gpr[8] = 0x80000000u;
+    state.gpr[9] = 0xFFFFFFFFu;
+    before = state;
+    CHECK(jojo::execute_r3000a_x64_block(div_code.value, state).status ==
+          jojo::R3000aX64ExecutionStatus::reference_required);
+    CHECK(state.gpr == before.gpr);
+    CHECK(state.hi == before.hi);
+    CHECK(state.lo == before.lo);
+}
+#endif
+
 #if defined(_WIN32) && defined(_M_X64)
 void test_x64_direct_byte_and_halfword_loads_match_reference() {
     struct Case {
@@ -552,6 +630,8 @@ int main() {
     test_direct_branch_instruction_is_lowerable();
     test_x64_emitter_accepts_only_v0_safe_subset();
 #if defined(_WIN32) && defined(_M_X64)
+    test_x64_direct_divisions_match_reference_for_safe_operands();
+    test_x64_division_host_trap_cases_fall_back_before_mutation();
     test_x64_direct_byte_and_halfword_loads_match_reference();
     test_x64_direct_byte_and_halfword_stores_match_reference();
     test_x64_direct_lw_main_ram_matches_reference_load_delay();
