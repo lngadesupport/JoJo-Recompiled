@@ -105,9 +105,11 @@ Result<Ps1BootRuntime> Ps1BootRuntime::create(const Ps1Executable& executable) {
         return Result<Ps1BootRuntime>::failure(loaded.error, loaded.detail);
     }
     runtime.cpu_ = std::move(loaded.value);
-    runtime.native_text_begin_ = executable.metadata.text_load_address;
+    runtime.native_text_begin_ =
+        static_cast<std::uint64_t>(executable.metadata.text_load_address);
     runtime.native_text_end_ =
-        executable.metadata.text_load_address + executable.metadata.text_size;
+        runtime.native_text_begin_ +
+        static_cast<std::uint64_t>(executable.metadata.text_size);
     return Result<Ps1BootRuntime>::success(std::move(runtime));
 }
 
