@@ -1,5 +1,7 @@
 #include "core/ps1_gpu_ingress.h"
 
+#include <algorithm>
+
 namespace jojo {
 namespace {
 
