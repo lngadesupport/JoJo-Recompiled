@@ -73,7 +73,7 @@ int main() {
     CHECK(sio.write8(0x1F801040u, 0x00u).status == jojo::R3000aBusStatus::ok);
     const auto wide32 = sio.read32(0x1F801040u);
     CHECK(wide32.status == jojo::R3000aBusStatus::ok);
-    CHECK(wide32.value == 0xEFFF5A41u || wide32.value == 0xEF5A41FFu);
+    CHECK(wide32.value == 0xEF5A41FFu);
     CHECK((sio.read32(0x1F801044u).value & (1u << 1u)) == 0u);
 
     jojo::Ps1MemoryBus bus;
