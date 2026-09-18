@@ -59,6 +59,7 @@ struct Ps1TraceSample {
 };
 
 struct Ps1BootReport {
+    std::uint64_t execution_steps{};
     std::uint64_t instructions_retired{};
     std::uint64_t native_x64_instructions_retired{};
     std::uint64_t reference_instructions_retired{};
