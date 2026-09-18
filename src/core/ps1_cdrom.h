@@ -35,6 +35,11 @@ public:
     [[nodiscard]] bool irq_pending() const noexcept;
     [[nodiscard]] std::size_t deferred_response_count() const noexcept;
     [[nodiscard]] bool muted() const noexcept;
+    [[nodiscard]] bool adpcm_muted() const noexcept;
+    [[nodiscard]] const std::array<std::uint8_t, 4>&
+    pending_audio_matrix() const noexcept;
+    [[nodiscard]] const std::array<std::uint8_t, 4>&
+    active_audio_matrix() const noexcept;
     [[nodiscard]] std::uint64_t diagnostic_state_hash() const noexcept;
     [[nodiscard]] const std::deque<Ps1CdromCommandEvent>& recent_commands() const noexcept;
     [[nodiscard]] const std::optional<std::uint8_t>& last_unsupported_command() const noexcept;
@@ -64,6 +69,11 @@ private:
     std::uint8_t request_register_{};
     std::uint8_t status_byte_{};
     bool muted_{};
+    bool adpcm_muted_{};
+    std::array<std::uint8_t, 4> pending_audio_matrix_{
+        0x80u, 0x00u, 0x80u, 0x00u};
+    std::array<std::uint8_t, 4> active_audio_matrix_{
+        0x80u, 0x00u, 0x80u, 0x00u};
     std::uint64_t current_lba_{};
     std::deque<std::uint8_t> parameters_{};
     std::deque<std::uint8_t> responses_{};
