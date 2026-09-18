@@ -327,6 +327,13 @@ void stop_game_runtime(const jojo::Ps1BootReport* final_boot){
         report.boot=*final_boot;
         report.total_instructions_retired=game_total_instructions;
         report.execution_segments=game_execution_segments;
+        const auto validation=game_runner->validation_counters();
+        report.pad_poll_count=validation.pad_poll_count;
+        report.memory_card_read_sector_count=
+            validation.memory_card_read_sector_count;
+        report.memory_card_write_sector_count=
+            validation.memory_card_write_sector_count;
+        report.spu_sample_frames=validation.spu_sample_frames;
         report.first_frame=jojo::make_ps1_commercial_frame_evidence(
             game_runner->display_frame());
 
