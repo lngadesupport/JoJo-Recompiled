@@ -4,6 +4,7 @@
 #include <bit>
 #include <cstdint>
 #include <limits>
+#include <optional>
 
 namespace jojo {
 namespace {
