@@ -113,12 +113,13 @@ std::string format_ps1_commercial_evidence_report(
     out << "memory_card1_write_sector_count="
         << report.memory_card_write_sector_count[1] << '\n';
     out << "spu_sample_frames=" << report.spu_sample_frames << '\n';
+    out << "spu_nonzero_samples=" << report.spu_nonzero_samples << '\n';
     const auto validation = summarize_ps1_gameplay_validation(report);
     out << "validation_frame_observed=" << (validation.frame_observed ? 1 : 0) << '\n';
     out << "validation_controller_poll_observed="
         << (validation.controller_poll_observed ? 1 : 0) << '\n';
-    out << "validation_audio_generated="
-        << (validation.audio_generated ? 1 : 0) << '\n';
+    out << "validation_audio_non_silent_observed="
+        << (validation.audio_non_silent_observed ? 1 : 0) << '\n';
     out << "validation_memory_card_read_observed="
         << (validation.memory_card_read_observed ? 1 : 0) << '\n';
     out << "validation_memory_card_write_observed="
