@@ -502,11 +502,35 @@ void draw_lobby(Gdiplus::Graphics& g, const OnlineLobbyModel& model, const std::
     }
     draw_text(g, L"RIVAL READY", 940.0f, 644.0f, 175.0f, 48.0f, 20.0f, kWhite, true);
 
+    const bool revision_match =
+        online_game_revision_matches(model);
     const bool can_start =
-        model.local_player_is_host && model.ready && model.remote_ready;
+        model.local_player_is_host &&
+        model.ready &&
+        model.remote_ready &&
+        revision_match;
     button(g, L"START", 880.0f, 565.0f, 230.0f, 62.0f,
            can_start ? kOrange : kGray,
            can_start);
+
+    const wchar_t* revision_text =
+        revision_match
+        ? L"GAME REVISION: MATCH"
+        : (model.local_game_revision.empty() ||
+           model.remote_game_revision.empty()
+            ? L"GAME REVISION: WAITING FOR BOTH DISCS"
+            : L"GAME REVISION: MISMATCH");
+    draw_text(
+        g,
+        revision_text,
+        575.0f,
+        692.0f,
+        450.0f,
+        32.0f,
+        16.0f,
+        revision_match ? kGreen : kMuted,
+        true,
+        Gdiplus::StringAlignmentCenter);
 
     draw_text(g, L"CHAT", 1220.0f, 215.0f, 260.0f, 48.0f, 31.0f, kWhite, true,
               Gdiplus::StringAlignmentCenter);
@@ -945,7 +969,8 @@ OnlineUiAction OnlineUi::mouse_up(
             return OnlineUiAction::ready_changed;
         }
         if (inside(x, y, 880, 565, 1110, 627) &&
-            model.local_player_is_host && model.ready && model.remote_ready) {
+            model.local_player_is_host && model.ready && model.remote_ready &&
+            online_game_revision_matches(model)) {
             return OnlineUiAction::start_lobby_game;
         }
         if (inside(x, y, 1180, 650, 1520, 698)) {
@@ -1040,7 +1065,8 @@ OnlineUiAction OnlineUi::key_down(
             return OnlineUiAction::ready_changed;
         }
         if (key == VK_RETURN && model.local_player_is_host &&
-            model.ready && model.remote_ready) {
+            model.ready && model.remote_ready &&
+            online_game_revision_matches(model)) {
             return OnlineUiAction::start_lobby_game;
         }
     }
