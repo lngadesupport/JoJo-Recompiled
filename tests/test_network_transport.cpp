@@ -163,7 +163,8 @@ static void test_reliable_lobby_control_is_delivered_and_acknowledged() {
         }
     }
 
-    CHECK(client.value.poll(110u));
+    // Delay consuming the host ACK until after the retry interval. The client
+    // retransmits once, and the host must acknowledge but not redeliver it.
     CHECK(client.value.poll(120u));
     const auto duplicate = host.value.poll(120u);
     CHECK(duplicate);
