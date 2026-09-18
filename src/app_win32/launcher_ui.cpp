@@ -126,6 +126,30 @@ T cycle_value(T current, int direction, const std::array<T, N>& values) {
     return values[wrap_index(index, direction, values.size())];
 }
 
+LauncherUiAction map_online_action(OnlineUiAction action) noexcept {
+    switch (action) {
+        case OnlineUiAction::none:
+            return LauncherUiAction::none;
+        case OnlineUiAction::back_to_launcher:
+            return LauncherUiAction::none;
+        case OnlineUiAction::refresh_public_rooms:
+            return LauncherUiAction::online_refresh_rooms;
+        case OnlineUiAction::host_room:
+            return LauncherUiAction::online_host_room;
+        case OnlineUiAction::connect_selected_room:
+            return LauncherUiAction::online_connect_room;
+        case OnlineUiAction::begin_matchmaking:
+            return LauncherUiAction::online_begin_matchmaking;
+        case OnlineUiAction::cancel_matchmaking:
+            return LauncherUiAction::online_cancel_matchmaking;
+        case OnlineUiAction::leave_lobby:
+            return LauncherUiAction::online_leave_lobby;
+        case OnlineUiAction::start_lobby_game:
+            return LauncherUiAction::online_start_lobby_game;
+    }
+    return LauncherUiAction::none;
+}
+
 } // namespace
 
 LauncherUi::~LauncherUi() {
@@ -162,7 +186,7 @@ void LauncherUi::shutdown() noexcept {
 
 void LauncherUi::show_main() noexcept {
     screen_ = Screen::main_menu;
-    main_selection_ = std::min<std::size_t>(main_selection_, 3);
+    main_selection_ = std::min<std::size_t>(main_selection_, 4);
 }
 
 void LauncherUi::open_controls() noexcept {
@@ -229,15 +253,23 @@ void LauncherUi::cycle_control_player(int direction) noexcept {
 
 LauncherUiAction LauncherUi::activate_main_item() noexcept {
     switch (main_selection_) {
-        case 0: return LauncherUiAction::start_game;
+        case 0:
+            return LauncherUiAction::start_game;
         case 1:
-            open_controls();
+            screen_ = Screen::online;
+            online_open_home(online_model_);
+            online_ui_.show_home();
             return LauncherUiAction::none;
         case 2:
+            open_controls();
+            return LauncherUiAction::none;
+        case 3:
             open_settings();
             return LauncherUiAction::none;
-        case 3: return LauncherUiAction::exit_app;
-        default: return LauncherUiAction::none;
+        case 4:
+            return LauncherUiAction::exit_app;
+        default:
+            return LauncherUiAction::none;
     }
 }
 
@@ -411,6 +443,11 @@ void LauncherUi::paint(
     const auto client_height = client.bottom - client.top;
     if (client_width <= 0 || client_height <= 0) return;
 
+    if (screen_ == Screen::online) {
+        online_ui_.paint(dc, client, online_model_);
+        return;
+    }
+
     Gdiplus::Graphics graphics(dc);
     graphics.SetSmoothingMode(Gdiplus::SmoothingModeHighQuality);
     graphics.SetInterpolationMode(Gdiplus::InterpolationModeHighQualityBicubic);
@@ -445,15 +482,16 @@ void LauncherUi::paint(
 
     if (screen_ == Screen::main_menu) {
         Gdiplus::SolidBrush veil(Gdiplus::Color(165, 3, 12, 18));
-        graphics.FillRectangle(&veil, 704.0f, 156.0f, 306.0f, 340.0f);
+        graphics.FillRectangle(&veil, 704.0f, 142.0f, 306.0f, 390.0f);
 
-        constexpr std::array<const wchar_t*, 4> labels{
+        constexpr std::array<const wchar_t*, 5> labels{
             L"START GAME",
+            L"ONLINE",
             L"CONTROLS",
             L"SETTINGS",
             L"EXIT",
         };
-        constexpr std::array<float, 4> ys{196.0f, 266.0f, 336.0f, 406.0f};
+        constexpr std::array<float, 5> ys{166.0f, 230.0f, 294.0f, 358.0f, 422.0f};
         for (std::size_t i = 0; i < labels.size(); ++i) {
             const bool selected = i == main_selection_;
             draw_string(
@@ -686,12 +724,23 @@ LauncherUiAction LauncherUi::mouse_up(
     const float y = static_cast<float>(client_point.y) * kUiHeight /
         static_cast<float>(height);
 
+    if (screen_ == Screen::online) {
+        const auto online_action =
+            online_ui_.mouse_up(client_point, client, online_model_);
+        if (online_action == OnlineUiAction::back_to_launcher) {
+            show_main();
+            return LauncherUiAction::none;
+        }
+        return map_online_action(online_action);
+    }
+
     if (screen_ == Screen::main_menu) {
-        const std::array<Gdiplus::RectF, 4> menu_rects{{
-            {725.0f, 181.0f, 275.0f, 70.0f},
-            {725.0f, 251.0f, 275.0f, 70.0f},
-            {725.0f, 321.0f, 275.0f, 70.0f},
-            {725.0f, 391.0f, 275.0f, 70.0f},
+        const std::array<Gdiplus::RectF, 5> menu_rects{{
+            {725.0f, 151.0f, 275.0f, 64.0f},
+            {725.0f, 215.0f, 275.0f, 64.0f},
+            {725.0f, 279.0f, 275.0f, 64.0f},
+            {725.0f, 343.0f, 275.0f, 64.0f},
+            {725.0f, 407.0f, 275.0f, 64.0f},
         }};
         for (std::size_t i = 0; i < menu_rects.size(); ++i) {
             if (contains(menu_rects[i], x, y)) {
@@ -761,13 +810,22 @@ LauncherUiAction LauncherUi::key_down(
     WPARAM key,
     AppSettings& settings,
     const InputDeviceRegistry& devices) {
+    if (screen_ == Screen::online) {
+        const auto online_action=online_ui_.key_down(key,online_model_);
+        if(online_action==OnlineUiAction::back_to_launcher){
+            show_main();
+            return LauncherUiAction::none;
+        }
+        return map_online_action(online_action);
+    }
+
     if (screen_ == Screen::main_menu) {
         if (key == VK_UP) {
-            main_selection_ = wrap_index(main_selection_, -1, 4);
+            main_selection_ = wrap_index(main_selection_, -1, 5);
             return LauncherUiAction::none;
         }
         if (key == VK_DOWN) {
-            main_selection_ = wrap_index(main_selection_, 1, 4);
+            main_selection_ = wrap_index(main_selection_, 1, 5);
             return LauncherUiAction::none;
         }
         if (key == VK_RETURN || key == VK_SPACE) {
@@ -812,6 +870,14 @@ LauncherUiAction LauncherUi::key_down(
     }
 
     return LauncherUiAction::none;
+}
+
+void LauncherUi::char_input(
+    wchar_t ch,
+    AppSettings& /*settings*/) {
+    if (screen_ == Screen::online) {
+        online_ui_.char_input(ch, online_model_);
+    }
 }
 
 } // namespace jojo::win32
