@@ -1,0 +1,43 @@
+name: Phase 8 Final Gate
+
+on:
+  push:
+    branches:
+      - feature/ps1-native-x64-phase8-prep
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux-release-full:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure Release
+        run: cmake -S . -B build-linux -DCMAKE_BUILD_TYPE=Release
+      - name: Build full graph
+        run: cmake --build build-linux -j2
+      - name: Run Phase 8 focus
+        run: >-
+          ctest --test-dir build-linux -R
+          "jojo_(mips_decoder|r3000a_(ir|cfg|native_plan|native_alu|integer|control_flow|memory))_tests"
+          --output-on-failure
+      - name: Run full CTest
+        run: ctest --test-dir build-linux --output-on-failure
+
+  windows-x64-release-full:
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure Release x64
+        run: cmake -S . -B build-win -A x64
+      - name: Build full graph
+        run: cmake --build build-win --config Release
+      - name: Run Phase 8 focus
+        run: >-
+          ctest --test-dir build-win -C Release -R
+          "jojo_(mips_decoder|r3000a_(ir|cfg|native_plan|native_alu|integer|control_flow|memory))_tests"
+          --output-on-failure
+      - name: Run full CTest
+        run: ctest --test-dir build-win -C Release --output-on-failure
