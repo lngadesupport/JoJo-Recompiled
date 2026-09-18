@@ -327,6 +327,19 @@ R3000aBusResult Ps1Sio0::read8(std::uint32_t physical) noexcept {
 }
 
 R3000aBusResult Ps1Sio0::read16(std::uint32_t physical) noexcept {
+    if (physical == data_address) {
+        if (rx_fifo_.empty()) {
+            return {R3000aBusStatus::ok, 0xFFFFu};
+        }
+        std::uint32_t value = rx_fifo_.front();
+        if (rx_fifo_.size() >= 2u) {
+            value |= static_cast<std::uint32_t>(rx_fifo_[1]) << 8u;
+        } else {
+            value |= 0xFF00u;
+        }
+        rx_fifo_.pop_front();
+        return {R3000aBusStatus::ok, value};
+    }
     if (physical == mode_address) {
         return {R3000aBusStatus::ok, mode_};
     }
@@ -345,13 +358,13 @@ R3000aBusResult Ps1Sio0::read32(std::uint32_t physical) noexcept {
     }
     if (physical == data_address) {
         std::uint32_t value = 0xFFFFFFFFu;
-        if (!rx_fifo_.empty()) {
-            value = (value & 0xFFFFFF00u) | rx_fifo_.front();
-            for (std::size_t i = 1u; i < std::min<std::size_t>(4u, rx_fifo_.size()); ++i) {
-                const auto mask = ~(0xFFu << (i * 8u));
-                value = (value & mask) |
-                        (static_cast<std::uint32_t>(rx_fifo_[i]) << (i * 8u));
-            }
+        const auto count = std::min<std::size_t>(4u, rx_fifo_.size());
+        for (std::size_t i = 0u; i < count; ++i) {
+            const auto mask = ~(0xFFu << (i * 8u));
+            value = (value & mask) |
+                    (static_cast<std::uint32_t>(rx_fifo_[i]) << (i * 8u));
+        }
+        for (std::size_t i = 0u; i < count; ++i) {
             rx_fifo_.pop_front();
         }
         return {R3000aBusStatus::ok, value};
