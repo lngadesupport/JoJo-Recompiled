@@ -578,10 +578,14 @@ void Ps1Spu::mix_sample_frame() noexcept {
         right = 0;
     }
 
-    audio_samples_.push_back(static_cast<std::int16_t>(
-        std::clamp<std::int64_t>(left, -32768, 32767)));
-    audio_samples_.push_back(static_cast<std::int16_t>(
-        std::clamp<std::int64_t>(right, -32768, 32767)));
+    const auto left_sample = static_cast<std::int16_t>(
+        std::clamp<std::int64_t>(left, -32768, 32767));
+    const auto right_sample = static_cast<std::int16_t>(
+        std::clamp<std::int64_t>(right, -32768, 32767));
+    audio_samples_.push_back(left_sample);
+    audio_samples_.push_back(right_sample);
+    if (left_sample != 0) ++nonzero_sample_count_;
+    if (right_sample != 0) ++nonzero_sample_count_;
     ++generated_sample_frames_;
 }
 
@@ -601,6 +605,10 @@ std::vector<std::int16_t> Ps1Spu::drain_audio_samples() {
 
 std::uint64_t Ps1Spu::generated_sample_frames() const noexcept {
     return generated_sample_frames_;
+}
+
+std::uint64_t Ps1Spu::nonzero_sample_count() const noexcept {
+    return nonzero_sample_count_;
 }
 
 bool Ps1Spu::dma_write_words(std::span<const std::uint32_t> words) noexcept {
@@ -687,6 +695,9 @@ std::uint64_t Ps1Spu::diagnostic_state_hash() const noexcept {
     hash_u32(hash, sample_cycle_accumulator_);
     for (unsigned shift = 0u; shift < 64u; shift += 8u) {
         hash_byte(hash, static_cast<std::uint8_t>(generated_sample_frames_ >> shift));
+    }
+    for (unsigned shift = 0u; shift < 64u; shift += 8u) {
+        hash_byte(hash, static_cast<std::uint8_t>(nonzero_sample_count_ >> shift));
     }
     for (const auto value : sound_ram_) hash_byte(hash, value);
     return hash;
