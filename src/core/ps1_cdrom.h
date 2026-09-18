@@ -30,6 +30,7 @@ public:
     [[nodiscard]] std::uint64_t current_lba() const noexcept;
     [[nodiscard]] std::uint64_t command_count() const noexcept;
     [[nodiscard]] std::uint8_t request_register() const noexcept;
+    [[nodiscard]] bool irq_pending() const noexcept;
     [[nodiscard]] std::uint64_t diagnostic_state_hash() const noexcept;
     [[nodiscard]] const std::deque<Ps1CdromCommandEvent>& recent_commands() const noexcept;
     [[nodiscard]] const std::optional<std::uint8_t>& last_unsupported_command() const noexcept;
