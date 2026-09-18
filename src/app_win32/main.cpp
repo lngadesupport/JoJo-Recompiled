@@ -326,6 +326,7 @@ jojo::Ps1CommercialEvidenceReport make_game_session_report(
     report.source=game_runner->disc_session().binding();
     if(boot_override) report.boot=*boot_override;
     else if(game_last_segment) report.boot=*game_last_segment;
+    report.boot.recent_cdrom_commands=game_runner->recent_cdrom_commands();
     report.frontier=jojo::classify_ps1_commercial_frontier(report.boot);
     report.session_termination=termination;
     report.total_instructions_retired=game_total_instructions;
