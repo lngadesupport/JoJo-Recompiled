@@ -38,6 +38,16 @@ static void test_runtime_initializes_clean_room_c0_exception_entry() {
         runtime.bus().read32(jojo::kPs1HleExceptionHandlerAddress + 0x28u);
     CHECK(patch_window.status == jojo::R3000aBusStatus::ok);
     CHECK(patch_window.value == 0u);
+
+    const auto b0_entry = runtime.bus().read32(
+        jojo::kPs1HleB0TableAddress + 0x5Bu * sizeof(std::uint32_t));
+    CHECK(b0_entry.status == jojo::R3000aBusStatus::ok);
+    CHECK(b0_entry.value == jojo::kPs1HleChangeClearPadHandlerAddress);
+
+    const auto b0_patch_window = runtime.bus().read32(
+        jojo::kPs1HleChangeClearPadHandlerAddress + 0x9C8u);
+    CHECK(b0_patch_window.status == jojo::R3000aBusStatus::ok);
+    CHECK(b0_patch_window.value == 0u);
 }
 
 static void test_instruction_budget_is_explicit_stop_reason() {
