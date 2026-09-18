@@ -112,6 +112,8 @@ MipsInstruction decode_mips(std::uint32_t raw) noexcept {
         case 0x2a: out.op = MipsOp::swl; break;
         case 0x2b: out.op = MipsOp::sw; break;
         case 0x2e: out.op = MipsOp::swr; break;
+        case 0x32: out.op = MipsOp::lwc2; break;
+        case 0x3a: out.op = MipsOp::swc2; break;
         default: break;
     }
 

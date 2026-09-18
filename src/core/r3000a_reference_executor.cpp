@@ -519,6 +519,43 @@ R3000aStepResult step_r3000a(R3000aState& state, R3000aBus& bus) noexcept {
             state.cop0.status = (state.cop0.status & ~kStatusModeStackMask) | restored;
             break;
         }
+        case MipsOp::lwc2:
+        case MipsOp::swc2: {
+            if ((state.cop0.status & kStatusCu2) == 0u) {
+                return enter_exception(state, R3000aExceptionCode::coprocessor_unusable,
+                                       R3000aStage::cop2, instruction_pc, current_delay,
+                                       instruction.raw, std::nullopt, 2u);
+            }
+            const auto address = rs + sign_extend16(instruction.immediate);
+            if ((address & 3u) != 0u) {
+                return address_exception(
+                    instruction.op == MipsOp::lwc2
+                        ? R3000aExceptionCode::adel
+                        : R3000aExceptionCode::ades,
+                    address,
+                    4u);
+            }
+            if (instruction.op == MipsOp::lwc2) {
+                const auto in = bus.read32(address);
+                if (in.status == R3000aBusStatus::unsupported) {
+                    return data_boundary(address, 4u);
+                }
+                if (in.status == R3000aBusStatus::bus_error) {
+                    return data_bus_error(address, 4u);
+                }
+                write_ps1_gte_data(state.gte, instruction.rt, in.value);
+            } else {
+                const auto value = read_ps1_gte_data(state.gte, instruction.rt);
+                const auto out = bus.write32(address, value);
+                if (out.status == R3000aBusStatus::unsupported) {
+                    return data_boundary(address, 4u, value);
+                }
+                if (out.status == R3000aBusStatus::bus_error) {
+                    return data_bus_error(address, 4u, value);
+                }
+            }
+            break;
+        }
         case MipsOp::mfc2:
         case MipsOp::cfc2:
         case MipsOp::mtc2:

@@ -71,6 +71,8 @@ enum class MipsOp : std::uint16_t {
     cfc2,
     mtc2,
     ctc2,
+    lwc2,
+    swc2,
     cop2_command,
 };
 
