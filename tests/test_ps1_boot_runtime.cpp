@@ -127,6 +127,19 @@ static void test_runtime_continues_vblank_through_hookentryint() {
           runtime.cpu_state().pc == 0x8001001Cu);
 }
 
+static void test_runtime_starts_from_post_bios_cdrom_handoff() {
+    auto runtime = make_runtime({
+        test_mips::j(0x02u, 0x80010000u >> 2),
+        0x00000000u,
+    });
+
+    CHECK(runtime.bus().write8(0x1F801800u, 0x00u).status ==
+          jojo::R3000aBusStatus::ok);
+    const auto mask = runtime.bus().read8(0x1F801803u);
+    CHECK(mask.status == jojo::R3000aBusStatus::ok);
+    CHECK((mask.value & 0x1Fu) == 0x1Fu);
+}
+
 static void test_runtime_initializes_clean_room_c0_exception_entry() {
     const std::vector<std::uint32_t> words{
         0x00000000u,
@@ -663,6 +676,7 @@ static void test_deterministic_replay_matches_full_m3a_state() {
 }
 
 int main() {
+    test_runtime_starts_from_post_bios_cdrom_handoff();
     test_vblank_routes_to_r3000a_hardware_irq2();
     test_runtime_continues_vblank_through_hookentryint();
     test_runtime_initializes_clean_room_c0_exception_entry();
