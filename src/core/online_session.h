@@ -4,6 +4,7 @@
 
 #include <cstdint>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -56,6 +57,10 @@ public:
     [[nodiscard]] Result<std::vector<NetworkPacket>> poll(std::uint64_t now_ms);
     [[nodiscard]] Result<void> send(const NetworkPacket& packet,
                                     std::uint64_t now_ms);
+    [[nodiscard]] Result<void> send_control(
+        NetworkPacketKind kind,
+        std::span<const std::uint8_t> payload,
+        std::uint64_t now_ms);
     [[nodiscard]] Result<void> disconnect(std::uint64_t now_ms);
     void reset() noexcept;
 
