@@ -71,6 +71,18 @@ struct Ps1CommercialEvidenceReport {
     std::vector<Ps1CommercialDiagnosticDecision> diagnostic_decisions;
 };
 
+struct Ps1GameplayValidationSummary {
+    bool frame_observed{};
+    bool controller_poll_observed{};
+    bool audio_generated{};
+    bool memory_card_read_observed{};
+    bool memory_card_write_observed{};
+};
+
+[[nodiscard]] Ps1GameplayValidationSummary
+summarize_ps1_gameplay_validation(
+    const Ps1CommercialEvidenceReport& report) noexcept;
+
 class Ps1CommercialEvidenceRunner {
 public:
     Ps1CommercialEvidenceRunner() = default;
