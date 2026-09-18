@@ -73,6 +73,8 @@ int main(int argc, char** argv) {
     std::cout << "stop_reason="
               << static_cast<unsigned>(report.boot.stop_reason)
               << "\n";
+    std::cout << "total_execution_steps="
+              << report.total_execution_steps << "\n";
     std::cout << "total_instructions_retired="
               << report.total_instructions_retired << "\n";
     std::cout << "execution_segments=" << report.execution_segments << "\n";
