@@ -22,6 +22,68 @@ void test_direct_branch_instruction_is_lowerable() {
     if (code) CHECK(code.value.instruction_count == 1u);
 }
 
+
+#if defined(_WIN32) && defined(_M_X64)
+void test_x64_direct_branch_not_taken_matches_reference() {
+    const auto raw = test_mips::i(0x05u, 8u, 9u, 2u); // BNE not taken
+    const auto decoded = jojo::decode_mips(raw);
+    const auto code =
+        jojo::emit_r3000a_x64_instruction(0x80010000u, decoded);
+    CHECK(code);
+    if (!code) return;
+
+    jojo::R3000aState native{};
+    native.pc = 0x80010000u;
+    native.next_pc = 0x80010004u;
+    native.gpr[8] = 5u;
+    native.gpr[9] = 5u;
+    auto reference = native;
+
+    const auto executed =
+        jojo::execute_r3000a_x64_block(code.value, native);
+    CHECK(executed.status == jojo::R3000aX64ExecutionStatus::executed);
+
+    TestR3000aBus bus;
+    bus.store32(0x80010000u, raw);
+    CHECK(jojo::step_r3000a(reference, bus).status ==
+          jojo::R3000aStepStatus::retired);
+
+    CHECK(native.pc == reference.pc);
+    CHECK(native.next_pc == reference.next_pc);
+    CHECK(native.delay_slot.taken == reference.delay_slot.taken);
+    CHECK(native.delay_slot.target == reference.delay_slot.target);
+}
+
+void test_x64_direct_jal_matches_reference() {
+    const auto raw = test_mips::j(0x03u, 0x80012000u >> 2u);
+    const auto decoded = jojo::decode_mips(raw);
+    const auto code =
+        jojo::emit_r3000a_x64_instruction(0x80010000u, decoded);
+    CHECK(code);
+    if (!code) return;
+
+    jojo::R3000aState native{};
+    native.pc = 0x80010000u;
+    native.next_pc = 0x80010004u;
+    auto reference = native;
+
+    CHECK(jojo::execute_r3000a_x64_block(code.value, native).status ==
+          jojo::R3000aX64ExecutionStatus::executed);
+
+    TestR3000aBus bus;
+    bus.store32(0x80010000u, raw);
+    CHECK(jojo::step_r3000a(reference, bus).status ==
+          jojo::R3000aStepStatus::retired);
+
+    CHECK(native.gpr == reference.gpr);
+    CHECK(native.pc == reference.pc);
+    CHECK(native.next_pc == reference.next_pc);
+    CHECK(native.delay_slot.active == reference.delay_slot.active);
+    CHECK(native.delay_slot.taken == reference.delay_slot.taken);
+    CHECK(native.delay_slot.target == reference.delay_slot.target);
+}
+#endif
+
 #if defined(_WIN32) && defined(_M_X64)
 void test_x64_direct_branch_matches_reference() {
     const auto raw = test_mips::i(0x04u, 8u, 9u, 1u); // BEQ -> +8
@@ -277,6 +339,8 @@ int main() {
     test_direct_branch_instruction_is_lowerable();
     test_x64_emitter_accepts_only_v0_safe_subset();
 #if defined(_WIN32) && defined(_M_X64)
+    test_x64_direct_branch_not_taken_matches_reference();
+    test_x64_direct_jal_matches_reference();
     test_x64_direct_branch_matches_reference();
     test_x64_direct_jalr_reads_target_before_link_write();
     test_x64_mult_and_multu_match_reference();
