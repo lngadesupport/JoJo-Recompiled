@@ -43,6 +43,11 @@ struct NetworkEndpoint {
     friend bool operator==(const NetworkEndpoint&, const NetworkEndpoint&) = default;
 };
 
+struct UdpBindOptions {
+    bool reuse_address{};
+    bool allow_broadcast{};
+};
+
 struct UdpDatagram {
     NetworkEndpoint source{};
     std::vector<std::uint8_t> bytes;
@@ -73,7 +78,9 @@ public:
 
     ~UdpNetworkTransport() { close(); }
 
-    [[nodiscard]] static Result<UdpNetworkTransport> bind(NetworkEndpoint endpoint) {
+    [[nodiscard]] static Result<UdpNetworkTransport> bind(
+        NetworkEndpoint endpoint,
+        UdpBindOptions options = {}) {
         UdpNetworkTransport transport;
 #ifdef _WIN32
         WSADATA data{};
@@ -89,6 +96,37 @@ public:
                 ErrorCode::backend_unavailable, "UDP socket creation failed");
         }
         transport.socket_ = socket_value;
+
+        const auto set_socket_flag = [&](int option) {
+            const int enabled = 1;
+#ifdef _WIN32
+            return ::setsockopt(
+                       transport.socket_,
+                       SOL_SOCKET,
+                       option,
+                       reinterpret_cast<const char*>(&enabled),
+                       static_cast<int>(sizeof(enabled))) == 0;
+#else
+            return ::setsockopt(
+                       transport.socket_,
+                       SOL_SOCKET,
+                       option,
+                       &enabled,
+                       static_cast<socklen_t>(sizeof(enabled))) == 0;
+#endif
+        };
+        if (options.reuse_address &&
+            !set_socket_flag(SO_REUSEADDR)) {
+            return Result<UdpNetworkTransport>::failure(
+                ErrorCode::io_error,
+                "UDP SO_REUSEADDR could not be enabled");
+        }
+        if (options.allow_broadcast &&
+            !set_socket_flag(SO_BROADCAST)) {
+            return Result<UdpNetworkTransport>::failure(
+                ErrorCode::io_error,
+                "UDP SO_BROADCAST could not be enabled");
+        }
 
         const auto address = make_sockaddr(endpoint);
         if (::bind(transport.socket_, reinterpret_cast<const sockaddr*>(&address),
