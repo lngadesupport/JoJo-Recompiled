@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <optional>
+#include <vector>
 
 namespace jojo {
 
@@ -44,10 +45,10 @@ private:
     void format_blank() noexcept;
     void refresh_content_hash() noexcept;
     static void set_frame_checksum(
-        std::array<std::uint8_t, raw_size>& data,
+        std::vector<std::uint8_t>& data,
         std::size_t frame) noexcept;
 
-    std::array<std::uint8_t, raw_size> data_{};
+    std::vector<std::uint8_t> data_;
     std::filesystem::path backing_path_{};
     std::uint8_t flag_byte_{0x08u};
     bool dirty_{};
