@@ -154,6 +154,10 @@ std::string format_ps1_commercial_evidence_report(
     out << "validation_memory_card_content_change_observed="
         << (validation.memory_card_content_change_observed ? 1 : 0) << '\n';
     out << "segment_instructions_retired=" << report.boot.instructions_retired << '\n';
+    out << "segment_native_x64_instructions_retired="
+        << report.boot.native_x64_instructions_retired << '\n';
+    out << "segment_reference_instructions_retired="
+        << report.boot.reference_instructions_retired << '\n';
     out << "last_pc=" << hex32(report.boot.last_pc) << '\n';
     out << "last_opcode=" << optional_hex32(report.boot.last_opcode) << '\n';
     out << "diagnostic_probe_mode=" << (report.boot.diagnostic_probe_mode ? 1 : 0) << '\n';
