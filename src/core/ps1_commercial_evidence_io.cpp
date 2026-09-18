@@ -99,6 +99,7 @@ std::string format_ps1_commercial_evidence_report(
         << ps1_commercial_session_termination_name(report.session_termination)
         << '\n';
     out << "stop_reason=" << ps1_boot_stop_reason_name(report.boot.stop_reason) << '\n';
+    out << "total_execution_steps=" << report.total_execution_steps << '\n';
     out << "total_instructions_retired=" << report.total_instructions_retired << '\n';
     out << "total_native_x64_instructions_retired="
         << report.total_native_x64_instructions_retired << '\n';
@@ -165,6 +166,7 @@ std::string format_ps1_commercial_evidence_report(
         << (validation.memory_card_write_observed ? 1 : 0) << '\n';
     out << "validation_memory_card_content_change_observed="
         << (validation.memory_card_content_change_observed ? 1 : 0) << '\n';
+    out << "segment_execution_steps=" << report.boot.execution_steps << '\n';
     out << "segment_instructions_retired=" << report.boot.instructions_retired << '\n';
     out << "segment_native_x64_instructions_retired="
         << report.boot.native_x64_instructions_retired << '\n';
