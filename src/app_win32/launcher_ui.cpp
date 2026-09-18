@@ -232,7 +232,7 @@ std::size_t LauncherUi::row_count() const noexcept {
         case SettingsPage::graphics: return 6;
         case SettingsPage::audio: return 2;
         case SettingsPage::controls: return 1 + all_game_actions().size();
-        case SettingsPage::accessibility: return 5;
+        case SettingsPage::accessibility: return 2;
     }
     return 0;
 }
@@ -410,7 +410,7 @@ LauncherUiAction LauncherUi::adjust_setting(
                 settings.accessibility.high_contrast_ui =
                     !settings.accessibility.high_contrast_ui;
                 return LauncherUiAction::settings_changed;
-            case 4: {
+            case 1: {
                 constexpr std::array<int, 4> scales{100, 110, 125, 150};
                 std::size_t index = 0;
                 for (std::size_t i = 0; i < scales.size(); ++i) {
@@ -623,12 +623,9 @@ void LauncherUi::paint(
     } else {
         rows = {
             {L"HIGH CONTRAST UI", on_off(settings.accessibility.high_contrast_ui)},
-            {L"REDUCE FLASHING", L"RUNTIME HOOK PENDING"},
-            {L"REDUCE SCREEN SHAKE", L"RUNTIME HOOK PENDING"},
-            {L"HOLD ASSIST", L"RUNTIME HOOK PENDING"},
             {L"MENU TEXT SCALE", std::to_wstring(settings.accessibility.menu_text_scale) + L"%"},
         };
-        enabled = {true, false, false, false, true};
+        enabled = {true, true};
     }
 
     const float scale = std::clamp(
