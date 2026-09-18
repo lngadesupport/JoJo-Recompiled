@@ -93,6 +93,8 @@ R3000aBusResult Ps1MemoryBus::read8(std::uint32_t address) noexcept {
         if (auto* p = mapped_bytes(*physical, 1u, main_ram_, scratchpad_)) {
             return {R3000aBusStatus::ok, read_little_endian(p, 1u)};
         }
+        const auto hardware = hardware_.read8(*physical);
+        if (hardware.status == R3000aBusStatus::ok) return hardware;
         if (diagnostic_mmio_probe_enabled_) {
             if (auto* p = diagnostic_mmio_bytes(*physical, 1u, diagnostic_mmio_shadow_)) {
                 const auto value = read_little_endian(p, 1u);

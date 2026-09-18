@@ -3,6 +3,7 @@
 #include "core/ps1_cdrom.h"
 #include "core/ps1_gpu_ingress.h"
 #include "core/ps1_spu.h"
+#include "core/ps1_sio0.h"
 #include "core/r3000a_bus.h"
 
 #include <array>
@@ -70,6 +71,8 @@ public:
     [[nodiscard]] const Ps1GpuIngress& gpu() const noexcept;
     [[nodiscard]] Ps1Spu& spu() noexcept;
     [[nodiscard]] const Ps1Spu& spu() const noexcept;
+    [[nodiscard]] Ps1Sio0& sio0() noexcept;
+    [[nodiscard]] const Ps1Sio0& sio0() const noexcept;
 
     [[nodiscard]] std::uint64_t diagnostic_state_hash() const noexcept;
 
@@ -88,6 +91,7 @@ private:
     Ps1CdromController cdrom_{};
     Ps1GpuIngress gpu_{};
     Ps1Spu spu_{};
+    Ps1Sio0 sio0_{};
 };
 
 } // namespace jojo
