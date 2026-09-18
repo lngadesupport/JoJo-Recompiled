@@ -83,7 +83,7 @@ Ps1CommercialEvidenceReport Ps1CommercialEvidenceRunner::run(
         report.memory_card_write_sector_count =
             counters.memory_card_write_sector_count;
         report.spu_sample_frames = counters.spu_sample_frames;
-        return finalize_report();
+        return report;
     };
 
     std::size_t fallback_index = 0u;
