@@ -19,13 +19,14 @@ const jojo::R3000aIrBlock* find_block(
 }
 
 void test_cfg_follows_conditional_successors_without_decoding_gap_as_one_block() {
-    const std::array<std::uint32_t, 6> words{
+    const std::array<std::uint32_t, 7> words{
         test_mips::i(0x09u, 0u, 8u, 1u),       // 00
         test_mips::i(0x04u, 8u, 0u, 2u),       // 04 -> 10
         0x00000000u,                            // 08 delay
         test_mips::i(0x09u, 9u, 9u, 1u),       // 0C fallthrough block
         test_mips::i(0x09u, 10u, 10u, 1u),     // 10 target block
         test_mips::r(31u, 0u, 0u, 0u, 0x08u),  // 14 jr ra
+        0x00000000u,                            // 18 delay
     };
     const auto cfg = jojo::build_r3000a_cfg(
         0x80010000u, words, 0x80010000u);
