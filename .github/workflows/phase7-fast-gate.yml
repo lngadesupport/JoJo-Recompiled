@@ -1,0 +1,35 @@
+name: Phase 7 Fast Gate
+
+on:
+  push:
+    branches:
+      - feature/ps1-gameplay-validation-phase7
+
+permissions:
+  contents: read
+
+jobs:
+  phase7-fast-linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure Release
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+      - name: Build Phase 7 focused targets
+        run: >-
+          cmake --build build --target
+          jojo_ps1_cdrom_tests
+          jojo_ps1_commercial_frontier_tests
+          jojo_ps1_commercial_evidence_tests
+          jojo_ps1_commercial_evidence_io_tests
+          jojo_ps1_input_bridge_tests
+          jojo_ps1_memory_card_tests
+          jojo_ps1_sio0_tests
+          jojo_ps1_timing_tests
+          jojo_ps1_boot_runtime_tests
+          -j2
+      - name: Run Phase 7 focused tests
+        run: >-
+          ctest --test-dir build -R
+          "jojo_ps1_(cdrom|commercial_frontier|commercial_evidence|commercial_evidence_io|input_bridge|memory_card|sio0|timing|boot_runtime)_tests"
+          --output-on-failure
