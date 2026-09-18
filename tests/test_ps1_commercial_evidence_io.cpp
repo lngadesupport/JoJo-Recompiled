@@ -45,6 +45,12 @@ int main() {
     report.session_vblank_count = 600u;
     report.spu_sample_frames = 44100u;
     report.spu_nonzero_samples = 12345u;
+    report.interrupt_status = 0x0001u;
+    report.interrupt_mask = 0x0005u;
+    report.cpu_cop0_status = 0x00000401u;
+    report.cpu_cop0_cause = 0x00000400u;
+    report.cpu_external_interrupt_pending = 0x04u;
+    report.bios_interrupt_hook_address = 0x800616F0u;
     report.gpu_display.enabled = true;
     report.gpu_display.rgb24 = false;
     report.gpu_display.pal = false;
@@ -153,6 +159,12 @@ int main() {
     CHECK(text.find("session_vblank_count=600") != std::string::npos);
     CHECK(text.find("spu_sample_frames=44100") != std::string::npos);
     CHECK(text.find("spu_nonzero_samples=12345") != std::string::npos);
+    CHECK(text.find("interrupt_status=0x00000001") != std::string::npos);
+    CHECK(text.find("interrupt_mask=0x00000005") != std::string::npos);
+    CHECK(text.find("cpu_cop0_status=0x00000401") != std::string::npos);
+    CHECK(text.find("cpu_cop0_cause=0x00000400") != std::string::npos);
+    CHECK(text.find("cpu_external_interrupt_pending=4") != std::string::npos);
+    CHECK(text.find("bios_interrupt_hook_address=0x800616f0") != std::string::npos);
     CHECK(text.find("gpu_display_enabled=1") != std::string::npos);
     CHECK(text.find("gpu_display_rgb24=0") != std::string::npos);
     CHECK(text.find("gpu_display_start_x=320") != std::string::npos);
