@@ -321,6 +321,11 @@ R3000aBusResult Ps1Spu::write16(
         case kExternalVolumeRight: external_volume_right_ = value; return {R3000aBusStatus::ok, 0u};
         case kEndxLow:
         case kEndxHigh:
+            // ENDX is hardware-owned voice status. Retail software may still
+            // write these addresses while clearing SPU state; electrically
+            // accept the write without treating it as authoritative voice
+            // state. KEY ON / ADPCM loop-end continue to own endx_flags_.
+            return {R3000aBusStatus::ok, 0u};
         case kStatus:
         case kCurrentMainVolumeLeft:
         case kCurrentMainVolumeRight:
