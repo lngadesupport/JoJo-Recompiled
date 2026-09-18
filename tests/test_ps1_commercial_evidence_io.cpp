@@ -29,6 +29,12 @@ int main() {
     report.pad_pressed_poll_count = {5u, 2u};
     report.memory_card_read_sector_count = {3u, 1u};
     report.memory_card_write_sector_count = {2u, 0u};
+    report.session_dma_transfer_count = 12u;
+    report.session_cdrom_command_count = 34u;
+    report.session_gpu_gp0_word_count = 56u;
+    report.session_gpu_gp1_command_count = 7u;
+    report.session_vram_write_count = 89u;
+    report.session_vblank_count = 600u;
     report.spu_sample_frames = 44100u;
     report.spu_nonzero_samples = 12345u;
     report.boot.stop_reason = jojo::Ps1BootStopReason::bios_call_unimplemented;
@@ -93,6 +99,12 @@ int main() {
     CHECK(text.find("memory_card0_write_sector_count=2") != std::string::npos);
     CHECK(text.find("memory_card1_read_sector_count=1") != std::string::npos);
     CHECK(text.find("memory_card1_write_sector_count=0") != std::string::npos);
+    CHECK(text.find("session_dma_transfer_count=12") != std::string::npos);
+    CHECK(text.find("session_cdrom_command_count=34") != std::string::npos);
+    CHECK(text.find("session_gpu_gp0_word_count=56") != std::string::npos);
+    CHECK(text.find("session_gpu_gp1_command_count=7") != std::string::npos);
+    CHECK(text.find("session_vram_write_count=89") != std::string::npos);
+    CHECK(text.find("session_vblank_count=600") != std::string::npos);
     CHECK(text.find("spu_sample_frames=44100") != std::string::npos);
     CHECK(text.find("spu_nonzero_samples=12345") != std::string::npos);
     CHECK(text.find("validation_frame_observed=1") != std::string::npos);
