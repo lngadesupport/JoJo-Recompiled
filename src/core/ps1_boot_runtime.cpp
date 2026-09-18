@@ -243,7 +243,10 @@ Ps1BootReport Ps1BootRuntime::run(const Ps1BootOptions& options) noexcept {
                     observed_opcode.value);
             if (compiled) {
                 const auto native =
-                    execute_r3000a_x64_block(*compiled.value, cpu_);
+                    execute_r3000a_x64_block(
+                        *compiled.value,
+                        cpu_,
+                        bus_.main_ram_data());
                 if (native.status == R3000aX64ExecutionStatus::executed) {
                     ++report.instructions_retired;
                     ++report.native_x64_instructions_retired;
