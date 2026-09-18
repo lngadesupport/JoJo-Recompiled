@@ -3,7 +3,8 @@
 ## Canonical line
 
 - Repository: `lngadesupport/JoJo-Recompiled`
-- Active development branch: `feature/ps1-gameplay-validation-phase7`
+- Active development branch: `feature/ps1-native-x64-phase8-prep`
+- Commercial validation branch: `feature/ps1-gameplay-validation-phase7`
 - Guest platform: **Sony PlayStation 1**
 - Product scope: **JoJo PS1 only**
 - Shipping policy: one `JOJO-Recompiled.exe`
@@ -89,6 +90,27 @@ The runtime now preserves periodic/manual commercial session evidence and tracks
 
 This is a validated test runtime, not proof of commercial playability. Phase 7 remains open until a fresh supported commercial run demonstrates the required title/menu/audio/input/save/fight checkpoints or exposes the next concrete frontier.
 
+### Phase 8 — native R3000A→x64 optimization: active in parallel
+
+Phase 8 now has a real Windows x64 execution path rather than a documentation-only future item.
+
+The first product-integrated green baseline is `e92c07ee9393d6aca088bb80b6e4bdc89611c946`.
+Phase 8 Final Gate run `35317111724` passed the complete Linux Release and Windows x64 Release graphs with the hybrid backend enabled in the Windows launcher.
+
+Implemented and already guarded by synthetic/differential tests:
+
+- explicit R3000A basic-block IR with MIPS delay-slot representation;
+- reachable CFG discovery with bounded analysis;
+- conservative reference-fallback policy;
+- real x64 machine-code emission and RW→RX executable memory;
+- resident code cache with guest-code fingerprints and bounded LRU eviction;
+- per-segment native/reference retirement and cache telemetry;
+- Windows launcher activation of the hybrid R3000A→x64 runtime;
+- native ALU/immediate/fixed-shift subset, with later commits extending variable shifts, HI/LO and multiply;
+- control-flow and main-RAM lowering are being promoted incrementally behind differential tests.
+
+The R3000A reference executor remains the semantic oracle. Unsupported, trapping, MMIO, COP0, GTE or otherwise unproven semantics continue to fall back before native execution mutates guest state.
+
 ## Current truth boundary
 
 Synthetic and CI tests now cover substantially more than the old Phase 3 boundary, but they do **not** prove commercial gameplay.
@@ -105,8 +127,9 @@ Still requiring current commercial evidence:
 
 Also not production-complete:
 
-- MIPS CFG/IR production execution;
-- Windows x64 native lowering/cache promotion;
+- full native coverage of the observed commercial execution path;
+- native handling of all timing/exception-sensitive operations;
+- commercial differential validation of the hybrid backend;
 - final performance optimization, packaging and release validation.
 
 The most recent saved commercial checkpoint available to development predates the current GPU/SPU/SIO/runtime architecture, so it must not be treated as proof of present-day playability.
@@ -120,16 +143,13 @@ The most recent saved commercial checkpoint available to development predates th
 5. **Phase 5 — SPU/audio** — implementation and CI complete; commercial validation pending
 6. **Phase 6 — controls/timing/saves** — complete
 7. **Phase 7 — complete gameplay validation** — active evidence-driven phase
-8. **Phase 8 — native x64 optimization and Windows release** — pending
+8. **Phase 8 — native x64 optimization and Windows release** — active in parallel; hybrid backend integrated
 
 ## Next priority
 
-Phase 7 is active on `feature/ps1-gameplay-validation-phase7` and is frontier-driven:
+Two workstreams are active without conflating their acceptance criteria:
 
-1. run the supported user-supplied JoJo image on the current runtime;
-2. capture the first current production frontier;
-3. implement only the observed missing behavior;
-4. repeat through title/menu, controller/audio/save validation and a complete fight;
-5. keep every unknown BIOS/MMIO/CD-ROM/GPU/CPU behavior explicit rather than fabricating success.
+1. **Phase 7 commercial evidence:** run the current supported user-supplied JoJo image once the missing BIN data track is available, capture the first current frontier, and repeat through title/menu/input/audio/save/fight validation.
+2. **Phase 8 native backend:** continue differential promotion of R3000A semantics to x64, keeping the reference executor as oracle and preserving fallback for every unproven operation.
 
-The R3000A reference executor remains the semantic oracle until the later native x64 backend is proven equivalent.
+A green native synthetic gate does not close Phase 7, and a commercial frame does not by itself prove native equivalence.
