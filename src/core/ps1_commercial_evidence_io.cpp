@@ -119,6 +119,10 @@ std::string format_ps1_commercial_evidence_report(
         << report.memory_card_read_sector_count[1] << '\n';
     out << "memory_card1_write_sector_count="
         << report.memory_card_write_sector_count[1] << '\n';
+    out << "memory_card0_changed_write_sector_count="
+        << report.memory_card_changed_write_sector_count[0] << '\n';
+    out << "memory_card1_changed_write_sector_count="
+        << report.memory_card_changed_write_sector_count[1] << '\n';
     out << "session_dma_transfer_count="
         << report.session_dma_transfer_count << '\n';
     out << "session_cdrom_command_count="
@@ -147,6 +151,8 @@ std::string format_ps1_commercial_evidence_report(
         << (validation.memory_card_read_observed ? 1 : 0) << '\n';
     out << "validation_memory_card_write_observed="
         << (validation.memory_card_write_observed ? 1 : 0) << '\n';
+    out << "validation_memory_card_content_change_observed="
+        << (validation.memory_card_content_change_observed ? 1 : 0) << '\n';
     out << "segment_instructions_retired=" << report.boot.instructions_retired << '\n';
     out << "last_pc=" << hex32(report.boot.last_pc) << '\n';
     out << "last_opcode=" << optional_hex32(report.boot.last_opcode) << '\n';
