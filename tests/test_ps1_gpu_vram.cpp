@@ -180,6 +180,36 @@ int main() {
         CHECK(clut_gpu.vram_pixel(23u, 40u) == 0x7FFFu);
     }
 
+    // GP0(E2h) texture window + GP0(6Dh) raw-textured 1x1 sprite.
+    // Mask bit 0 with offset bit 0 forces texture U bit 3 high: U=0 -> U=8.
+    {
+        jojo::Ps1GpuIngress window_gpu;
+
+        CHECK(window_gpu.write_gp0(0xA0000000u).status == jojo::R3000aBusStatus::ok);
+        CHECK(window_gpu.write_gp0(0x00000000u).status == jojo::R3000aBusStatus::ok);
+        CHECK(window_gpu.write_gp0((1u << 16u) | 9u).status == jojo::R3000aBusStatus::ok);
+        CHECK(window_gpu.write_gp0(0x000003E0u).status == jojo::R3000aBusStatus::ok);
+        CHECK(window_gpu.write_gp0(0x00000000u).status == jojo::R3000aBusStatus::ok);
+        CHECK(window_gpu.write_gp0(0x00000000u).status == jojo::R3000aBusStatus::ok);
+        CHECK(window_gpu.write_gp0(0x00000000u).status == jojo::R3000aBusStatus::ok);
+        CHECK(window_gpu.write_gp0(0x00000000u).status == jojo::R3000aBusStatus::ok);
+        CHECK(window_gpu.write_gp0(0x001F0000u).status == jojo::R3000aBusStatus::ok);
+
+        CHECK(window_gpu.write_gp0(0xE1000100u).status == jojo::R3000aBusStatus::ok); // 15bpp
+        CHECK(window_gpu.write_gp0(0xE2000401u).status == jojo::R3000aBusStatus::ok); // maskX=1, offX=1
+        CHECK(window_gpu.write_gp0(0xE3000000u).status == jojo::R3000aBusStatus::ok);
+        CHECK(window_gpu.write_gp0(0xE4000000u | 1023u | (511u << 10u)).status ==
+              jojo::R3000aBusStatus::ok);
+
+        const auto writes_before = window_gpu.vram_write_count();
+        CHECK(window_gpu.write_gp0(0x6DFFFFFFu).status == jojo::R3000aBusStatus::ok);
+        CHECK(window_gpu.write_gp0((70u << 16u) | 70u).status == jojo::R3000aBusStatus::ok);
+        CHECK(window_gpu.write_gp0(0x00000000u).status == jojo::R3000aBusStatus::ok);
+
+        CHECK(window_gpu.vram_pixel(70u, 70u) == 0x001Fu);
+        CHECK(window_gpu.vram_write_count() == writes_before + 1u);
+    }
+
     // GP0(02h): Fill Rectangle. Keep X/width aligned here so this test isolates
     // packet assembly, color conversion and deterministic in-bounds raster writes.
     {
