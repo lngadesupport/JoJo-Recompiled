@@ -187,7 +187,7 @@ Ps1BootReport Ps1BootRuntime::run(const Ps1BootOptions& options) noexcept {
     std::set<std::uint64_t> observed_bios_dependencies;
     std::set<std::uint64_t> observed_mmio_dependencies;
 
-    while (report.instructions_retired < options.instruction_budget) {
+    while (report.execution_steps < options.instruction_budget) {
         report.last_pc = cpu_.pc;
 
         const auto physical_pc = Ps1MemoryBus::guest_to_physical(cpu_.pc);
@@ -248,6 +248,7 @@ Ps1BootReport Ps1BootRuntime::run(const Ps1BootOptions& options) noexcept {
                         cpu_,
                         bus_.main_ram_data());
                 if (native.status == R3000aX64ExecutionStatus::executed) {
+                    ++report.execution_steps;
                     ++report.instructions_retired;
                     ++report.native_x64_instructions_retired;
                     ++instructions_since_progress;
@@ -269,6 +270,7 @@ Ps1BootReport Ps1BootRuntime::run(const Ps1BootOptions& options) noexcept {
 
         const auto step = step_r3000a(cpu_, bus_);
         if (step.status == R3000aStepStatus::retired) {
+            ++report.execution_steps;
             ++report.instructions_retired;
             ++report.reference_instructions_retired;
             ++instructions_since_progress;
@@ -296,13 +298,25 @@ Ps1BootReport Ps1BootRuntime::run(const Ps1BootOptions& options) noexcept {
             continue;
         }
 
+        if (step.status == R3000aStepStatus::exception) {
+            ++report.execution_steps;
+            if (step.diagnostic.exception_code == R3000aExceptionCode::interrupt) {
+                ++report.interrupts_accepted;
+            }
+            ++instructions_since_progress;
+            bus_.hardware_services().step(1u);
+            cpu_.external_interrupt_pending =
+                bus_.hardware_services().interrupt_pending() ? 1u : 0u;
+            if (options.stagnation_instruction_limit != 0u &&
+                instructions_since_progress >=
+                    options.stagnation_instruction_limit) {
+                return finish(Ps1BootStopReason::diagnostic_stall);
+            }
+            continue;
+        }
+
         report.cpu_diagnostic = step.diagnostic;
         report.unsupported_access = bus_.last_unsupported_access();
-
-        if (step.status == R3000aStepStatus::exception &&
-            step.diagnostic.exception_code == R3000aExceptionCode::interrupt) {
-            ++report.interrupts_accepted;
-        }
 
         if (report.unsupported_access) {
             const auto physical = Ps1MemoryBus::guest_to_physical(
