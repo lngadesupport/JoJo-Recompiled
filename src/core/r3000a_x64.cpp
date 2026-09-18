@@ -295,6 +295,18 @@ bool state_is_safe_for_x64(
         }
     }
 
+    if (code.division) {
+        const auto& div = *code.division;
+        const auto numerator = state.gpr[div.rs];
+        const auto denominator = state.gpr[div.rt];
+        if (denominator == 0u) return false;
+        if (div.op == MipsOp::div &&
+            numerator == 0x80000000u &&
+            denominator == 0xFFFFFFFFu) {
+            return false;
+        }
+    }
+
     const auto cause_with_external =
         (state.cop0.cause & ~0x0000FC00u) |
         (static_cast<std::uint32_t>(
@@ -364,6 +376,8 @@ bool r3000a_op_is_x64_direct_lowerable(MipsOp op) noexcept {
         case MipsOp::sb:
         case MipsOp::sh:
         case MipsOp::sw:
+        case MipsOp::div:
+        case MipsOp::divu:
             return true;
         default:
             return false;
@@ -485,6 +499,53 @@ Result<R3000aX64Code> emit_r3000a_x64_instruction(
             }
         }
 
+        emit_mov_state_imm32(
+            out,
+            static_cast<std::uint32_t>(offsetof(R3000aState, gpr)),
+            0u);
+        emit_mov_state_imm32(
+            out,
+            static_cast<std::uint32_t>(offsetof(R3000aState, pc)),
+            pc + 4u);
+        emit_mov_state_imm32(
+            out,
+            static_cast<std::uint32_t>(offsetof(R3000aState, next_pc)),
+            pc + 8u);
+        emit_mov_eax_imm32(out, 1u);
+        emit_u8(out, 0xC3u);
+
+        const auto materialized = materialize_executable(code);
+        if (!materialized) {
+            return Result<R3000aX64Code>::failure(
+                materialized.error,
+                materialized.detail);
+        }
+        return Result<R3000aX64Code>::success(std::move(code));
+    }
+
+    if (instruction.op == MipsOp::div ||
+        instruction.op == MipsOp::divu) {
+        code.division = R3000aX64Division{
+            instruction.op,
+            instruction.rs,
+            instruction.rt,
+        };
+
+        emit_load_eax_gpr(out, instruction.rs);
+        emit_load_r8d_gpr(out, instruction.rt);
+        if (instruction.op == MipsOp::div) {
+            emit_u8(out, 0x99u); // cdq
+            emit_u8(out, 0x41u); emit_u8(out, 0xF7u); emit_u8(out, 0xF8u); // idiv r8d
+        } else {
+            emit_u8(out, 0x31u); emit_u8(out, 0xD2u); // xor edx, edx
+            emit_u8(out, 0x41u); emit_u8(out, 0xF7u); emit_u8(out, 0xF0u); // div r8d
+        }
+        emit_store_eax_state(
+            out,
+            static_cast<std::uint32_t>(offsetof(R3000aState, lo)));
+        emit_store_edx_state(
+            out,
+            static_cast<std::uint32_t>(offsetof(R3000aState, hi)));
         emit_mov_state_imm32(
             out,
             static_cast<std::uint32_t>(offsetof(R3000aState, gpr)),
