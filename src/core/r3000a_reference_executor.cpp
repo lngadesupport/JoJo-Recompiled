@@ -1,6 +1,7 @@
 #include "core/r3000a_reference_executor.h"
 
 #include "core/mips_decoder.h"
+#include "core/ps1_gte.h"
 
 #include <bit>
 #include <cstdint>
@@ -529,16 +530,16 @@ R3000aStepResult step_r3000a(R3000aState& state, R3000aBus& bus) noexcept {
             }
             switch (instruction.op) {
                 case MipsOp::mfc2:
-                    queue_load(instruction.rt, state.gte.data[instruction.rd]);
+                    queue_load(instruction.rt, read_ps1_gte_data(state.gte, instruction.rd));
                     break;
                 case MipsOp::cfc2:
-                    queue_load(instruction.rt, state.gte.control[instruction.rd]);
+                    queue_load(instruction.rt, read_ps1_gte_control(state.gte, instruction.rd));
                     break;
                 case MipsOp::mtc2:
-                    state.gte.data[instruction.rd] = rt;
+                    write_ps1_gte_data(state.gte, instruction.rd, rt);
                     break;
                 case MipsOp::ctc2:
-                    state.gte.control[instruction.rd] = rt;
+                    write_ps1_gte_control(state.gte, instruction.rd, rt);
                     break;
                 default:
                     break;
@@ -549,6 +550,10 @@ R3000aStepResult step_r3000a(R3000aState& state, R3000aBus& bus) noexcept {
                 return enter_exception(state, R3000aExceptionCode::coprocessor_unusable,
                                        R3000aStage::cop2, instruction_pc, current_delay,
                                        instruction.raw, std::nullopt, 2u);
+            }
+            if (execute_ps1_gte_command(state.gte, instruction.raw) ==
+                Ps1GteCommandStatus::ok) {
+                break;
             } else {
                 auto result = boundary(state, R3000aBoundaryCode::cop2_unimplemented,
                                        R3000aStage::cop2, instruction_pc, instruction.raw);
