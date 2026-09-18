@@ -20,6 +20,14 @@ int main() {
     CHECK(clock.next_frame_ticks() == 566121u);
     CHECK(clock.next_frame_ticks() == 566122u);
 
+    const auto saved_ntsc = clock.save_state();
+    const auto expected_after_restore = clock.next_frame_ticks();
+    CHECK(clock.load_state(saved_ntsc));
+    CHECK(clock.next_frame_ticks() == expected_after_restore);
+    CHECK(!clock.load_state({
+        Ps1VideoTimingMode::ntsc_non_interlaced,
+        ntsc_progressive.refresh_numerator}));
+
     clock.set_mode(Ps1VideoTimingMode::ntsc_interlaced);
     CHECK(clock.remainder() == 0u);
     CHECK(clock.next_frame_ticks() == 565045u);
