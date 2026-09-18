@@ -186,6 +186,9 @@ std::vector<std::uint8_t> encode_match_found(
     auto out = begin_packet(MessageKind::match_found);
     out.push_back(
         match.queue == OnlineMatchQueue::ranked ? 1u : 0u);
+    out.push_back(
+        static_cast<std::uint8_t>(
+            match.local_is_host ? 1u : 0u));
     for (const auto octet : match.remote_endpoint.ipv4) {
         out.push_back(octet);
     }
@@ -326,12 +329,13 @@ OnlineDirectoryClient::poll() {
 
         if (kind == MessageKind::match_found) {
             const auto& bytes = incoming.value->bytes;
-            if (offset + 7u > bytes.size()) continue;
+            if (offset + 8u > bytes.size()) continue;
             OnlineDirectoryMatch match{};
             match.queue =
                 bytes[offset++] != 0u
                 ? OnlineMatchQueue::ranked
                 : OnlineMatchQueue::casual;
+            match.local_is_host = bytes[offset++] != 0u;
             for (std::size_t i = 0u; i < 4u; ++i) {
                 match.remote_endpoint.ipv4[i] =
                     bytes[offset++];
@@ -522,11 +526,13 @@ Result<void> OnlineDirectoryServer::poll(
             to_request.remote_endpoint = peer->gameplay;
             to_request.remote_player_name = peer->player_name;
             to_request.queue = request.queue;
+            to_request.local_is_host = false;
 
             OnlineDirectoryMatch to_peer{};
             to_peer.remote_endpoint = request.gameplay;
             to_peer.remote_player_name = request.player_name;
             to_peer.queue = request.queue;
+            to_peer.local_is_host = true;
 
             const auto request_packet =
                 encode_match_found(to_request);
