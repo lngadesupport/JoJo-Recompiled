@@ -79,6 +79,7 @@ jojo::Ps1DisplayFrame game_frame{};
 std::uint64_t game_total_instructions{};
 std::uint32_t game_execution_segments{};
 std::uint64_t game_completed_frames{};
+std::optional<jojo::Ps1BootReport> game_last_segment{};
 jojo::Ps1FrameSliceBudget game_frame_budget{65536u};
 std::chrono::steady_clock::time_point next_game_tick{};
 fs::path settings_path, binding_path, executable_root;
@@ -315,48 +316,82 @@ void apply_current_input(jojo::Ps1CommercialEvidenceRunner& runner){
     }
 }
 
+
+jojo::Ps1CommercialEvidenceReport make_game_session_report(
+    jojo::Ps1CommercialSessionTermination termination,
+    const jojo::Ps1BootReport* boot_override=nullptr){
+    jojo::Ps1CommercialEvidenceReport report{};
+    report.source=game_runner->disc_session().binding();
+    if(boot_override) report.boot=*boot_override;
+    else if(game_last_segment) report.boot=*game_last_segment;
+    report.frontier=jojo::classify_ps1_commercial_frontier(report.boot);
+    report.session_termination=termination;
+    report.total_instructions_retired=game_total_instructions;
+    report.execution_segments=game_execution_segments;
+    report.completed_frames=game_completed_frames;
+    const auto validation=game_runner->validation_counters();
+    report.pad_poll_count=validation.pad_poll_count;
+    report.memory_card_read_sector_count=
+        validation.memory_card_read_sector_count;
+    report.memory_card_write_sector_count=
+        validation.memory_card_write_sector_count;
+    report.spu_sample_frames=validation.spu_sample_frames;
+    report.first_frame=jojo::make_ps1_commercial_frame_evidence(
+        game_runner->display_frame());
+    return report;
+}
+
+jojo::Result<void> save_game_session_report(
+    const fs::path& path,
+    jojo::Ps1CommercialSessionTermination termination,
+    const jojo::Ps1BootReport* boot_override=nullptr){
+    if(!game_runner){
+        return jojo::Result<void>::failure(
+            jojo::ErrorCode::invalid_argument,
+            "game runtime is not active");
+    }
+    return jojo::save_ps1_commercial_evidence_report_atomic(
+        path,
+        make_game_session_report(termination,boot_override));
+}
+
 void stop_game_runtime(const jojo::Ps1BootReport* final_boot){
     if(!game_runner) return;
 
     if(win) KillTimer(win,ID_GAME_TIMER);
 
-    if(final_boot){
-        jojo::Ps1CommercialEvidenceReport report{};
-        report.source=game_runner->disc_session().binding();
-        report.frontier=jojo::classify_ps1_commercial_frontier(*final_boot);
-        report.boot=*final_boot;
-        report.total_instructions_retired=game_total_instructions;
-        report.execution_segments=game_execution_segments;
-        const auto validation=game_runner->validation_counters();
-        report.pad_poll_count=validation.pad_poll_count;
-        report.memory_card_read_sector_count=
-            validation.memory_card_read_sector_count;
-        report.memory_card_write_sector_count=
-            validation.memory_card_write_sector_count;
-        report.spu_sample_frames=validation.spu_sample_frames;
-        report.first_frame=jojo::make_ps1_commercial_frame_evidence(
-            game_runner->display_frame());
+    const bool frontier_stop=final_boot!=nullptr;
+    const auto termination=frontier_stop
+        ? jojo::Ps1CommercialSessionTermination::frontier_stop
+        : jojo::Ps1CommercialSessionTermination::manual_stop;
+    const auto report_path=app_root()/L"diagnostics"/
+        (frontier_stop?L"commercial-frontier.txt":L"commercial-session.txt");
+    const auto report=make_game_session_report(termination,final_boot);
+    const auto saved=jojo::save_ps1_commercial_evidence_report_atomic(
+        report_path,report);
 
-        const auto report_path=app_root()/L"diagnostics"/L"commercial-frontier.txt";
-        const auto saved=jojo::save_ps1_commercial_evidence_report_atomic(report_path,report);
+    if(frontier_stop){
         const auto frontier_name=std::string(
             jojo::ps1_commercial_frontier_class_name(report.frontier));
         status=L"Execução interrompida no frontier: "+wide(frontier_name)+L".";
         add_log(L"Frontier: "+wide(frontier_name));
-        if(saved) add_log(L"Diagnóstico atualizado: "+report_path.wstring());
-        else add_log(L"Aviso: relatório não pôde ser salvo: "+wide(saved.detail));
     }else{
-        status=L"Execução do jogo encerrada.";
+        status=L"Execução do jogo encerrada; evidência da sessão preservada.";
     }
+
+    if(saved) add_log(L"Diagnóstico atualizado: "+report_path.wstring());
+    else add_log(L"Aviso: relatório não pôde ser salvo: "+wide(saved.detail));
 
     const auto flushed=game_runner->flush_memory_cards();
     if(!flushed) add_log(L"Aviso: falha ao salvar Memory Card: "+wide(flushed.detail));
 
     game_runner.reset();
     game_audio_host.reset();
+    game_last_segment.reset();
     game_total_instructions=0u;
     game_execution_segments=0u;
     game_completed_frames=0u;
+    game_last_segment.reset();
     game_frame_budget.reset();
     if(checkpoint_btn) SetWindowTextW(checkpoint_btn,L"INICIAR JOGO");
     refresh_actions();
@@ -418,6 +453,7 @@ void game_tick(){
     options.stagnation_instruction_limit=0u;
 
     const auto segment=game_runner->run_segment(options);
+    game_last_segment=segment;
     ++game_execution_segments;
     game_total_instructions+=segment.instructions_retired;
 
@@ -454,6 +490,14 @@ void game_tick(){
     if((game_completed_frames%60u)==0u){
         const auto flushed=game_runner->flush_memory_cards();
         if(!flushed) add_log(L"Aviso: autosave do Memory Card falhou: "+wide(flushed.detail));
+        const auto checkpoint_path=
+            app_root()/L"diagnostics"/L"commercial-session.txt";
+        const auto checkpoint=save_game_session_report(
+            checkpoint_path,
+            jojo::Ps1CommercialSessionTermination::periodic_checkpoint);
+        if(!checkpoint){
+            add_log(L"Aviso: checkpoint de validação falhou: "+wide(checkpoint.detail));
+        }
         status=L"Jogo em execução • frames: "+
             std::to_wstring(game_completed_frames)+
             L" • instruções: "+std::to_wstring(game_total_instructions);
