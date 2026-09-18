@@ -299,7 +299,7 @@ static void test_gameplay_validation_summary_is_objective() {
     const auto baseline = jojo::summarize_ps1_gameplay_validation(empty);
     CHECK(!baseline.frame_observed);
     CHECK(!baseline.controller_poll_observed);
-    CHECK(!baseline.audio_generated);
+    CHECK(!baseline.audio_non_silent_observed);
     CHECK(!baseline.memory_card_read_observed);
     CHECK(!baseline.memory_card_write_observed);
 
@@ -308,6 +308,7 @@ static void test_gameplay_validation_summary_is_objective() {
         320u, 240u, 0x1234u, 99u};
     observed.pad_poll_count = {4u, 0u};
     observed.spu_sample_frames = 735u;
+    observed.spu_nonzero_samples = 12u;
     observed.memory_card_read_sector_count = {1u, 0u};
     observed.memory_card_write_sector_count = {0u, 2u};
 
@@ -315,7 +316,7 @@ static void test_gameplay_validation_summary_is_objective() {
         jojo::summarize_ps1_gameplay_validation(observed);
     CHECK(summary.frame_observed);
     CHECK(summary.controller_poll_observed);
-    CHECK(summary.audio_generated);
+    CHECK(summary.audio_non_silent_observed);
     CHECK(summary.memory_card_read_observed);
     CHECK(summary.memory_card_write_observed);
 }
