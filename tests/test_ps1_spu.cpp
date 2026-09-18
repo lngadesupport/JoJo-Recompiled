@@ -53,6 +53,10 @@ static void test_spu_host_neutral_audio_clock_and_voice_mix() {
     CHECK(spu.write16(0x1F801D80u, 0x3FFFu).status == jojo::R3000aBusStatus::ok);
     CHECK(spu.write16(0x1F801D82u, 0x3FFFu).status == jojo::R3000aBusStatus::ok);
     CHECK(spu.write16(0x1F801DAAu, 0xC000u).status == jojo::R3000aBusStatus::ok);
+    CHECK(spu.control() == 0xC000u);
+    CHECK((spu.status() & 0x003Fu) == 0u);
+    CHECK(spu.write16(0x1F801DACu, 0x0004u).status == jojo::R3000aBusStatus::ok);
+    CHECK(spu.transfer_control() == 0x0004u);
     CHECK(spu.write16(0x1F801D88u, 0x0001u).status == jojo::R3000aBusStatus::ok);
     CHECK(spu.write16(0x1F801C0Cu, 0x7FFFu).status == jojo::R3000aBusStatus::ok);
 
