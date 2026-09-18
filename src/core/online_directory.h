@@ -35,6 +35,7 @@ struct OnlineDirectoryMatch {
     NetworkEndpoint remote_endpoint{};
     std::string remote_player_name{};
     OnlineMatchQueue queue{OnlineMatchQueue::casual};
+    bool local_is_host{};
 
     friend bool operator==(
         const OnlineDirectoryMatch&,
