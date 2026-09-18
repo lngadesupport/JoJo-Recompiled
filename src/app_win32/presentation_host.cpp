@@ -1088,24 +1088,13 @@ Result<RendererCapabilities> probe_d3d11_renderer_capabilities() {
         TextureFilter::x8,
         TextureFilter::x16,
     };
-    caps.msaa_modes = {Msaa::off};
-
-    struct SampleMode { UINT samples; Msaa mode; };
-    constexpr std::array<SampleMode, 4> samples{{
-        {2u, Msaa::x2},
-        {4u, Msaa::x4},
-        {8u, Msaa::x8},
-        {16u, Msaa::x16},
-    }};
-    for (const auto& sample : samples) {
-        UINT quality_levels = 0u;
-        if (SUCCEEDED(device->CheckMultisampleQualityLevels(
-                DXGI_FORMAT_R8G8B8A8_UNORM,
-                sample.samples,
-                &quality_levels)) && quality_levels > 0u) {
-            caps.msaa_modes.push_back(sample.mode);
-        }
-    }
+    caps.msaa_modes = {
+        Msaa::off,
+        Msaa::x2,
+        Msaa::x4,
+        Msaa::x8,
+        Msaa::x16,
+    };
 
     if (context) context->Release();
     device->Release();
