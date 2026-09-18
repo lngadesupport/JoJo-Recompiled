@@ -112,6 +112,15 @@ std::uint64_t Ps1CdromController::current_lba() const noexcept {
     return current_lba_;
 }
 
+std::uint64_t Ps1CdromController::command_count() const noexcept {
+    return command_count_;
+}
+
+const std::deque<Ps1CdromCommandEvent>&
+Ps1CdromController::recent_commands() const noexcept {
+    return recent_commands_;
+}
+
 const std::optional<std::uint8_t>&
 Ps1CdromController::last_unsupported_command() const noexcept {
     return last_unsupported_command_;
@@ -131,6 +140,15 @@ void Ps1CdromController::clear_transfer_fifos() noexcept {
 
 R3000aBusResult Ps1CdromController::execute_command(std::uint8_t command) noexcept {
     last_unsupported_command_.reset();
+    ++command_count_;
+    if (recent_commands_.size() == command_history_capacity) {
+        recent_commands_.pop_front();
+    }
+    recent_commands_.push_back(Ps1CdromCommandEvent{
+        command,
+        index_,
+        status_byte_,
+    });
 
     switch (command) {
         case 0x01u: // Getstat
