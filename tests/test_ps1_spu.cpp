@@ -36,8 +36,47 @@ static void test_spu_adpcm_decode_contract() {
     CHECK(filtered_decoded.samples[0] == 938);
 }
 
+
+static void test_spu_host_neutral_audio_clock_and_voice_mix() {
+    jojo::Ps1Spu spu;
+
+    CHECK(spu.write16(0x1F801DA6u, 0x0200u).status == jojo::R3000aBusStatus::ok);
+    CHECK(spu.write16(0x1F801DA8u, 0x0700u).status == jojo::R3000aBusStatus::ok);
+    for (int i = 0; i < 7; ++i) {
+        CHECK(spu.write16(0x1F801DA8u, 0x7777u).status == jojo::R3000aBusStatus::ok);
+    }
+
+    CHECK(spu.write16(0x1F801C00u, 0x3FFFu).status == jojo::R3000aBusStatus::ok);
+    CHECK(spu.write16(0x1F801C02u, 0x3FFFu).status == jojo::R3000aBusStatus::ok);
+    CHECK(spu.write16(0x1F801C04u, 0x1000u).status == jojo::R3000aBusStatus::ok);
+    CHECK(spu.write16(0x1F801C06u, 0x0200u).status == jojo::R3000aBusStatus::ok);
+    CHECK(spu.write16(0x1F801D80u, 0x3FFFu).status == jojo::R3000aBusStatus::ok);
+    CHECK(spu.write16(0x1F801D82u, 0x3FFFu).status == jojo::R3000aBusStatus::ok);
+    CHECK(spu.write16(0x1F801DAAu, 0xC000u).status == jojo::R3000aBusStatus::ok);
+    CHECK(spu.write16(0x1F801D88u, 0x0001u).status == jojo::R3000aBusStatus::ok);
+    CHECK(spu.write16(0x1F801C0Cu, 0x7FFFu).status == jojo::R3000aBusStatus::ok);
+
+    spu.step(767u);
+    CHECK(spu.generated_sample_frames() == 0u);
+    CHECK(spu.drain_audio_samples().empty());
+
+    spu.step(1u);
+    CHECK(spu.generated_sample_frames() == 1u);
+    const auto frame = spu.drain_audio_samples();
+    CHECK(frame.size() == 2u);
+    if (frame.size() == 2u) {
+        CHECK(frame[0] > 20000);
+        CHECK(frame[1] > 20000);
+    }
+
+    spu.step(768u * 28u);
+    CHECK(spu.generated_sample_frames() == 29u);
+    CHECK((spu.endx_flags() & 1u) != 0u);
+}
+
 int main() {
     test_spu_adpcm_decode_contract();
+    test_spu_host_neutral_audio_clock_and_voice_mix();
     jojo::Ps1Spu spu;
 
     CHECK(spu.write16(0x1F801C00u, 0x1234u).status == jojo::R3000aBusStatus::ok);
