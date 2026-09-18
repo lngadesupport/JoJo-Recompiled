@@ -48,6 +48,21 @@ int main() {
     CHECK(hw.write32(0x1F801114u, 0x00000100u).status == jojo::R3000aBusStatus::ok);
     CHECK(hw.read32(0x1F801114u).value == 0x0100u);
 
+
+    // Timer1 source 1 is HBlank: it must not tick every CPU step.
+    CHECK(hw.write16(0x1F801114u, 0x0100u).status == jojo::R3000aBusStatus::ok);
+    hw.step(2152u);
+    CHECK(hw.timer_counter(1u) == 0u);
+    hw.step(1u);
+    CHECK(hw.timer_counter(1u) == 1u);
+
+    // Timer2 source 2 is system clock divided by eight.
+    CHECK(hw.write16(0x1F801124u, 0x0200u).status == jojo::R3000aBusStatus::ok);
+    hw.step(7u);
+    CHECK(hw.timer_counter(2u) == 0u);
+    hw.step(1u);
+    CHECK(hw.timer_counter(2u) == 1u);
+
     CHECK(hw.vblank_count() == 0u);
     hw.signal_vblank();
     CHECK(hw.vblank_count() == 1u);
