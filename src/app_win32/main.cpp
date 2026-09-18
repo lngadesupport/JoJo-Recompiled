@@ -565,6 +565,11 @@ void run_checkpoint(){
         return;
     }
 
+#if defined(_M_X64)
+    runner.value.set_native_x64_enabled(true);
+    add_log(L"Backend híbrido R3000A→x64 habilitado; operações não promovidas usam fallback de referência.");
+#endif
+
     apply_current_input(runner.value);
 
     const auto save_root=app_root()/L"saves";
@@ -599,7 +604,11 @@ void run_checkpoint(){
     }
 
     if(checkpoint_btn) SetWindowTextW(checkpoint_btn,L"PARAR JOGO");
+#if defined(_M_X64)
+    status=L"Jogo em execução • PS1 direto • R3000A→x64 híbrido.";
+#else
     status=L"Jogo em execução • PS1 direto • timing de vídeo dinâmico.";
+#endif
     add_log(L"Runtime contínuo iniciado; controles e áudio atualizam por frame.");
     refresh_actions();
     game_tick();
