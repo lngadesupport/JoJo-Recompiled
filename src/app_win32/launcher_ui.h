@@ -5,6 +5,7 @@
 #include "core/input.h"
 #include "core/settings.h"
 #include "core/settings_menu.h"
+#include "app_win32/online_ui.h"
 
 #include <cstddef>
 #include <filesystem>
@@ -25,6 +26,13 @@ enum class LauncherUiAction {
     exit_app,
     settings_changed,
     begin_binding_capture,
+    online_refresh_rooms,
+    online_host_room,
+    online_connect_room,
+    online_begin_matchmaking,
+    online_cancel_matchmaking,
+    online_leave_lobby,
+    online_start_lobby_game,
 };
 
 class LauncherUi {
@@ -57,6 +65,10 @@ public:
         AppSettings& settings,
         const InputDeviceRegistry& devices);
 
+    void char_input(
+        wchar_t ch,
+        AppSettings& settings);
+
     void open_controls() noexcept;
     void open_settings() noexcept;
     void show_main() noexcept;
@@ -64,11 +76,14 @@ public:
     [[nodiscard]] bool settings_open() const noexcept;
     [[nodiscard]] std::size_t selected_control_player() const noexcept;
     [[nodiscard]] GameAction selected_control_action() const noexcept;
+    [[nodiscard]] OnlineLobbyModel& online_model() noexcept { return online_model_; }
+    [[nodiscard]] const OnlineLobbyModel& online_model() const noexcept { return online_model_; }
 
 private:
     enum class Screen {
         main_menu,
         settings,
+        online,
     };
 
     [[nodiscard]] LauncherUiAction activate_main_item() noexcept;
@@ -87,6 +102,8 @@ private:
     std::size_t main_selection_{0};
     std::size_t selected_row_{0};
     std::size_t control_player_{0};
+    OnlineUi online_ui_{};
+    OnlineLobbyModel online_model_{};
     ULONG_PTR gdiplus_token_{0};
     std::unique_ptr<Gdiplus::Image> background_{};
 };
