@@ -11,6 +11,7 @@ constexpr std::uint32_t kBiosC0 = 0x000000C0u;
 constexpr std::uint32_t kA0InitHeap = 0x00000039u;
 constexpr std::uint32_t kA0RemoveIso9660 = 0x00000056u;
 constexpr std::uint32_t kA0RemoveIso9660Alias = 0x00000072u;
+constexpr std::uint32_t kB0ResetEntryInt = 0x00000018u;
 constexpr std::uint32_t kB0HookEntryInt = 0x00000019u;
 constexpr std::uint32_t kB0ChangeClearPad = 0x0000005Bu;
 constexpr std::uint32_t kC0ChangeClearRCnt = 0x0000000Au;
@@ -66,6 +67,14 @@ Ps1HleBiosDispatchStatus Ps1HleBios::dispatch(
     if (table_physical == kBiosA0 &&
         (selector == kA0RemoveIso9660 || selector == kA0RemoveIso9660Alias)) {
         iso9660_removed_ = true;
+        return_from_bios_call(cpu);
+        return Ps1HleBiosDispatchStatus::handled;
+    }
+
+    if (table_physical == kBiosB0 && selector == kB0ResetEntryInt) {
+        // The title ignores ResetEntryInt's BIOS-owned default-structure pointer.
+        // Clear the custom HookEntryInt state without fabricating kernel memory.
+        interrupt_hook_address_.reset();
         return_from_bios_call(cpu);
         return Ps1HleBiosDispatchStatus::handled;
     }
