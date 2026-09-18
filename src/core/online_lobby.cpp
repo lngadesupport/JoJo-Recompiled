@@ -51,6 +51,7 @@ Result<void> set_online_region(
 
 void online_reset_peer_state(OnlineLobbyModel& model) noexcept {
     model.remote_player_name = "OPPONENT";
+    model.remote_game_revision.clear();
     model.remote_ready = false;
     model.start_requested = false;
     model.chat_messages.clear();
@@ -212,6 +213,37 @@ void online_set_remote_ready(
     OnlineLobbyModel& model,
     bool ready) noexcept {
     model.remote_ready = ready;
+}
+
+Result<void> online_set_local_game_revision(
+    OnlineLobbyModel& model,
+    std::string revision) {
+    if (!revision.empty() && !valid_text(revision, 64u)) {
+        return Result<void>::failure(
+            ErrorCode::invalid_argument,
+            "local game revision must contain at most 64 printable characters");
+    }
+    model.local_game_revision = std::move(revision);
+    return Result<void>::success();
+}
+
+Result<void> online_set_remote_game_revision(
+    OnlineLobbyModel& model,
+    std::string revision) {
+    if (!revision.empty() && !valid_text(revision, 64u)) {
+        return Result<void>::failure(
+            ErrorCode::invalid_argument,
+            "remote game revision must contain at most 64 printable characters");
+    }
+    model.remote_game_revision = std::move(revision);
+    return Result<void>::success();
+}
+
+bool online_game_revision_matches(
+    const OnlineLobbyModel& model) noexcept {
+    return !model.local_game_revision.empty() &&
+        !model.remote_game_revision.empty() &&
+        model.local_game_revision == model.remote_game_revision;
 }
 
 Result<void> online_append_chat(
