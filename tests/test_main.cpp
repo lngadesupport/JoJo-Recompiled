@@ -39,7 +39,9 @@ static void test_graphics_rejects_invalid_options() {
     g.width = 9000;
     CHECK(!jojo::validate_graphics(g));
     g = {};
-    g.msaa = static_cast<jojo::Msaa>(16);
+    g.msaa = jojo::Msaa::x16;
+    CHECK(jojo::validate_graphics(g));
+    g.msaa = static_cast<jojo::Msaa>(32);
     CHECK(!jojo::validate_graphics(g));
     g = {};
     g.texture_filter = static_cast<jojo::TextureFilter>(32);
