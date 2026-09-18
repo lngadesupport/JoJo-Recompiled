@@ -21,11 +21,18 @@ struct R3000aX64MemoryAccess {
     bool write{};
 };
 
+struct R3000aX64Division {
+    MipsOp op{MipsOp::reserved};
+    std::uint8_t rs{};
+    std::uint8_t rt{};
+};
+
 struct R3000aX64Code {
     std::uint32_t entry_pc{};
     std::size_t instruction_count{};
     std::vector<std::uint8_t> bytes;
     std::optional<R3000aX64MemoryAccess> memory_access;
+    std::optional<R3000aX64Division> division;
     std::shared_ptr<void> executable_owner;
     const void* executable_entry{};
 };
