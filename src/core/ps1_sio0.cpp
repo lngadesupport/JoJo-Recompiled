@@ -153,6 +153,7 @@ void Ps1Sio0::transfer_memory_byte(
                     response = memory_checksum_;
                 } else if (memory_stage_ == 137u) {
                     response = 0x47u;
+                    ++memory_card_read_sector_count_[selected_port()];
                     more_data = false;
                     transaction_ = TransactionState::done;
                     ++memory_stage_;
@@ -214,6 +215,7 @@ void Ps1Sio0::transfer_memory_byte(
                         memory_end_byte_ = 0xFFu;
                     } else {
                         memory_end_byte_ = 0x47u;
+                        ++memory_card_write_sector_count_[selected_port()];
                     }
                     response = memory_previous_byte_;
                 } else if (memory_stage_ == 133u) {
@@ -288,6 +290,7 @@ void Ps1Sio0::transfer_byte(std::uint8_t value) noexcept {
         case TransactionState::controller_buttons_high:
             response = static_cast<std::uint8_t>(
                 pad_buttons_[selected_port()] >> 8u);
+            ++digital_pad_poll_count_[selected_port()];
             transaction_ = TransactionState::done;
             more_data = false;
             break;
@@ -457,6 +460,27 @@ Ps1MemoryCard& Ps1Sio0::memory_card(std::uint32_t port) noexcept {
 
 const Ps1MemoryCard& Ps1Sio0::memory_card(std::uint32_t port) const noexcept {
     return memory_cards_[port < memory_cards_.size() ? port : 0u];
+}
+
+std::uint64_t Ps1Sio0::digital_pad_poll_count(
+    std::uint32_t port) const noexcept {
+    return port < digital_pad_poll_count_.size()
+        ? digital_pad_poll_count_[port]
+        : 0u;
+}
+
+std::uint64_t Ps1Sio0::memory_card_read_sector_count(
+    std::uint32_t port) const noexcept {
+    return port < memory_card_read_sector_count_.size()
+        ? memory_card_read_sector_count_[port]
+        : 0u;
+}
+
+std::uint64_t Ps1Sio0::memory_card_write_sector_count(
+    std::uint32_t port) const noexcept {
+    return port < memory_card_write_sector_count_.size()
+        ? memory_card_write_sector_count_[port]
+        : 0u;
 }
 
 bool Ps1Sio0::irq_pending() const noexcept {
