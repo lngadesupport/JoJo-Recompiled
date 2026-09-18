@@ -62,6 +62,11 @@ struct Ps1BootReport {
     std::uint64_t instructions_retired{};
     std::uint64_t native_x64_instructions_retired{};
     std::uint64_t reference_instructions_retired{};
+    bool native_x64_enabled{};
+    std::uint64_t native_x64_cache_compilations{};
+    std::uint64_t native_x64_cache_reuses{};
+    std::uint64_t native_x64_cache_invalidations{};
+    std::uint64_t native_x64_cache_evictions{};
     std::uint32_t last_pc{};
     std::optional<std::uint32_t> last_opcode{};
     Ps1BootStopReason stop_reason{Ps1BootStopReason::none};
