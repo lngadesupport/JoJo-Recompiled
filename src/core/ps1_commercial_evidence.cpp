@@ -145,6 +145,15 @@ Ps1BootReport Ps1CommercialEvidenceRunner::run_segment(
     return runtime_.run(options);
 }
 
+void Ps1CommercialEvidenceRunner::set_native_x64_enabled(
+    bool enabled) noexcept {
+    runtime_.set_native_x64_enabled(enabled);
+}
+
+bool Ps1CommercialEvidenceRunner::native_x64_enabled() const noexcept {
+    return runtime_.native_x64_enabled();
+}
+
 void Ps1CommercialEvidenceRunner::signal_vblank() noexcept {
     runtime_.signal_vblank();
 }
