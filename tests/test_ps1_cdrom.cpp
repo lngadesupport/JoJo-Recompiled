@@ -51,6 +51,44 @@ int main() {
     CHECK(cd.write8(0x1F801803u, 0x00u).status ==
           jojo::R3000aBusStatus::ok);
 
+    // HINTMSK reads mirror in banks 0/2 with reserved high bits set.
+    CHECK(cd.write8(0x1F801800u, 0x01u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(cd.write8(0x1F801802u, 0x1Fu).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(cd.write8(0x1F801800u, 0x00u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK((cd.read8(0x1F801803u).value & 0x1Fu) == 0x1Fu);
+    CHECK(cd.write8(0x1F801800u, 0x02u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK((cd.read8(0x1F801803u).value & 0x1Fu) == 0x1Fu);
+    CHECK(cd.write8(0x1F801800u, 0x00u).status ==
+          jojo::R3000aBusStatus::ok);
+
+    // Init preserves HINTMSK and emits INT3 acknowledge followed by INT2.
+    CHECK(cd.write8(0x1F801801u, 0x0Au).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(cd.deferred_response_count() == 1u);
+    CHECK(cd.irq_pending());
+    CHECK(cd.write8(0x1F801800u, 0x01u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK((cd.read8(0x1F801803u).value & 0x07u) == 0x03u);
+    CHECK(cd.write8(0x1F801803u, 0x07u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(cd.write8(0x1F801800u, 0x00u).status ==
+          jojo::R3000aBusStatus::ok);
+    cd.step(33869u);
+    CHECK(cd.deferred_response_count() == 0u);
+    CHECK(cd.irq_pending());
+    CHECK(cd.write8(0x1F801800u, 0x01u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK((cd.read8(0x1F801803u).value & 0x07u) == 0x02u);
+    CHECK(cd.write8(0x1F801803u, 0x07u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(cd.write8(0x1F801800u, 0x00u).status ==
+          jojo::R3000aBusStatus::ok);
+
+
     // Getstat produces a bounded response byte.
     CHECK(cd.write8(0x1F801801u, 0x01u).status == jojo::R3000aBusStatus::ok);
     CHECK(cd.response_bytes_available() == 1u);
@@ -64,9 +102,19 @@ int main() {
     CHECK(cd.write8(0x1F801801u, 0x02u).status == jojo::R3000aBusStatus::ok);
     CHECK(cd.current_lba() == 25u);
 
-    // ReadN fetches one logical sector directly from the live session.
+    // ReadN acknowledges with INT3, then produces INT1 plus one sector.
     CHECK(cd.write8(0x1F801801u, 0x06u).status == jojo::R3000aBusStatus::ok);
+    CHECK(cd.data_bytes_available() == 0u);
+    CHECK(cd.write8(0x1F801800u, 0x01u).status == jojo::R3000aBusStatus::ok);
+    CHECK((cd.read8(0x1F801803u).value & 0x07u) == 0x03u);
+    CHECK(cd.write8(0x1F801803u, 0x07u).status == jojo::R3000aBusStatus::ok);
+    CHECK(cd.write8(0x1F801800u, 0x00u).status == jojo::R3000aBusStatus::ok);
+    cd.step(451584u);
     CHECK(cd.data_bytes_available() == 2048u);
+    CHECK(cd.write8(0x1F801800u, 0x01u).status == jojo::R3000aBusStatus::ok);
+    CHECK((cd.read8(0x1F801803u).value & 0x07u) == 0x01u);
+    CHECK(cd.write8(0x1F801803u, 0x07u).status == jojo::R3000aBusStatus::ok);
+    CHECK(cd.write8(0x1F801800u, 0x00u).status == jojo::R3000aBusStatus::ok);
     std::vector<std::uint32_t> words(512u, 0u);
     CHECK(cd.read_data_words(words) == 512u);
     CHECK(cd.data_bytes_available() == 0u);
