@@ -70,6 +70,9 @@ private:
     std::uint8_t interrupt_flags_{};
     std::uint8_t request_register_{};
     std::uint8_t status_byte_{};
+    std::uint8_t mode_{};
+    std::uint8_t filter_file_{};
+    std::uint8_t filter_channel_{};
     bool muted_{};
     bool adpcm_muted_{};
     std::array<std::uint8_t, 4> pending_audio_matrix_{
