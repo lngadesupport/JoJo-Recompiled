@@ -41,7 +41,7 @@ int main() {
         bus.store32(0x1000u, cop2(4u, 8u, 3u));
         const auto r = jojo::step_r3000a(s, bus);
         CHECK(r.status == jojo::R3000aStepStatus::retired);
-        CHECK(s.gte.data[3] == 0x12345678u);
+        CHECK(s.gte.data[3] == 0x00005678u);
         CHECK(s.pc == 0x1004u);
     }
 

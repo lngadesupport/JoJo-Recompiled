@@ -57,10 +57,10 @@ int main() {
         CHECK(s.pc == 0x80000080u && s.next_pc == 0x80000084u);
     }
 
-    // CU2 set: register transfers are implemented by Phase 4A, while GTE commands
-    // remain an explicit frontier until Phase 4B implements the required operation.
+    // CU2 set: supported GTE commands retire, while unknown real GTE opcodes
+    // remain an explicit frontier for evidence-driven Phase 4 expansion.
     {
-        const auto raw = cop2(0x10u);
+        const auto raw = (0x12u << 26) | (0x10u << 21) | 0x02u;
         TestR3000aBus bus;
         auto s = base_state();
         s.cop0.status |= kCu2;
