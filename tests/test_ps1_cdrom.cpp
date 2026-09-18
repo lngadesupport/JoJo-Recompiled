@@ -2,6 +2,7 @@
 #include "core/ps1_disc_session.h"
 #include "ps1_fixture.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
