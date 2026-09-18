@@ -87,6 +87,10 @@ R3000aNativeAluResult execute_r3000a_native_alu_block(
         return {};
     }
 
+    state.cop0.cause =
+        (state.cop0.cause & ~0x0000FC00u) |
+        (static_cast<std::uint32_t>(
+             state.external_interrupt_pending & 0xFCu) << 8u);
     state.gpr[0] = 0u;
     std::size_t retired = 0u;
 
