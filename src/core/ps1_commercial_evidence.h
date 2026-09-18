@@ -64,6 +64,8 @@ struct Ps1CommercialEvidenceReport {
     std::uint64_t total_instructions_retired{};
     std::uint32_t execution_segments{};
     std::uint64_t completed_frames{};
+    std::uint64_t observed_non_black_frames{};
+    std::uint64_t frame_change_count{};
     std::array<std::uint64_t, 2> pad_poll_count{};
     std::array<std::uint64_t, 2> memory_card_read_sector_count{};
     std::array<std::uint64_t, 2> memory_card_write_sector_count{};
@@ -75,6 +77,7 @@ struct Ps1CommercialEvidenceReport {
 
 struct Ps1GameplayValidationSummary {
     bool frame_observed{};
+    bool dynamic_video_observed{};
     bool controller_poll_observed{};
     bool audio_non_silent_observed{};
     bool memory_card_read_observed{};
