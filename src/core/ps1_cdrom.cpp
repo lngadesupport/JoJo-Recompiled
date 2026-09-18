@@ -153,6 +153,10 @@ std::uint8_t Ps1CdromController::request_register() const noexcept {
     return request_register_;
 }
 
+bool Ps1CdromController::irq_pending() const noexcept {
+    return (interrupt_enable_ & interrupt_flags_ & 0x1Fu) != 0u;
+}
+
 std::uint64_t Ps1CdromController::diagnostic_state_hash() const noexcept {
     std::uint64_t hash = kFnvOffset;
     hash_byte(hash, index_);
