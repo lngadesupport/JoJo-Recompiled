@@ -41,7 +41,18 @@ int main() {
     CHECK(hw.write8(0x1F801802u, 0x02u).status == jojo::R3000aBusStatus::ok);
     CHECK(hw.write8(0x1F801802u, 0x25u).status == jojo::R3000aBusStatus::ok);
     CHECK(hw.write8(0x1F801801u, 0x02u).status == jojo::R3000aBusStatus::ok);
+    CHECK(hw.read8(0x1F801801u).status == jojo::R3000aBusStatus::ok);
+    CHECK(hw.write8(0x1F801800u, 0x01u).status == jojo::R3000aBusStatus::ok);
+    CHECK(hw.write8(0x1F801803u, 0x07u).status == jojo::R3000aBusStatus::ok);
+    CHECK(hw.write8(0x1F801800u, 0x00u).status == jojo::R3000aBusStatus::ok);
+
     CHECK(hw.write8(0x1F801801u, 0x06u).status == jojo::R3000aBusStatus::ok);
+    CHECK(hw.read8(0x1F801801u).status == jojo::R3000aBusStatus::ok);
+    CHECK(hw.write8(0x1F801800u, 0x01u).status == jojo::R3000aBusStatus::ok);
+    CHECK(hw.write8(0x1F801803u, 0x07u).status == jojo::R3000aBusStatus::ok);
+    CHECK(hw.write8(0x1F801800u, 0x00u).status == jojo::R3000aBusStatus::ok);
+    hw.step(451584u);
+    CHECK(hw.read8(0x1F801801u).status == jojo::R3000aBusStatus::ok);
 
     // Channel 3 CD-ROM -> RAM: 2048 bytes = 512 words.
     const std::uint32_t ch3_enable = 1u << (3u * 4u + 3u);
@@ -63,8 +74,18 @@ int main() {
     // Out-of-range destination must fail before RAM mutation and leave request pending.
     CHECK(hw.write32(0x1F8010B0u, 0x001FFFFCu).status == jojo::R3000aBusStatus::ok);
     CHECK(hw.write32(0x1F8010B4u, 2u).status == jojo::R3000aBusStatus::ok);
-    // Refill one sector.
+    // Acknowledge prior INT1 and refill one sector through ReadN's
+    // INT3 -> delayed INT1 sequence.
+    CHECK(hw.write8(0x1F801800u, 0x01u).status == jojo::R3000aBusStatus::ok);
+    CHECK(hw.write8(0x1F801803u, 0x07u).status == jojo::R3000aBusStatus::ok);
+    CHECK(hw.write8(0x1F801800u, 0x00u).status == jojo::R3000aBusStatus::ok);
     CHECK(hw.write8(0x1F801801u, 0x06u).status == jojo::R3000aBusStatus::ok);
+    CHECK(hw.read8(0x1F801801u).status == jojo::R3000aBusStatus::ok);
+    CHECK(hw.write8(0x1F801800u, 0x01u).status == jojo::R3000aBusStatus::ok);
+    CHECK(hw.write8(0x1F801803u, 0x07u).status == jojo::R3000aBusStatus::ok);
+    CHECK(hw.write8(0x1F801800u, 0x00u).status == jojo::R3000aBusStatus::ok);
+    hw.step(451584u);
+    CHECK(hw.read8(0x1F801801u).status == jojo::R3000aBusStatus::ok);
     CHECK(hw.write32(0x1F8010B8u, 0x11000000u).status == jojo::R3000aBusStatus::ok);
     const auto tail_before = ram.back();
     CHECK(!hw.execute_pending_dma(ram));

@@ -22,6 +22,7 @@ constexpr std::uint32_t kB0WaitEvent = 0x0000000Au;
 constexpr std::uint32_t kB0TestEvent = 0x0000000Bu;
 constexpr std::uint32_t kB0EnableEvent = 0x0000000Cu;
 constexpr std::uint32_t kB0DisableEvent = 0x0000000Du;
+constexpr std::uint32_t kB0ReturnFromException = 0x00000017u;
 constexpr std::uint32_t kB0ResetEntryInt = 0x00000018u;
 constexpr std::uint32_t kB0HookEntryInt = 0x00000019u;
 constexpr std::uint32_t kB0Write = 0x00000035u;
@@ -90,6 +91,31 @@ void hash_optional_bool(std::uint64_t& hash,
                         const std::optional<bool>& value) noexcept {
     hash_bool(hash, value.has_value());
     if (value) hash_bool(hash, *value);
+}
+
+void hash_r3000a_state(
+    std::uint64_t& hash,
+    const R3000aState& state) noexcept {
+    for (const auto value : state.gpr) hash_u32(hash, value);
+    hash_u32(hash, state.hi);
+    hash_u32(hash, state.lo);
+    hash_u32(hash, state.pc);
+    hash_u32(hash, state.next_pc);
+    hash_bool(hash, state.pending_load.valid);
+    hash_byte(hash, state.pending_load.reg);
+    hash_u32(hash, state.pending_load.value);
+    hash_bool(hash, state.delay_slot.active);
+    hash_u32(hash, state.delay_slot.branch_pc);
+    hash_bool(hash, state.delay_slot.taken);
+    hash_u32(hash, state.delay_slot.target);
+    hash_u32(hash, state.cop0.target_address);
+    hash_u32(hash, state.cop0.bad_vaddr);
+    hash_u32(hash, state.cop0.status);
+    hash_u32(hash, state.cop0.cause);
+    hash_u32(hash, state.cop0.epc);
+    for (const auto value : state.gte.data) hash_u32(hash, value);
+    for (const auto value : state.gte.control) hash_u32(hash, value);
+    hash_byte(hash, state.external_interrupt_pending);
 }
 
 } // namespace
@@ -245,10 +271,39 @@ Ps1HleBiosDispatchStatus Ps1HleBios::dispatch(
         return Ps1HleBiosDispatchStatus::handled;
     }
 
+    if (table_physical == kBiosB0 &&
+        selector == kB0ReturnFromException) {
+        if (!interrupt_resume_state_) {
+            return Ps1HleBiosDispatchStatus::unimplemented;
+        }
+
+        // ReturnFromException restores the interrupted thread registers,
+        // SR and PC. Cause/EPC remain the exception context, while the
+        // external IRQ line reflects any I_STAT acknowledgement performed
+        // by the guest hook before returning.
+        const auto current_cause = cpu.cop0.cause;
+        const auto current_epc = cpu.cop0.epc;
+        const auto current_target = cpu.cop0.target_address;
+        const auto current_bad_vaddr = cpu.cop0.bad_vaddr;
+        const auto current_external_irq =
+            cpu.external_interrupt_pending;
+
+        cpu = *interrupt_resume_state_;
+        cpu.cop0.cause = current_cause;
+        cpu.cop0.epc = current_epc;
+        cpu.cop0.target_address = current_target;
+        cpu.cop0.bad_vaddr = current_bad_vaddr;
+        cpu.external_interrupt_pending = current_external_irq;
+        cpu.gpr[0] = 0u;
+        interrupt_resume_state_.reset();
+        return Ps1HleBiosDispatchStatus::handled;
+    }
+
     if (table_physical == kBiosB0 && selector == kB0ResetEntryInt) {
         // The title ignores ResetEntryInt's BIOS-owned default-structure pointer.
         // Clear the custom HookEntryInt state without fabricating kernel memory.
         interrupt_hook_address_.reset();
+        interrupt_resume_state_.reset();
         return_from_bios_call(cpu);
         return Ps1HleBiosDispatchStatus::handled;
     }
@@ -366,6 +421,54 @@ Ps1HleBiosDispatchStatus Ps1HleBios::dispatch(
     return Ps1HleBiosDispatchStatus::unimplemented;
 }
 
+Ps1HleBiosDispatchStatus Ps1HleBios::begin_interrupt_hook(
+    R3000aState& cpu,
+    const R3000aState& resume_state,
+    R3000aBus& bus) noexcept {
+    if (!interrupt_hook_address_ ||
+        interrupt_resume_state_) {
+        return Ps1HleBiosDispatchStatus::unimplemented;
+    }
+
+    std::array<std::uint32_t, 12> jump_buffer{};
+    for (std::size_t index = 0u;
+         index < jump_buffer.size();
+         ++index) {
+        const auto read = bus.read32(
+            *interrupt_hook_address_ +
+            static_cast<std::uint32_t>(index * 4u));
+        if (read.status != R3000aBusStatus::ok) {
+            return Ps1HleBiosDispatchStatus::unimplemented;
+        }
+        jump_buffer[index] = read.value;
+    }
+
+    const auto hook_pc = jump_buffer[0];
+    if (hook_pc == 0u) {
+        return Ps1HleBiosDispatchStatus::unimplemented;
+    }
+
+    interrupt_resume_state_ = resume_state;
+
+    // HookEntryInt uses the same 30h-byte ABI save area as setjmp:
+    // RA, SP, FP, S0-S7 and GP. It re-enters the setjmp return site
+    // with V0=1 while leaving exception-mode COP0 state active.
+    cpu.gpr[31] = jump_buffer[0];
+    cpu.gpr[29] = jump_buffer[1];
+    cpu.gpr[30] = jump_buffer[2];
+    for (std::size_t index = 0u; index < 8u; ++index) {
+        cpu.gpr[16u + index] = jump_buffer[3u + index];
+    }
+    cpu.gpr[28] = jump_buffer[11];
+    cpu.gpr[2] = 1u;
+    cpu.pc = hook_pc;
+    cpu.next_pc = hook_pc + 4u;
+    cpu.pending_load = {};
+    cpu.delay_slot = {};
+    cpu.gpr[0] = 0u;
+    return Ps1HleBiosDispatchStatus::handled;
+}
+
 Ps1HleBiosDispatchStatus Ps1HleBios::dispatch_syscall(
     R3000aState& cpu,
     std::uint32_t selector) noexcept {
@@ -399,6 +502,10 @@ std::uint64_t Ps1HleBios::diagnostic_state_hash() const noexcept {
         hash_u32(hash, heap_state_->size);
     }
     hash_optional_u32(hash, interrupt_hook_address_);
+    hash_bool(hash, interrupt_resume_state_.has_value());
+    if (interrupt_resume_state_) {
+        hash_r3000a_state(hash, *interrupt_resume_state_);
+    }
     hash_optional_bool(hash, pad_card_auto_ack_enabled_);
     hash_bool(hash, card_initialized_);
     hash_bool(hash, card_started_);

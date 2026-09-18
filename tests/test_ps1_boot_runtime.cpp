@@ -24,6 +24,122 @@ static jojo::Ps1BootRuntime make_runtime(const std::vector<std::uint32_t>& words
 }
 
 
+static void test_vblank_routes_to_r3000a_hardware_irq2() {
+    auto runtime = make_runtime({
+        test_mips::j(0x02u, 0x80010000u >> 2),
+        0x00000000u,
+    });
+
+    // Enable VBlank in I_MASK and CPU IEc + IP2 mask.
+    CHECK(runtime.bus().write16(
+              0x1F801074u, 0x0001u).status ==
+          jojo::R3000aBusStatus::ok);
+    auto state = runtime.save_state();
+    state.cpu.cop0.status |= 0x00000401u;
+    CHECK(runtime.load_state(state));
+
+    runtime.signal_vblank();
+    CHECK(runtime.cpu_state().external_interrupt_pending ==
+          0x04u);
+
+    jojo::Ps1BootOptions options{};
+    options.instruction_budget = 1u;
+    const auto report = runtime.run(options);
+    CHECK(report.interrupts_accepted == 1u);
+}
+
+static void test_runtime_continues_vblank_through_hookentryint() {
+    auto runtime = make_runtime({
+        // At entry, install HookEntryInt with a synthetic jmp_buf at 80011000.
+        test_mips::i(0x0Fu, 0u, 4u, 0x8001u),       // lui a0,8001
+        test_mips::i(0x0Du, 4u, 4u, 0x1000u),       // ori a0,a0,1000
+        test_mips::i(0x09u, 0u, 9u, 0x0019u),       // addiu t1,zero,19h
+        test_mips::i(0x09u, 0u, 10u, 0x00B0u),      // addiu t2,zero,B0h
+        test_mips::r(10u, 0u, 31u, 0u, 0x09u),      // jalr ra,t2
+        0x00000000u,
+        // Spin after install.
+        test_mips::j(0x02u, 0x80010018u >> 2),
+        0x00000000u,
+    });
+
+    // jmp_buf RA points to a tiny hook that acknowledges VBlank then B(17h).
+    constexpr std::uint32_t buffer = 0x80011000u;
+    constexpr std::uint32_t hook = 0x80011100u;
+    CHECK(runtime.bus().write32(buffer + 0x00u, hook).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(runtime.bus().write32(buffer + 0x04u, 0x801FF000u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(runtime.bus().write32(buffer + 0x08u, 0u).status ==
+          jojo::R3000aBusStatus::ok);
+    for (std::uint32_t offset = 0x0Cu; offset <= 0x2Cu; offset += 4u) {
+        CHECK(runtime.bus().write32(buffer + offset, 0u).status ==
+              jojo::R3000aBusStatus::ok);
+    }
+
+    // Hook body: clear I_STAT, call B(17h) ReturnFromException.
+    const std::array<std::uint32_t, 8> hook_words{
+        test_mips::i(0x0Fu, 0u, 8u, 0x1F80u),
+        test_mips::i(0x29u, 8u, 0u, 0x1070u),       // sh zero,I_STAT
+        test_mips::i(0x09u, 0u, 9u, 0x0017u),
+        test_mips::i(0x09u, 0u, 10u, 0x00B0u),
+        test_mips::r(10u, 0u, 31u, 0u, 0x09u),
+        0x00000000u,
+        test_mips::j(0x02u, hook >> 2),
+        0x00000000u,
+    };
+    for (std::size_t i = 0u; i < hook_words.size(); ++i) {
+        CHECK(runtime.bus().write32(
+                  hook + static_cast<std::uint32_t>(i * 4u),
+                  hook_words[i]).status ==
+              jojo::R3000aBusStatus::ok);
+    }
+
+    jojo::Ps1BootOptions setup{};
+    setup.instruction_budget = 12u;
+    const auto installed = runtime.run(setup);
+    CHECK(installed.stop_reason ==
+          jojo::Ps1BootStopReason::execution_budget_exhausted);
+    CHECK(runtime.bios_interrupt_hook_address() ==
+          std::optional<std::uint32_t>{buffer});
+
+    CHECK(runtime.bus().write16(
+              0x1F801074u, 0x0001u).status ==
+          jojo::R3000aBusStatus::ok);
+    auto state = runtime.save_state();
+    state.cpu.cop0.status |= 0x00000401u;
+    CHECK(runtime.load_state(state));
+
+    const auto interrupted_pc = runtime.cpu_state().pc;
+    runtime.signal_vblank();
+
+    jojo::Ps1BootOptions run{};
+    run.instruction_budget = 20u;
+    const auto report = runtime.run(run);
+    CHECK(report.interrupts_accepted >= 1u);
+    CHECK(report.stop_reason ==
+          jojo::Ps1BootStopReason::execution_budget_exhausted);
+    CHECK(!report.cpu_diagnostic.has_value());
+    CHECK(runtime.bus().hardware_services().interrupt_status() == 0u);
+    CHECK(runtime.cpu_state().pc != 0x80000080u);
+    CHECK(runtime.cpu_state().pc == interrupted_pc ||
+          runtime.cpu_state().pc == interrupted_pc + 4u ||
+          runtime.cpu_state().pc == 0x80010018u ||
+          runtime.cpu_state().pc == 0x8001001Cu);
+}
+
+static void test_runtime_starts_from_post_bios_cdrom_handoff() {
+    auto runtime = make_runtime({
+        test_mips::j(0x02u, 0x80010000u >> 2),
+        0x00000000u,
+    });
+
+    CHECK(runtime.bus().write8(0x1F801800u, 0x00u).status ==
+          jojo::R3000aBusStatus::ok);
+    const auto mask = runtime.bus().read8(0x1F801803u);
+    CHECK(mask.status == jojo::R3000aBusStatus::ok);
+    CHECK((mask.value & 0x1Fu) == 0x1Fu);
+}
+
 static void test_runtime_initializes_clean_room_c0_exception_entry() {
     const std::vector<std::uint32_t> words{
         0x00000000u,
@@ -560,6 +676,9 @@ static void test_deterministic_replay_matches_full_m3a_state() {
 }
 
 int main() {
+    test_runtime_starts_from_post_bios_cdrom_handoff();
+    test_vblank_routes_to_r3000a_hardware_irq2();
+    test_runtime_continues_vblank_through_hookentryint();
     test_runtime_initializes_clean_room_c0_exception_entry();
     test_instruction_budget_is_explicit_stop_reason();
     test_budget_exhaustion_keeps_bounded_recent_trace();

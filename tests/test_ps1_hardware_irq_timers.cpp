@@ -87,6 +87,34 @@ int main() {
     CHECK(hw.write16(0x1F801070u, 0x07FEu).status == jojo::R3000aBusStatus::ok);
     CHECK((hw.interrupt_status() & 0x0001u) == 0u);
 
+    // CD-ROM HINTMSK/HINTSTS drives PS1 IRQ2 (I_STAT bit 2).
+    CHECK(hw.write16(0x1F801070u, 0x0000u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(hw.write8(0x1F801800u, 0x01u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(hw.write8(0x1F801802u, 0x1Fu).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(hw.write8(0x1F801800u, 0x00u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(hw.write8(0x1F801801u, 0x01u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK((hw.interrupt_status() & 0x0004u) != 0u);
+
+    // Acknowledge the CD interrupt in HCLRCTL, then I_STAT. The line
+    // must be able to rise again for the next command.
+    CHECK(hw.write8(0x1F801800u, 0x01u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(hw.write8(0x1F801803u, 0x07u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(hw.write16(0x1F801070u, 0x07FBu).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK((hw.interrupt_status() & 0x0004u) == 0u);
+    CHECK(hw.write8(0x1F801800u, 0x00u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(hw.write8(0x1F801801u, 0x01u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK((hw.interrupt_status() & 0x0004u) != 0u);
+
     CHECK(hw.write16(0x1F801104u, 0x8000u).status == jojo::R3000aBusStatus::unsupported);
     CHECK(hw.read32(0x1F801100u).status == jojo::R3000aBusStatus::ok);
     CHECK(hw.read16(0x1F801180u).status == jojo::R3000aBusStatus::unsupported);

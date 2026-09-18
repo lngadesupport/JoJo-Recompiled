@@ -51,11 +51,59 @@ int main() {
     CHECK(cd.write8(0x1F801803u, 0x00u).status ==
           jojo::R3000aBusStatus::ok);
 
+    // HINTMSK reads mirror in banks 0/2 with reserved high bits set.
+    CHECK(cd.write8(0x1F801800u, 0x01u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(cd.write8(0x1F801802u, 0x1Fu).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(cd.write8(0x1F801800u, 0x00u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK((cd.read8(0x1F801803u).value & 0x1Fu) == 0x1Fu);
+    CHECK(cd.write8(0x1F801800u, 0x02u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK((cd.read8(0x1F801803u).value & 0x1Fu) == 0x1Fu);
+    CHECK(cd.write8(0x1F801800u, 0x00u).status ==
+          jojo::R3000aBusStatus::ok);
+
+    // Init preserves HINTMSK and emits INT3 acknowledge followed by INT2.
+    CHECK(cd.write8(0x1F801801u, 0x0Au).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(cd.deferred_response_count() == 1u);
+    CHECK(cd.irq_pending());
+    CHECK(cd.write8(0x1F801800u, 0x01u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK((cd.read8(0x1F801803u).value & 0x07u) == 0x03u);
+    CHECK(cd.read8(0x1F801801u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(cd.write8(0x1F801803u, 0x07u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(cd.write8(0x1F801800u, 0x00u).status ==
+          jojo::R3000aBusStatus::ok);
+    cd.step(33869u);
+    CHECK(cd.deferred_response_count() == 0u);
+    CHECK(cd.irq_pending());
+    CHECK(cd.write8(0x1F801800u, 0x01u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK((cd.read8(0x1F801803u).value & 0x07u) == 0x02u);
+    CHECK(cd.read8(0x1F801801u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(cd.write8(0x1F801803u, 0x07u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(cd.write8(0x1F801800u, 0x00u).status ==
+          jojo::R3000aBusStatus::ok);
+
+
     // Getstat produces a bounded response byte.
     CHECK(cd.write8(0x1F801801u, 0x01u).status == jojo::R3000aBusStatus::ok);
     CHECK(cd.response_bytes_available() == 1u);
     CHECK(cd.read8(0x1F801801u).status == jojo::R3000aBusStatus::ok);
     CHECK(cd.response_bytes_available() == 0u);
+    CHECK(cd.write8(0x1F801800u, 0x01u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(cd.write8(0x1F801803u, 0x07u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(cd.write8(0x1F801800u, 0x00u).status ==
+          jojo::R3000aBusStatus::ok);
 
     // Setloc to logical sector 25: absolute MSF is 00:02:25 (150-frame lead-in + 25).
     CHECK(cd.write8(0x1F801802u, 0x00u).status == jojo::R3000aBusStatus::ok);
@@ -63,10 +111,32 @@ int main() {
     CHECK(cd.write8(0x1F801802u, 0x25u).status == jojo::R3000aBusStatus::ok);
     CHECK(cd.write8(0x1F801801u, 0x02u).status == jojo::R3000aBusStatus::ok);
     CHECK(cd.current_lba() == 25u);
+    CHECK(cd.read8(0x1F801801u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(cd.write8(0x1F801800u, 0x01u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(cd.write8(0x1F801803u, 0x07u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(cd.write8(0x1F801800u, 0x00u).status ==
+          jojo::R3000aBusStatus::ok);
 
-    // ReadN fetches one logical sector directly from the live session.
+    // ReadN acknowledges with INT3, then produces INT1 plus one sector.
     CHECK(cd.write8(0x1F801801u, 0x06u).status == jojo::R3000aBusStatus::ok);
+    CHECK(cd.data_bytes_available() == 0u);
+    CHECK(cd.write8(0x1F801800u, 0x01u).status == jojo::R3000aBusStatus::ok);
+    CHECK((cd.read8(0x1F801803u).value & 0x07u) == 0x03u);
+    CHECK(cd.read8(0x1F801801u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(cd.write8(0x1F801803u, 0x07u).status == jojo::R3000aBusStatus::ok);
+    CHECK(cd.write8(0x1F801800u, 0x00u).status == jojo::R3000aBusStatus::ok);
+    cd.step(451584u);
     CHECK(cd.data_bytes_available() == 2048u);
+    CHECK(cd.write8(0x1F801800u, 0x01u).status == jojo::R3000aBusStatus::ok);
+    CHECK((cd.read8(0x1F801803u).value & 0x07u) == 0x01u);
+    CHECK(cd.read8(0x1F801801u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(cd.write8(0x1F801803u, 0x07u).status == jojo::R3000aBusStatus::ok);
+    CHECK(cd.write8(0x1F801800u, 0x00u).status == jojo::R3000aBusStatus::ok);
     std::vector<std::uint32_t> words(512u, 0u);
     CHECK(cd.read_data_words(words) == 512u);
     CHECK(cd.data_bytes_available() == 0u);
@@ -81,6 +151,63 @@ int main() {
     CHECK(cd.write8(0x1F801802u, 0x1Fu).status ==
           jojo::R3000aBusStatus::ok);
     CHECK(cd.diagnostic_state_hash() != cd_hash_before);
+    CHECK(cd.write8(0x1F801800u, 0x00u).status ==
+          jojo::R3000aBusStatus::ok);
+
+    // CD host audio matrix uses banked ATV0-ATV3 registers and only
+    // changes the active mix when ADPCTL.CHNGATV is written.
+    CHECK(cd.write8(0x1F801800u, 0x02u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(cd.write8(0x1F801802u, 0x70u).status ==
+          jojo::R3000aBusStatus::ok); // ATV0 L->L
+    CHECK(cd.write8(0x1F801803u, 0x10u).status ==
+          jojo::R3000aBusStatus::ok); // ATV1 L->R
+    CHECK(cd.write8(0x1F801800u, 0x03u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(cd.write8(0x1F801801u, 0x60u).status ==
+          jojo::R3000aBusStatus::ok); // ATV2 R->R
+    CHECK(cd.write8(0x1F801802u, 0x20u).status ==
+          jojo::R3000aBusStatus::ok); // ATV3 R->L
+    CHECK(cd.pending_audio_matrix() ==
+          std::array<std::uint8_t, 4>{0x70u,0x10u,0x60u,0x20u});
+    CHECK(cd.active_audio_matrix() ==
+          std::array<std::uint8_t, 4>{0x80u,0x00u,0x80u,0x00u});
+
+    CHECK(cd.write8(0x1F801803u, 0x21u).status ==
+          jojo::R3000aBusStatus::ok); // ADPMUTE + CHNGATV
+    CHECK(cd.adpcm_muted());
+    CHECK(cd.active_audio_matrix() == cd.pending_audio_matrix());
+    CHECK(cd.write8(0x1F801803u, 0x20u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(!cd.adpcm_muted());
+    CHECK(cd.write8(0x1F801800u, 0x00u).status ==
+          jojo::R3000aBusStatus::ok);
+
+    // Mute/Demute are single-phase INT3 commands and preserve
+    // deterministic CD audio state.
+    CHECK(cd.write8(0x1F801801u, 0x0Bu).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(cd.muted());
+    CHECK(cd.read8(0x1F801801u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(cd.write8(0x1F801800u, 0x01u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK((cd.read8(0x1F801803u).value & 0x07u) == 0x03u);
+    CHECK(cd.write8(0x1F801803u, 0x07u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(cd.write8(0x1F801800u, 0x00u).status ==
+          jojo::R3000aBusStatus::ok);
+
+    CHECK(cd.write8(0x1F801801u, 0x0Cu).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(!cd.muted());
+    CHECK(cd.read8(0x1F801801u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(cd.write8(0x1F801800u, 0x01u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK((cd.read8(0x1F801803u).value & 0x07u) == 0x03u);
+    CHECK(cd.write8(0x1F801803u, 0x07u).status ==
+          jojo::R3000aBusStatus::ok);
     CHECK(cd.write8(0x1F801800u, 0x00u).status ==
           jojo::R3000aBusStatus::ok);
 
