@@ -48,6 +48,7 @@ int main() {
     CHECK(hw.gpu_gp1_command_count() == 1u);
 
     // DMA2 RAM -> GP0 must use the same ingress path.
+    const auto gp0_words_before_dma = hw.gpu_gp0_word_count();
     std::vector<std::uint8_t> ram(2u * 1024u * 1024u, 0u);
     ram[0x1000u] = 0x00u;
     ram[0x1001u] = 0x00u;
@@ -65,7 +66,7 @@ int main() {
     CHECK(hw.write32(0x1F8010A8u, 0x11000001u).status == jojo::R3000aBusStatus::ok);
     CHECK(hw.execute_pending_dma(ram));
     CHECK(hw.completed_dma_transfer_count() == 1u);
-    CHECK(hw.gpu_gp0_word_count() == 3u);
+    CHECK(hw.gpu_gp0_word_count() == gp0_words_before_dma + 2u);
 
     return failures ? 1 : 0;
 }
