@@ -21,7 +21,8 @@ enum class NetworkPacketKind : std::uint8_t {
     lobby_profile,
     lobby_ready,
     lobby_chat,
-    lobby_start
+    lobby_start,
+    lobby_game_revision
 };
 
 struct NetworkPacket {
