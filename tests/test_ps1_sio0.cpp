@@ -38,6 +38,8 @@ int main() {
     CHECK(exchange(sio, 0x00u) == 0x5Au);
     CHECK(exchange(sio, 0x00u) == 0xEFu);
     CHECK(exchange(sio, 0x00u) == 0xBFu);
+    CHECK(sio.digital_pad_poll_count(0u) == 1u);
+    CHECK(sio.digital_pad_poll_count(1u) == 0u);
 
     // Once the final byte deasserts DSR, acknowledge clears the sticky SIO IRQ.
     CHECK(sio.write16(0x1F80104Au, 0x1013u).status == jojo::R3000aBusStatus::ok);
