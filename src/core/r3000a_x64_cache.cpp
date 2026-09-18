@@ -124,6 +124,7 @@ R3000aX64BlockCache::get_or_compile_instruction(
     if (found != entries_.end() &&
         found->second.fingerprint == fingerprint &&
         found->second.abi_version == kR3000aX64BackendAbiVersion) {
+        found->second.last_use_serial = ++use_serial_;
         ++reuses_;
         return Result<const R3000aX64Code*>::success(&found->second.code);
     }
