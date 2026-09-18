@@ -696,9 +696,6 @@ std::uint64_t Ps1Spu::diagnostic_state_hash() const noexcept {
     for (unsigned shift = 0u; shift < 64u; shift += 8u) {
         hash_byte(hash, static_cast<std::uint8_t>(generated_sample_frames_ >> shift));
     }
-    for (unsigned shift = 0u; shift < 64u; shift += 8u) {
-        hash_byte(hash, static_cast<std::uint8_t>(nonzero_sample_count_ >> shift));
-    }
     for (const auto value : sound_ram_) hash_byte(hash, value);
     return hash;
 }
