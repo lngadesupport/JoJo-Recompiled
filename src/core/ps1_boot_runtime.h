@@ -28,6 +28,7 @@ public:
         const Ps1Executable& executable);
 
     [[nodiscard]] Ps1BootReport run(const Ps1BootOptions& options) noexcept;
+    void signal_vblank() noexcept;
     [[nodiscard]] bool apply_diagnostic_bios_fallback(Ps1BiosFallback fallback) noexcept;
     [[nodiscard]] std::uint64_t diagnostic_state_hash() const noexcept;
     [[nodiscard]] Ps1DisplayFrame display_frame() const;
