@@ -12,7 +12,7 @@ namespace jojo {
 namespace {
 
 constexpr std::array<std::uint8_t, 8> kMagic{
-    'J','O','J','O','L','A','N','1'};
+    'J','O','J','O','L','A','N','2'};
 constexpr std::uint8_t kDiscoveryRequest = 1u;
 constexpr std::uint8_t kDiscoveryAdvertisement = 2u;
 
