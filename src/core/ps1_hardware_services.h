@@ -65,6 +65,7 @@ public:
     void cancel_pending_dma_transfer() noexcept;
     [[nodiscard]] std::uint64_t completed_dma_transfer_count() const noexcept;
     [[nodiscard]] std::uint64_t vblank_count() const noexcept;
+    [[nodiscard]] const Ps1CdromController& cdrom() const noexcept;
 
     [[nodiscard]] std::uint32_t gpu_status() const noexcept;
     [[nodiscard]] std::uint64_t gpu_gp0_word_count() const noexcept;
