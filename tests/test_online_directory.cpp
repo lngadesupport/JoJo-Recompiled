@@ -62,8 +62,9 @@ void test_publish_list_and_expiry() {
         CHECK(result.rooms[0].name == "DIO'S MANSION");
         CHECK(result.rooms[0].region == "SOUTH AMERICA");
         CHECK(result.rooms[0].game_revision == "SLUS_010.60");
-        CHECK(result.rooms[0].gameplay_endpoint.ipv4 ==
-              std::array<std::uint8_t, 4>{127u, 0u, 0u, 1u});
+        const std::array<std::uint8_t, 4> loopback{
+            127u, 0u, 0u, 1u};
+        CHECK(result.rooms[0].gameplay_endpoint.ipv4 == loopback);
         CHECK(result.rooms[0].gameplay_endpoint.port == 27886u);
     }
 
