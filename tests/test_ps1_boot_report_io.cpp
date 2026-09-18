@@ -22,6 +22,11 @@ static jojo::Ps1BootReport make_report(std::uint64_t retired) {
     report.instructions_retired = retired;
     report.native_x64_instructions_retired = 1u;
     report.reference_instructions_retired = retired > 0u ? retired - 1u : 0u;
+    report.native_x64_enabled = true;
+    report.native_x64_cache_compilations = 3u;
+    report.native_x64_cache_reuses = 4u;
+    report.native_x64_cache_invalidations = 5u;
+    report.native_x64_cache_evictions = 6u;
     report.last_pc = 0x800000A0u;
     report.bios_call_count = 1u;
     report.recent_bios_calls.push_back({
@@ -77,6 +82,11 @@ int main() {
     CHECK(text.find("instructions_retired=2\n") != std::string::npos);
     CHECK(text.find("native_x64_instructions_retired=1\n") != std::string::npos);
     CHECK(text.find("reference_instructions_retired=1\n") != std::string::npos);
+    CHECK(text.find("native_x64_enabled=1\n") != std::string::npos);
+    CHECK(text.find("native_x64_cache_compilations=3\n") != std::string::npos);
+    CHECK(text.find("native_x64_cache_reuses=4\n") != std::string::npos);
+    CHECK(text.find("native_x64_cache_invalidations=5\n") != std::string::npos);
+    CHECK(text.find("native_x64_cache_evictions=6\n") != std::string::npos);
     CHECK(text.find("last_pc=0x800000a0\n") != std::string::npos);
     CHECK(text.find("bios_event_count=1\n") != std::string::npos);
     CHECK(text.find("bios_event_0_selector=0x0000003f\n") != std::string::npos);
