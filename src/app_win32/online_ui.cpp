@@ -356,7 +356,7 @@ void draw_lobby(Gdiplus::Graphics& g, const OnlineLobbyModel& model, const std::
     // Player 2 / opponent
     outline(g, 860.0f, 260.0f, 230.0f, 185.0f, kWhite, 3.0f);
     fill(g, 860.0f, 260.0f, 230.0f, 44.0f, kOrange);
-    draw_text(g, L"OPPONENT", 870.0f, 262.0f, 210.0f, 40.0f, 22.0f, kWhite, true,
+    draw_text(g, widen(model.remote_player_name), 870.0f, 262.0f, 210.0f, 40.0f, 22.0f, kWhite, true,
               Gdiplus::StringAlignmentCenter);
     draw_text(g, L"+", 860.0f, 305.0f, 230.0f, 140.0f, 70.0f, kWhite, true,
               Gdiplus::StringAlignmentCenter);
@@ -376,13 +376,40 @@ void draw_lobby(Gdiplus::Graphics& g, const OnlineLobbyModel& model, const std::
     }
     draw_text(g, L"READY", 515.0f, 644.0f, 150.0f, 48.0f, 24.0f, kWhite, true);
 
+    outline(g, 895.0f, 652.0f, 34.0f, 34.0f, kWhite, 3.0f);
+    if (model.remote_ready) {
+        fill(g, 901.0f, 658.0f, 22.0f, 22.0f, kGreen);
+    }
+    draw_text(g, L"RIVAL READY", 940.0f, 644.0f, 175.0f, 48.0f, 20.0f, kWhite, true);
+
+    const bool can_start =
+        model.local_player_is_host && model.ready && model.remote_ready;
     button(g, L"START", 880.0f, 565.0f, 230.0f, 62.0f,
-           model.local_player_is_host && model.ready ? kOrange : kGray,
-           model.local_player_is_host && model.ready);
+           can_start ? kOrange : kGray,
+           can_start);
 
     draw_text(g, L"CHAT", 1220.0f, 215.0f, 260.0f, 48.0f, 31.0f, kWhite, true,
               Gdiplus::StringAlignmentCenter);
     outline(g, 1180.0f, 265.0f, 340.0f, 370.0f, kWhite, 3.0f);
+    const std::size_t visible_messages = 8u;
+    const std::size_t begin =
+        model.chat_messages.size() > visible_messages
+        ? model.chat_messages.size() - visible_messages
+        : 0u;
+    float chat_y = 280.0f;
+    for (std::size_t i = begin; i < model.chat_messages.size(); ++i) {
+        const auto& message = model.chat_messages[i];
+        draw_text(
+            g,
+            widen(message.sender) + L": " + widen(message.text),
+            1194.0f,
+            chat_y,
+            312.0f,
+            38.0f,
+            16.0f,
+            kWhite);
+        chat_y += 42.0f;
+    }
     outline(g, 1180.0f, 650.0f, 340.0f, 48.0f, kWhite, 2.0f);
     draw_text(g, chat.empty() ? L"TYPE A MESSAGE..." : chat,
               1190.0f, 650.0f, 320.0f, 48.0f, 18.0f, chat.empty() ? kMuted : kWhite);
@@ -400,6 +427,23 @@ void OnlineUi::show_home() noexcept {
     text_field_ = TextField::none;
     selected_row_ = 0u;
     selected_room_row_ = 0u;
+}
+
+std::string OnlineUi::take_chat_message() {
+    if (chat_draft_.empty()) return {};
+    const int required = WideCharToMultiByte(
+        CP_UTF8, 0, chat_draft_.data(),
+        static_cast<int>(chat_draft_.size()),
+        nullptr, 0, nullptr, nullptr);
+    if (required <= 0) return {};
+    std::string result(static_cast<std::size_t>(required), '\0');
+    WideCharToMultiByte(
+        CP_UTF8, 0, chat_draft_.data(),
+        static_cast<int>(chat_draft_.size()),
+        result.data(), required, nullptr, nullptr);
+    chat_draft_.clear();
+    text_field_ = TextField::chat;
+    return result;
 }
 
 void OnlineUi::cycle_region(
@@ -648,10 +692,10 @@ OnlineUiAction OnlineUi::mouse_up(
         }
         if (inside(x, y, 455, 635, 675, 700)) {
             online_set_ready(model, !model.ready);
-            return OnlineUiAction::none;
+            return OnlineUiAction::ready_changed;
         }
         if (inside(x, y, 880, 565, 1110, 627) &&
-            model.local_player_is_host && model.ready) {
+            model.local_player_is_host && model.ready && model.remote_ready) {
             return OnlineUiAction::start_lobby_game;
         }
         if (inside(x, y, 1180, 650, 1520, 698)) {
@@ -696,8 +740,17 @@ OnlineUiAction OnlineUi::key_down(
                model.screen == OnlineLobbyScreen::connecting) {
         if (key == VK_RETURN) return OnlineUiAction::cancel_matchmaking;
     } else if (model.screen == OnlineLobbyScreen::lobby) {
-        if (key == 'R') online_set_ready(model, !model.ready);
-        if (key == VK_RETURN && model.local_player_is_host && model.ready) {
+        if (text_field_ == TextField::chat && key == VK_RETURN) {
+            return chat_draft_.empty()
+                ? OnlineUiAction::none
+                : OnlineUiAction::send_chat_message;
+        }
+        if (key == 'R') {
+            online_set_ready(model, !model.ready);
+            return OnlineUiAction::ready_changed;
+        }
+        if (key == VK_RETURN && model.local_player_is_host &&
+            model.ready && model.remote_ready) {
             return OnlineUiAction::start_lobby_game;
         }
     }
