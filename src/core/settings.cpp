@@ -52,7 +52,8 @@ bool valid_msaa(Msaa m) noexcept {
         case Msaa::off:
         case Msaa::x2:
         case Msaa::x4:
-        case Msaa::x8: return true;
+        case Msaa::x8:
+        case Msaa::x16: return true;
     }
     return false;
 }
@@ -149,6 +150,10 @@ bool validate_graphics(const GraphicsSettings& s) noexcept {
 bool validate_audio(const AudioSettings& s) noexcept {
     const auto valid_volume = [](int value) { return value >= 0 && value <= 100; };
     return valid_volume(s.master_volume) && valid_volume(s.music_volume) && valid_volume(s.effects_volume);
+}
+
+bool validate_accessibility(const AccessibilitySettings& s) noexcept {
+    return s.menu_text_scale >= 100 && s.menu_text_scale <= 150;
 }
 
 bool validate_input(const InputSettings& settings) noexcept {
@@ -267,6 +272,16 @@ Result<AppSettings> load_settings(const std::filesystem::path& path) {
             auto p = parse_int(value); if (!p) return Result<AppSettings>::failure(p.error, p.detail); result.audio.effects_volume = p.value;
         } else if (key == "mute_when_unfocused") {
             auto p = parse_bool(value); if (!p) return Result<AppSettings>::failure(p.error, p.detail); result.audio.mute_when_unfocused = p.value;
+        } else if (key == "accessibility_high_contrast_ui") {
+            auto p = parse_bool(value); if (!p) return Result<AppSettings>::failure(p.error, p.detail); result.accessibility.high_contrast_ui = p.value;
+        } else if (key == "accessibility_reduce_flashing") {
+            auto p = parse_bool(value); if (!p) return Result<AppSettings>::failure(p.error, p.detail); result.accessibility.reduce_flashing = p.value;
+        } else if (key == "accessibility_reduce_screen_shake") {
+            auto p = parse_bool(value); if (!p) return Result<AppSettings>::failure(p.error, p.detail); result.accessibility.reduce_screen_shake = p.value;
+        } else if (key == "accessibility_hold_assist") {
+            auto p = parse_bool(value); if (!p) return Result<AppSettings>::failure(p.error, p.detail); result.accessibility.hold_assist = p.value;
+        } else if (key == "accessibility_menu_text_scale") {
+            auto p = parse_int(value); if (!p) return Result<AppSettings>::failure(p.error, p.detail); result.accessibility.menu_text_scale = p.value;
         }
     }
 
@@ -275,6 +290,9 @@ Result<AppSettings> load_settings(const std::filesystem::path& path) {
     }
     if (!validate_audio(result.audio)) {
         return Result<AppSettings>::failure(ErrorCode::invalid_settings, "audio settings are outside supported ranges");
+    }
+    if (!validate_accessibility(result.accessibility)) {
+        return Result<AppSettings>::failure(ErrorCode::invalid_settings, "accessibility settings are outside supported ranges");
     }
     if (!validate_input(result.input)) {
         return Result<AppSettings>::failure(ErrorCode::invalid_settings, "input settings are invalid");
@@ -288,6 +306,9 @@ Result<void> save_settings_atomic(const std::filesystem::path& path, const AppSe
     }
     if (!validate_audio(settings.audio)) {
         return Result<void>::failure(ErrorCode::invalid_settings, "audio settings are outside supported ranges");
+    }
+    if (!validate_accessibility(settings.accessibility)) {
+        return Result<void>::failure(ErrorCode::invalid_settings, "accessibility settings are outside supported ranges");
     }
     if (!validate_input(settings.input)) {
         return Result<void>::failure(ErrorCode::invalid_settings, "input settings are invalid");
@@ -316,6 +337,11 @@ Result<void> save_settings_atomic(const std::filesystem::path& path, const AppSe
         out << "music_volume=" << settings.audio.music_volume << '\n';
         out << "effects_volume=" << settings.audio.effects_volume << '\n';
         out << "mute_when_unfocused=" << (settings.audio.mute_when_unfocused ? 1 : 0) << '\n';
+        out << "accessibility_high_contrast_ui=" << (settings.accessibility.high_contrast_ui ? 1 : 0) << '\n';
+        out << "accessibility_reduce_flashing=" << (settings.accessibility.reduce_flashing ? 1 : 0) << '\n';
+        out << "accessibility_reduce_screen_shake=" << (settings.accessibility.reduce_screen_shake ? 1 : 0) << '\n';
+        out << "accessibility_hold_assist=" << (settings.accessibility.hold_assist ? 1 : 0) << '\n';
+        out << "accessibility_menu_text_scale=" << settings.accessibility.menu_text_scale << '\n';
         for (std::size_t player = 0; player < settings.input.players.size(); ++player) {
             out << "selected_device.p" << (player + 1) << '=' << settings.input.players[player].selected_device << '\n';
             for (const auto action : all_game_actions()) {
