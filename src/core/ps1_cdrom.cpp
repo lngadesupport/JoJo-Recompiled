@@ -85,8 +85,21 @@ R3000aBusResult Ps1CdromController::write8(std::uint32_t physical,
         return {R3000aBusStatus::ok, 0u};
     }
     if (physical == kCdCommandResponse) {
-        if (index_ != 0u) return {R3000aBusStatus::unsupported, 0u};
-        return execute_command(value);
+        if (index_ == 0u) return execute_command(value);
+        if (index_ == 1u) {
+            // WRDATA is used only by manual sound-map uploads. Accept the
+            // host-interface write; no sound-map transfer is active yet.
+            return {R3000aBusStatus::ok, 0u};
+        }
+        if (index_ == 2u) {
+            // CI coding-info register for manual XA sound-map mode.
+            return {R3000aBusStatus::ok, 0u};
+        }
+        if (index_ == 3u) {
+            pending_audio_matrix_[2] = value; // ATV2 R->R
+            return {R3000aBusStatus::ok, 0u};
+        }
+        return {R3000aBusStatus::unsupported, 0u};
     }
     if (physical == kCdParameterData) {
         if (index_ == 0u) {
@@ -98,6 +111,14 @@ R3000aBusResult Ps1CdromController::write8(std::uint32_t physical,
         }
         if (index_ == 1u) {
             interrupt_enable_ = static_cast<std::uint8_t>(value & 0x1Fu);
+            return {R3000aBusStatus::ok, 0u};
+        }
+        if (index_ == 2u) {
+            pending_audio_matrix_[0] = value; // ATV0 L->L
+            return {R3000aBusStatus::ok, 0u};
+        }
+        if (index_ == 3u) {
+            pending_audio_matrix_[3] = value; // ATV3 R->L
             return {R3000aBusStatus::ok, 0u};
         }
         return {R3000aBusStatus::unsupported, 0u};
@@ -117,9 +138,15 @@ R3000aBusResult Ps1CdromController::write8(std::uint32_t physical,
             if ((value & 0x40u) != 0u) parameters_.clear();
             return {R3000aBusStatus::ok, 0u};
         }
-        if (index_ == 2u || index_ == 3u) {
-            // XA volume matrix/apply registers. Preserve the write contract
-            // without inventing XA mixing until the title requires it.
+        if (index_ == 2u) {
+            pending_audio_matrix_[1] = value; // ATV1 L->R
+            return {R3000aBusStatus::ok, 0u};
+        }
+        if (index_ == 3u) {
+            adpcm_muted_ = (value & 0x01u) != 0u;
+            if ((value & 0x20u) != 0u) {
+                active_audio_matrix_ = pending_audio_matrix_;
+            }
             return {R3000aBusStatus::ok, 0u};
         }
         return {R3000aBusStatus::unsupported, 0u};
@@ -198,6 +225,20 @@ bool Ps1CdromController::muted() const noexcept {
     return muted_;
 }
 
+bool Ps1CdromController::adpcm_muted() const noexcept {
+    return adpcm_muted_;
+}
+
+const std::array<std::uint8_t, 4>&
+Ps1CdromController::pending_audio_matrix() const noexcept {
+    return pending_audio_matrix_;
+}
+
+const std::array<std::uint8_t, 4>&
+Ps1CdromController::active_audio_matrix() const noexcept {
+    return active_audio_matrix_;
+}
+
 std::uint64_t Ps1CdromController::diagnostic_state_hash() const noexcept {
     std::uint64_t hash = kFnvOffset;
     hash_byte(hash, index_);
@@ -206,6 +247,9 @@ std::uint64_t Ps1CdromController::diagnostic_state_hash() const noexcept {
     hash_byte(hash, request_register_);
     hash_byte(hash, status_byte_);
     hash_byte(hash, static_cast<std::uint8_t>(muted_ ? 1u : 0u));
+    hash_byte(hash, static_cast<std::uint8_t>(adpcm_muted_ ? 1u : 0u));
+    for (const auto value : pending_audio_matrix_) hash_byte(hash, value);
+    for (const auto value : active_audio_matrix_) hash_byte(hash, value);
     hash_u64(hash, current_lba_);
     hash_bytes(hash, parameters_);
     hash_bytes(hash, responses_);
