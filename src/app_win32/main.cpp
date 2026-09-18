@@ -123,12 +123,87 @@ fs::path app_root() {
     fs::path p(raw); CoTaskMemFree(raw); return p/L"JOJO Recompiled";
 }
 
-fs::path executable_dir() {
+fs::path executable_path() {
     std::wstring buffer(32768,L'\0');
     const DWORD length=GetModuleFileNameW(nullptr,buffer.data(),static_cast<DWORD>(buffer.size()));
-    if(length==0 || length>=buffer.size()) return fs::current_path();
+    if(length==0 || length>=buffer.size()) return {};
     buffer.resize(length);
-    return fs::path(buffer).parent_path();
+    return fs::path(buffer);
+}
+
+fs::path executable_dir() {
+    const auto path=executable_path();
+    return path.empty()?fs::current_path():path.parent_path();
+}
+
+bool create_desktop_shortcut_on_first_run() {
+    const auto marker_dir=app_root()/L"config";
+    const auto marker_path=marker_dir/L"desktop-shortcut-created.flag";
+    std::error_code ec;
+    if(fs::exists(marker_path,ec)) return true;
+
+    const auto exe=executable_path();
+    if(exe.empty()) return false;
+
+    PWSTR raw_desktop=nullptr;
+    if(FAILED(SHGetKnownFolderPath(
+            FOLDERID_Desktop,
+            KF_FLAG_DEFAULT,
+            nullptr,
+            &raw_desktop))) {
+        return false;
+    }
+    const fs::path shortcut_path=
+        fs::path(raw_desktop)/L"JOJO Recompiled.lnk";
+    CoTaskMemFree(raw_desktop);
+
+    HRESULT result=S_OK;
+    if(!fs::exists(shortcut_path,ec)) {
+        IShellLinkW* shell_link=nullptr;
+        result=CoCreateInstance(
+            CLSID_ShellLink,
+            nullptr,
+            CLSCTX_INPROC_SERVER,
+            IID_PPV_ARGS(&shell_link));
+        if(SUCCEEDED(result)) {
+            const auto working_dir=exe.parent_path();
+            result=shell_link->SetPath(exe.c_str());
+            if(SUCCEEDED(result)) {
+                result=shell_link->SetWorkingDirectory(working_dir.c_str());
+            }
+            if(SUCCEEDED(result)) {
+                result=shell_link->SetDescription(L"JoJo Recompiled");
+            }
+            if(SUCCEEDED(result)) {
+                result=shell_link->SetIconLocation(exe.c_str(),0);
+            }
+
+            IPersistFile* persist=nullptr;
+            if(SUCCEEDED(result)) {
+                result=shell_link->QueryInterface(IID_PPV_ARGS(&persist));
+            }
+            if(SUCCEEDED(result)) {
+                result=persist->Save(shortcut_path.c_str(),TRUE);
+            }
+            if(persist) persist->Release();
+            shell_link->Release();
+        }
+    }
+    if(FAILED(result)) return false;
+
+    fs::create_directories(marker_dir,ec);
+    if(ec) return false;
+    const HANDLE marker=CreateFileW(
+        marker_path.c_str(),
+        GENERIC_WRITE,
+        FILE_SHARE_READ,
+        nullptr,
+        CREATE_ALWAYS,
+        FILE_ATTRIBUTE_HIDDEN,
+        nullptr);
+    if(marker==INVALID_HANDLE_VALUE) return false;
+    CloseHandle(marker);
+    return true;
 }
 
 void add_log(std::wstring s) {
@@ -773,6 +848,8 @@ int WINAPI wWinMain(HINSTANCE inst,HINSTANCE,PWSTR,int show){
     if(startup && startup.value) source=startup.value->wstring();
     else if(!startup) status=L"Autodetecção de Data/ROM falhou: "+wide(startup.detail);
 
+    const bool desktop_shortcut_ready=create_desktop_shortcut_on_first_run();
+
     make_fonts();edit_brush=CreateSolidBrush(PANEL);
 
     WNDCLASSEXW game_class{};
@@ -788,6 +865,13 @@ int WINAPI wWinMain(HINSTANCE inst,HINSTANCE,PWSTR,int show){
     if(!RegisterClassExW(&c)){CoUninitialize();return 3;}
     win=CreateWindowExW(0,c.lpszClassName,L"JOJO Recompiled",WS_OVERLAPPED|WS_CAPTION|WS_SYSMENU|WS_MINIMIZEBOX,CW_USEDEFAULT,CW_USEDEFAULT,1018,880,nullptr,nullptr,inst,nullptr);
     if(!win){CoUninitialize();return 4;}
+    if(desktop_shortcut_ready) {
+        add_log(L"Atalho do JoJo Recompiled disponível na Área de Trabalho.");
+        InvalidateRect(win,nullptr,FALSE);
+    } else {
+        add_log(L"Aviso: não foi possível criar o atalho na Área de Trabalho.");
+        InvalidateRect(win,nullptr,FALSE);
+    }
     ShowWindow(win,show);UpdateWindow(win);
     MSG msg{};while(GetMessageW(&msg,nullptr,0,0)>0){TranslateMessage(&msg);DispatchMessageW(&msg);}
     if(game_window && IsWindow(game_window)) DestroyWindow(game_window);
