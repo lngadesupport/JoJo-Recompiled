@@ -12,7 +12,7 @@ constexpr std::uint64_t kFnvOffset = 14695981039346656037ull;
 constexpr std::uint64_t kFnvPrime = 1099511628211ull;
 
 std::uint8_t xor_checksum(
-    const std::array<std::uint8_t, Ps1MemoryCard::raw_size>& data,
+    const std::vector<std::uint8_t>& data,
     std::size_t offset,
     std::size_t count) noexcept {
     std::uint8_t value = 0u;
@@ -42,19 +42,19 @@ Result<void> replace_file(
 
 } // namespace
 
-Ps1MemoryCard::Ps1MemoryCard() {
+Ps1MemoryCard::Ps1MemoryCard() : data_(raw_size, 0u) {
     format_blank();
 }
 
 void Ps1MemoryCard::set_frame_checksum(
-    std::array<std::uint8_t, raw_size>& data,
+    std::vector<std::uint8_t>& data,
     std::size_t frame) noexcept {
     const auto offset = frame * sector_size;
     data[offset + 127u] = xor_checksum(data, offset, 127u);
 }
 
 void Ps1MemoryCard::format_blank() noexcept {
-    data_.fill(0u);
+    std::fill(data_.begin(), data_.end(), 0u);
 
     data_[0u] = static_cast<std::uint8_t>('M');
     data_[1u] = static_cast<std::uint8_t>('C');
