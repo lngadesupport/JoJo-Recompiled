@@ -69,6 +69,8 @@ private:
     void cycle_max_players(
         OnlineLobbyModel& model,
         int direction) noexcept;
+    void move_name_keyboard(int dx, int dy) noexcept;
+    void activate_name_keyboard_key(OnlineLobbyModel& model);
 
     TextField text_field_{TextField::none};
     bool name_keyboard_open_{false};
