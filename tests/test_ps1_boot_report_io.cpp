@@ -19,6 +19,7 @@ static std::string read_text(const fs::path& path) {
 static jojo::Ps1BootReport make_report(std::uint64_t retired) {
     jojo::Ps1BootReport report{};
     report.stop_reason = jojo::Ps1BootStopReason::bios_call_unimplemented;
+    report.execution_steps = retired + 1u;
     report.instructions_retired = retired;
     report.native_x64_instructions_retired = 1u;
     report.reference_instructions_retired = retired > 0u ? retired - 1u : 0u;
@@ -79,6 +80,7 @@ int main() {
     const auto text = jojo::format_ps1_boot_report(report);
     CHECK(text.find("format=jojo-m3a-checkpoint-v1\n") == 0u);
     CHECK(text.find("stop_reason=bios_call_unimplemented\n") != std::string::npos);
+    CHECK(text.find("execution_steps=3\n") != std::string::npos);
     CHECK(text.find("instructions_retired=2\n") != std::string::npos);
     CHECK(text.find("native_x64_instructions_retired=1\n") != std::string::npos);
     CHECK(text.find("reference_instructions_retired=1\n") != std::string::npos);
