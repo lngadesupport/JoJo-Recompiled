@@ -13,6 +13,12 @@ namespace {
 constexpr std::uint32_t kBiosA0 = 0x000000A0u;
 constexpr std::uint32_t kBiosB0 = 0x000000B0u;
 constexpr std::uint32_t kBiosC0 = 0x000000C0u;
+constexpr std::uint32_t kA0SendGp1Command = 0x00000048u;
+constexpr std::uint32_t kA0GpuCw = 0x00000049u;
+constexpr std::uint32_t kA0GetGpuStatus = 0x0000004Du;
+constexpr std::uint32_t kA0GpuSync = 0x0000004Eu;
+constexpr std::uint32_t kGpuGp0 = 0x1F801810u;
+constexpr std::uint32_t kGpuGp1 = 0x1F801814u;
 constexpr std::uint64_t kFnvOffset = 14695981039346656037ull;
 constexpr std::uint64_t kFnvPrime = 1099511628211ull;
 
@@ -218,6 +224,44 @@ Ps1BootReport Ps1BootRuntime::run(const Ps1BootOptions& options) noexcept {
                 cpu_.gpr[7],
                 cpu_.gpr[31],
             }, options.bios_event_capacity);
+            if (*physical_pc == kBiosA0) {
+                const auto selector = cpu_.gpr[9];
+                if (selector == kA0SendGp1Command) {
+                    const auto out = bus_.write32(kGpuGp1, cpu_.gpr[4]);
+                    if (out.status != R3000aBusStatus::ok) {
+                        report.unsupported_access = bus_.last_unsupported_access();
+                        return finish(Ps1BootStopReason::gpu_command_unimplemented);
+                    }
+                    return_from_bios_call(cpu_);
+                    diagnostic_bios_frontier_pending_ = false;
+                    continue;
+                }
+                if (selector == kA0GpuCw) {
+                    const auto out = bus_.write32(kGpuGp0, cpu_.gpr[4]);
+                    if (out.status != R3000aBusStatus::ok) {
+                        report.unsupported_access = bus_.last_unsupported_access();
+                        return finish(Ps1BootStopReason::gpu_command_unimplemented);
+                    }
+                    cpu_.gpr[2] = 0u;
+                    return_from_bios_call(cpu_);
+                    diagnostic_bios_frontier_pending_ = false;
+                    continue;
+                }
+                if (selector == kA0GetGpuStatus) {
+                    cpu_.gpr[2] = bus_.hardware_services().gpu_status();
+                    return_from_bios_call(cpu_);
+                    diagnostic_bios_frontier_pending_ = false;
+                    continue;
+                }
+                if (selector == kA0GpuSync) {
+                    // The current ingress executes accepted commands synchronously.
+                    cpu_.gpr[2] = 0u;
+                    return_from_bios_call(cpu_);
+                    diagnostic_bios_frontier_pending_ = false;
+                    continue;
+                }
+            }
+
             const auto bios_status = bios_.dispatch(cpu_, *physical_pc, cpu_.gpr[9]);
             if (bios_status == Ps1HleBiosDispatchStatus::handled) {
                 diagnostic_bios_frontier_pending_ = false;
