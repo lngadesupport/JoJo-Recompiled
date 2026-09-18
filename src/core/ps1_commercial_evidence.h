@@ -40,6 +40,7 @@ struct Ps1CommercialEvidenceReport {
     Ps1CommercialFrontierClass frontier{Ps1CommercialFrontierClass::none};
     Ps1BootReport boot{};
     std::uint64_t total_instructions_retired{};
+    std::uint32_t execution_segments{};
     std::optional<Ps1CommercialFrameEvidence> first_frame{};
     std::vector<Ps1CommercialDiagnosticDecision> diagnostic_decisions;
 };

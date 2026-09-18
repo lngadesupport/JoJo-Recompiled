@@ -97,6 +97,7 @@ std::string format_ps1_commercial_evidence_report(
     out << "frontier=" << ps1_commercial_frontier_class_name(report.frontier) << '\n';
     out << "stop_reason=" << ps1_boot_stop_reason_name(report.boot.stop_reason) << '\n';
     out << "total_instructions_retired=" << report.total_instructions_retired << '\n';
+    out << "execution_segments=" << report.execution_segments << '\n';
     out << "segment_instructions_retired=" << report.boot.instructions_retired << '\n';
     out << "last_pc=" << hex32(report.boot.last_pc) << '\n';
     out << "last_opcode=" << optional_hex32(report.boot.last_opcode) << '\n';

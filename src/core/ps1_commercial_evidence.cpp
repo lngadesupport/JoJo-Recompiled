@@ -72,6 +72,7 @@ Ps1CommercialEvidenceReport Ps1CommercialEvidenceRunner::run(
     while (true) {
         auto segment = runtime_.run(options.boot);
         ++execution_segments;
+        report.execution_segments = execution_segments;
         report.total_instructions_retired += segment.instructions_retired;
         report.boot = std::move(segment);
 
