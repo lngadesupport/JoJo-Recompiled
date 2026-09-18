@@ -1115,7 +1115,7 @@ LRESULT CALLBACK proc(HWND h,UINT m,WPARAM w,LPARAM l){
         return 0;
     case WM_INPUT:
         if(input_host){
-            input_host->handle_raw_input(reinterpret_cast<HRAWINPUT>(l));
+            (void)input_host->handle_raw_input(reinterpret_cast<HRAWINPUT>(l));
             poll_binding_capture();
         }
         return 0;
