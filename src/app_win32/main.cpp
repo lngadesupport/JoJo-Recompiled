@@ -1042,7 +1042,7 @@ int WINAPI wWinMain(HINSTANCE inst,HINSTANCE,PWSTR,int show){
     WNDCLASSEXW c{};c.cbSize=sizeof(c);c.lpfnWndProc=proc;c.hInstance=inst;c.hCursor=LoadCursorW(nullptr,IDC_ARROW);c.hIcon=LoadIconW(nullptr,IDI_APPLICATION);c.lpszClassName=L"JOJORecompiledWindow";
     if(!RegisterClassExW(&c)){CoUninitialize();return 3;}
     constexpr DWORD launcher_style=WS_OVERLAPPEDWINDOW;
-    RECT launcher_rect{0,0,1024,768};
+    RECT launcher_rect{0,0,1024,720};
     AdjustWindowRectExForDpi(
         &launcher_rect,
         launcher_style,
