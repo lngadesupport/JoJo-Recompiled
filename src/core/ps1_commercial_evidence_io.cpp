@@ -119,6 +119,18 @@ std::string format_ps1_commercial_evidence_report(
         << report.memory_card_read_sector_count[1] << '\n';
     out << "memory_card1_write_sector_count="
         << report.memory_card_write_sector_count[1] << '\n';
+    out << "session_dma_transfer_count="
+        << report.session_dma_transfer_count << '\n';
+    out << "session_cdrom_command_count="
+        << report.session_cdrom_command_count << '\n';
+    out << "session_gpu_gp0_word_count="
+        << report.session_gpu_gp0_word_count << '\n';
+    out << "session_gpu_gp1_command_count="
+        << report.session_gpu_gp1_command_count << '\n';
+    out << "session_vram_write_count="
+        << report.session_vram_write_count << '\n';
+    out << "session_vblank_count="
+        << report.session_vblank_count << '\n';
     out << "spu_sample_frames=" << report.spu_sample_frames << '\n';
     out << "spu_nonzero_samples=" << report.spu_nonzero_samples << '\n';
     const auto validation = summarize_ps1_gameplay_validation(report);
