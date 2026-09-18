@@ -34,8 +34,14 @@ struct Ps1BiosEventState {
     std::uint32_t function{};
 };
 
+struct Ps1BiosThreadState {
+    bool allocated{};
+    R3000aState cpu{};
+};
+
 class Ps1HleBios {
 public:
+    Ps1HleBios() noexcept;
     [[nodiscard]] Ps1HleBiosDispatchStatus dispatch(
         R3000aState& cpu,
         std::uint32_t table_physical,
@@ -64,6 +70,8 @@ public:
     [[nodiscard]] bool card_pad_enabled() const noexcept;
     [[nodiscard]] bool backup_unit_initialized() const noexcept;
     [[nodiscard]] const std::array<Ps1BiosEventState, 16>& events() const noexcept;
+    [[nodiscard]] const std::array<Ps1BiosThreadState, 4>& threads() const noexcept;
+    [[nodiscard]] std::uint32_t current_thread_handle() const noexcept;
     [[nodiscard]] std::optional<bool> root_counter_auto_ack_enabled(
         std::uint32_t counter) const noexcept;
     [[nodiscard]] bool iso9660_removed() const noexcept;
@@ -80,6 +88,8 @@ private:
     bool card_pad_enabled_{};
     bool backup_unit_initialized_{};
     std::array<Ps1BiosEventState, 16> events_{};
+    std::array<Ps1BiosThreadState, 4> threads_{};
+    std::size_t current_thread_index_{};
     std::array<std::optional<bool>, 4> root_counter_auto_ack_enabled_{};
     std::array<std::optional<std::uint32_t>, 4> interrupt_priority_heads_{};
     bool iso9660_removed_{};
