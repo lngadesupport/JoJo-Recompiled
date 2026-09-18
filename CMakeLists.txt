@@ -67,21 +67,22 @@ if(WIN32)
   target_compile_definitions(jojo_win32_input_host PRIVATE UNICODE _UNICODE _WIN32_WINNT=0x0A00 WINVER=0x0A00)
   target_link_libraries(jojo_win32_input_host PUBLIC jojo_core setupapi hid user32)
 
-  add_executable(jojo_recompiled WIN32 src/app_win32/main.cpp src/app_win32/presentation_host.cpp)
+  add_executable(jojo_recompiled WIN32 src/app_win32/main.cpp src/app_win32/presentation_host.cpp src/app_win32/audio_host.cpp)
   set_target_properties(jojo_recompiled PROPERTIES OUTPUT_NAME "JOJO-Recompiled")
   target_compile_definitions(jojo_recompiled PRIVATE UNICODE _UNICODE _WIN32_WINNT=0x0A00 WINVER=0x0A00)
-  target_link_libraries(jojo_recompiled PRIVATE jojo_core jojo_win32_input_host shell32 ole32 uuid d3d11 d3dcompiler dxgi)
+  target_link_libraries(jojo_recompiled PRIVATE jojo_core jojo_win32_input_host shell32 ole32 uuid d3d11 d3dcompiler dxgi xaudio2)
 
   add_executable(
     jojo_win32_image_selection_tests
     tests/test_win32_image_selection.cpp
     src/app_win32/main.cpp
     src/app_win32/presentation_host.cpp
+    src/app_win32/audio_host.cpp
   )
   target_compile_definitions(jojo_win32_image_selection_tests PRIVATE UNICODE _UNICODE _WIN32_WINNT=0x0A00 WINVER=0x0A00)
   target_link_libraries(
     jojo_win32_image_selection_tests
-    PRIVATE jojo_core shell32 ole32 uuid d3d11 d3dcompiler dxgi
+    PRIVATE jojo_core shell32 ole32 uuid d3d11 d3dcompiler dxgi xaudio2
   )
   add_test(NAME jojo_win32_image_selection_tests COMMAND jojo_win32_image_selection_tests)
   set_tests_properties(jojo_win32_image_selection_tests PROPERTIES TIMEOUT 45)
@@ -90,6 +91,12 @@ if(WIN32)
   target_compile_definitions(jojo_win32_presentation_tests PRIVATE UNICODE _UNICODE _WIN32_WINNT=0x0A00 WINVER=0x0A00)
   target_link_libraries(jojo_win32_presentation_tests PRIVATE jojo_core d3d11 d3dcompiler dxgi)
   add_test(NAME jojo_win32_presentation_tests COMMAND jojo_win32_presentation_tests)
+
+
+  add_executable(jojo_win32_audio_tests tests/test_win32_audio.cpp src/app_win32/audio_host.cpp)
+  target_compile_definitions(jojo_win32_audio_tests PRIVATE UNICODE _UNICODE _WIN32_WINNT=0x0A00 WINVER=0x0A00)
+  target_link_libraries(jojo_win32_audio_tests PRIVATE jojo_core xaudio2)
+  add_test(NAME jojo_win32_audio_tests COMMAND jojo_win32_audio_tests)
 
   add_executable(jojo_win32_input_tests tests/test_win32_input.cpp)
   target_compile_definitions(jojo_win32_input_tests PRIVATE UNICODE _UNICODE _WIN32_WINNT=0x0A00 WINVER=0x0A00)

@@ -20,9 +20,10 @@ jobs:
           cmake --build build --target
           jojo_ps1_spu_tests
           jojo_ps1_spu_dma_tests
+          jojo_ps1_commercial_evidence_tests
           -j2
       - name: Run Phase 5 focused tests
         run: >-
           ctest --test-dir build -R
-          "jojo_ps1_spu(_dma)?_tests"
+          "jojo_(ps1_spu(_dma)?|ps1_commercial_evidence)_tests"
           --output-on-failure

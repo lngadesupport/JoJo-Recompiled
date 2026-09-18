@@ -79,6 +79,8 @@ void test_runner_promotes_visible_gpu_output_to_commercial_frame(const fs::path&
     const auto report = runner.value.run(options);
 
     CHECK(report.frontier == jojo::Ps1CommercialFrontierClass::commercial_frame_presented);
+    const auto audio = runner.value.drain_audio_samples();
+    CHECK(audio.size() % 2u == 0u);
     CHECK(report.boot.stop_reason == jojo::Ps1BootStopReason::commercial_frame_presented);
     CHECK(report.boot.presented_frames == 1u);
     CHECK(report.first_frame.has_value());
