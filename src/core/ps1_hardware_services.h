@@ -77,6 +77,7 @@ public:
     [[nodiscard]] std::uint64_t diagnostic_state_hash() const noexcept;
 
 private:
+    void sync_sio0_irq_edge() noexcept;
     static constexpr std::uint16_t interrupt_valid_bits = 0x07FFu;
     static constexpr std::uint16_t timer_supported_mode_mask = 0x03FFu;
 
@@ -92,6 +93,7 @@ private:
     Ps1GpuIngress gpu_{};
     Ps1Spu spu_{};
     Ps1Sio0 sio0_{};
+    bool sio0_irq_line_{};
 };
 
 } // namespace jojo

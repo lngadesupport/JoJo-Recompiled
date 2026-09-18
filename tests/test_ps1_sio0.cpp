@@ -26,13 +26,19 @@ int main() {
     sio.set_digital_pad_buttons(0u, buttons);
 
     CHECK(exchange(sio, 0x01u) == 0xFFu);
+    CHECK((sio.read32(0x1F801044u).value & (1u << 7u)) != 0u);
+    CHECK((sio.read32(0x1F801044u).value & (1u << 9u)) == 0u);
+
+    CHECK(sio.write16(0x1F80104Au, 0x1003u).status == jojo::R3000aBusStatus::ok);
     CHECK((sio.read32(0x1F801044u).value & (1u << 9u)) != 0u);
     CHECK(exchange(sio, 0x42u) == 0x41u);
     CHECK(exchange(sio, 0x00u) == 0x5Au);
     CHECK(exchange(sio, 0x00u) == 0xEFu);
     CHECK(exchange(sio, 0x00u) == 0xBFu);
 
-    CHECK(sio.write16(0x1F80104Au, 0x0013u).status == jojo::R3000aBusStatus::ok);
+    CHECK(sio.write16(0x1F80104Au, 0x1013u).status == jojo::R3000aBusStatus::ok);
+    CHECK((sio.read32(0x1F801044u).value & (1u << 9u)) != 0u);
+    CHECK(sio.write16(0x1F80104Au, 0x1001u).status == jojo::R3000aBusStatus::ok);
     CHECK((sio.read32(0x1F801044u).value & (1u << 9u)) == 0u);
 
     sio.set_digital_pad_buttons(1u, 0xFFF7u); // Start pressed.
@@ -45,14 +51,21 @@ int main() {
 
     jojo::Ps1MemoryBus bus;
     bus.hardware_services().sio0().set_digital_pad_buttons(0u, 0xFFEFu);
-    CHECK(bus.write16(0x1F80104Au, 0x0003u).status == jojo::R3000aBusStatus::ok);
+    CHECK(bus.write16(0x1F80104Au, 0x1003u).status == jojo::R3000aBusStatus::ok);
     CHECK(bus.write8(0x1F801040u, 0x01u).status == jojo::R3000aBusStatus::ok);
     CHECK(bus.read8(0x1F801040u).status == jojo::R3000aBusStatus::ok);
     CHECK(bus.read8(0x1F801040u).value == 0xFFu);
     CHECK(bus.write8(0x1F801040u, 0x42u).status == jojo::R3000aBusStatus::ok);
     CHECK(bus.read8(0x1F801040u).value == 0x41u);
 
+    CHECK((bus.hardware_services().interrupt_status() & 0x0080u) != 0u);
+    CHECK(bus.write16(0x1F801070u, 0x077Fu).status == jojo::R3000aBusStatus::ok);
+    CHECK((bus.hardware_services().interrupt_status() & 0x0080u) == 0u);
     bus.hardware_services().step(1u);
+    CHECK((bus.hardware_services().interrupt_status() & 0x0080u) == 0u);
+    CHECK(bus.write16(0x1F80104Au, 0x1001u).status == jojo::R3000aBusStatus::ok);
+    CHECK(bus.write16(0x1F80104Au, 0x1003u).status == jojo::R3000aBusStatus::ok);
+    CHECK(bus.write8(0x1F801040u, 0x01u).status == jojo::R3000aBusStatus::ok);
     CHECK((bus.hardware_services().interrupt_status() & 0x0080u) != 0u);
 
     return failures ? 1 : 0;

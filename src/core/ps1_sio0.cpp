@@ -308,7 +308,7 @@ void Ps1Sio0::transfer_byte(std::uint8_t value) noexcept {
     if (rx_fifo_.size() > 8u) rx_fifo_.pop_front();
 
     dsr_ = more_data;
-    if (more_data) {
+    if (more_data && (control_ & kControlDsrIrqEnable) != 0u) {
         irq_ = true;
     }
 }
@@ -395,12 +395,17 @@ R3000aBusResult Ps1Sio0::write16(
         return {R3000aBusStatus::ok, 0u};
     }
 
-    if ((value & kControlAcknowledge) != 0u) {
-        irq_ = false;
-    }
-
+    const bool acknowledge = (value & kControlAcknowledge) != 0u;
     const auto previous_control = control_;
     control_ = static_cast<std::uint16_t>(value & kControlStoredMask);
+
+    if (acknowledge) {
+        irq_ = dsr_ && (control_ & kControlDsrIrqEnable) != 0u;
+    } else if (dsr_ &&
+               (previous_control & kControlDsrIrqEnable) == 0u &&
+               (control_ & kControlDsrIrqEnable) != 0u) {
+        irq_ = true;
+    }
     const bool dtr_fell =
         (previous_control & kControlDtr) != 0u &&
         (control_ & kControlDtr) == 0u;

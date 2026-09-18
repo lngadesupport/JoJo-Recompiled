@@ -115,6 +115,15 @@ void hash_u64(std::uint64_t& hash, std::uint64_t value) noexcept {
 
 } // namespace
 
+void Ps1HardwareServices::sync_sio0_irq_edge() noexcept {
+    const bool current = sio0_.irq_pending();
+    if (current && !sio0_irq_line_) {
+        interrupt_status_ = static_cast<std::uint16_t>(
+            interrupt_status_ | 0x0080u);
+    }
+    sio0_irq_line_ = current;
+}
+
 void Ps1HardwareServices::attach_disc(const Ps1DiscSession* disc) noexcept {
     cdrom_.attach_disc(disc);
 }
@@ -195,7 +204,9 @@ R3000aBusResult Ps1HardwareServices::read32(std::uint32_t physical) noexcept {
 R3000aBusResult Ps1HardwareServices::write8(std::uint32_t physical,
                                           std::uint8_t value) noexcept {
     if (physical == Ps1Sio0::data_address) {
-        return sio0_.write8(physical, value);
+        const auto result = sio0_.write8(physical, value);
+        sync_sio0_irq_edge();
+        return result;
     }
     if (physical >= 0x1F801800u && physical <= 0x1F801803u) {
         return cdrom_.write8(physical, value);
@@ -208,7 +219,9 @@ R3000aBusResult Ps1HardwareServices::write16(std::uint32_t physical,
     if (physical == Ps1Sio0::mode_address ||
         physical == Ps1Sio0::control_address ||
         physical == Ps1Sio0::baud_address) {
-        return sio0_.write16(physical, value);
+        const auto result = sio0_.write16(physical, value);
+        sync_sio0_irq_edge();
+        return result;
     }
     if (is_spu_halfword(physical)) {
         return spu_.write16(physical, value);
@@ -251,7 +264,9 @@ R3000aBusResult Ps1HardwareServices::write16(std::uint32_t physical,
 R3000aBusResult Ps1HardwareServices::write32(std::uint32_t physical,
                                              std::uint32_t value) noexcept {
     if (physical == Ps1Sio0::data_address) {
-        return sio0_.write32(physical, value);
+        const auto result = sio0_.write32(physical, value);
+        sync_sio0_irq_edge();
+        return result;
     }
     if (is_spu_halfword(physical) && physical + 2u <= kSpuEnd) {
         const auto low = spu_.write16(
@@ -333,10 +348,7 @@ R3000aBusResult Ps1HardwareServices::write32(std::uint32_t physical,
 
 void Ps1HardwareServices::step(std::uint32_t cpu_cycles) noexcept {
     spu_.step(cpu_cycles);
-    if (sio0_.irq_pending()) {
-        interrupt_status_ = static_cast<std::uint16_t>(
-            interrupt_status_ | 0x0080u);
-    }
+    sync_sio0_irq_edge();
     for (std::uint32_t channel = 0u; channel < timers_.size(); ++channel) {
         auto& timer = timers_[channel];
         if (cpu_cycles == 0u) continue;
@@ -560,6 +572,7 @@ std::uint64_t Ps1HardwareServices::diagnostic_state_hash() const noexcept {
     hash_u64(hash, completed_dma_transfer_count_);
     hash_u64(hash, spu_.diagnostic_state_hash());
     hash_u64(hash, sio0_.diagnostic_state_hash());
+    hash_bool(hash, sio0_irq_line_);
     return hash;
 }
 
