@@ -76,6 +76,7 @@ std::unique_ptr<jojo::XAudio2Ps1AudioHost> game_audio_host{};
 std::unique_ptr<jojo::win32::Win32InputHost> input_host{};
 std::unique_ptr<jojo::Ps1CommercialEvidenceRunner> game_runner{};
 jojo::Ps1DisplayFrame game_frame{};
+std::uint64_t game_total_execution_steps{};
 std::uint64_t game_total_instructions{};
 std::uint64_t game_native_x64_instructions{};
 std::uint64_t game_reference_instructions{};
@@ -335,6 +336,7 @@ jojo::Ps1CommercialEvidenceReport make_game_session_report(
     report.boot.recent_cdrom_commands=game_runner->recent_cdrom_commands();
     report.frontier=jojo::classify_ps1_commercial_frontier(report.boot);
     report.session_termination=termination;
+    report.total_execution_steps=game_total_execution_steps;
     report.total_instructions_retired=game_total_instructions;
     report.total_native_x64_instructions_retired=
         game_native_x64_instructions;
@@ -445,6 +447,7 @@ void stop_game_runtime(const jojo::Ps1BootReport* final_boot){
 
     game_runner.reset();
     game_audio_host.reset();
+    game_total_execution_steps=0u;
     game_total_instructions=0u;
     game_native_x64_instructions=0u;
     game_reference_instructions=0u;
@@ -519,6 +522,7 @@ void game_tick(){
     const auto segment=game_runner->run_segment(options);
     game_last_segment=segment;
     ++game_execution_segments;
+    game_total_execution_steps+=segment.execution_steps;
     game_total_instructions+=segment.instructions_retired;
     game_native_x64_instructions+=segment.native_x64_instructions_retired;
     game_reference_instructions+=segment.reference_instructions_retired;
@@ -541,8 +545,8 @@ void game_tick(){
         return;
     }
 
-    if(segment.instructions_retired==0u ||
-       !game_frame_budget.consume(segment.instructions_retired)){
+    if(segment.execution_steps==0u ||
+       !game_frame_budget.consume(segment.execution_steps)){
         jojo::Ps1BootReport invalid=segment;
         invalid.stop_reason=jojo::Ps1BootStopReason::fatal_runtime_error;
         stop_game_runtime(&invalid);
@@ -626,6 +630,7 @@ void run_checkpoint(){
 
     game_runner=std::make_unique<jojo::Ps1CommercialEvidenceRunner>(
         std::move(runner.value));
+    game_total_execution_steps=0u;
     game_total_instructions=0u;
     game_native_x64_instructions=0u;
     game_reference_instructions=0u;
