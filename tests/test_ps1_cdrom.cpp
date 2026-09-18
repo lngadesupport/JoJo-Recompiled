@@ -141,7 +141,10 @@ int main() {
     CHECK(cd.read8(0x1F801801u).value == 0x02u);
     const auto leadout_minute = cd.read8(0x1F801801u).value;
     const auto leadout_second = cd.read8(0x1F801801u).value;
-    CHECK(leadout_minute != 0u || leadout_second > 0x02u);
+    // GetTD returns only MM:SS, so the synthetic 28-sector lead-out
+    // (00:02:28 absolute) is represented as 00:02.
+    CHECK(leadout_minute == 0x00u);
+    CHECK(leadout_second == 0x02u);
     CHECK(cd.write8(0x1F801800u, 0x01u).status ==
           jojo::R3000aBusStatus::ok);
     CHECK(cd.write8(0x1F801803u, 0x07u).status ==
