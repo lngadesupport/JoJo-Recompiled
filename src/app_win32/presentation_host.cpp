@@ -689,7 +689,11 @@ Result<void> D3d11Ps1Presenter::recreate_render_target() {
             "D3D11 presenter failed to create the swap-chain render target");
     }
 
+    back_buffer_ = std::move(back_buffer);
     render_target_ = std::move(target);
+    msaa_texture_.Reset();
+    msaa_render_target_.Reset();
+    active_msaa_samples_ = 1u;
     return Result<void>::success();
 }
 
@@ -721,7 +725,11 @@ Result<void> D3d11Ps1Presenter::resize_to_client() {
     }
 
     context_->OMSetRenderTargets(0u, nullptr, nullptr);
+    msaa_render_target_.Reset();
+    msaa_texture_.Reset();
     render_target_.Reset();
+    back_buffer_.Reset();
+    active_msaa_samples_ = 1u;
 
     const HRESULT resize_hr =
         swap_chain_->ResizeBuffers(0u, width, height, DXGI_FORMAT_UNKNOWN, 0u);
@@ -991,6 +999,80 @@ Result<void> D3d11Ps1Presenter::update_sampler(
     return Result<void>::success();
 }
 
+Result<void> D3d11Ps1Presenter::ensure_msaa_target(
+    UINT requested_samples) {
+    if (!device_ || !back_buffer_ || !render_target_) {
+        return Result<void>::failure(
+            ErrorCode::backend_unavailable,
+            "D3D11 MSAA target requires an active back buffer");
+    }
+
+    UINT samples = std::max<UINT>(1u, requested_samples);
+    if (samples <= 1u) {
+        msaa_render_target_.Reset();
+        msaa_texture_.Reset();
+        active_msaa_samples_ = 1u;
+        return Result<void>::success();
+    }
+
+    if (samples == active_msaa_samples_ &&
+        msaa_texture_ && msaa_render_target_) {
+        return Result<void>::success();
+    }
+
+    UINT quality_levels = 0u;
+    const HRESULT quality_hr =
+        device_->CheckMultisampleQualityLevels(
+            DXGI_FORMAT_R8G8B8A8_UNORM,
+            samples,
+            &quality_levels);
+    if (FAILED(quality_hr) || quality_levels == 0u) {
+        return Result<void>::failure(
+            ErrorCode::backend_unavailable,
+            "requested D3D11 MSAA sample count is not supported");
+    }
+
+    D3D11_TEXTURE2D_DESC desc{};
+    desc.Width = back_buffer_width_;
+    desc.Height = back_buffer_height_;
+    desc.MipLevels = 1u;
+    desc.ArraySize = 1u;
+    desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    desc.SampleDesc.Count = samples;
+    desc.SampleDesc.Quality = 0u;
+    desc.Usage = D3D11_USAGE_DEFAULT;
+    desc.BindFlags = D3D11_BIND_RENDER_TARGET;
+
+    Microsoft::WRL::ComPtr<ID3D11Texture2D> texture;
+    const HRESULT texture_hr =
+        device_->CreateTexture2D(
+            &desc,
+            nullptr,
+            texture.GetAddressOf());
+    if (FAILED(texture_hr) || !texture) {
+        return Result<void>::failure(
+            ErrorCode::backend_unavailable,
+            "D3D11 failed to create multisample presentation texture");
+    }
+
+    Microsoft::WRL::ComPtr<ID3D11RenderTargetView> target;
+    const HRESULT target_hr =
+        device_->CreateRenderTargetView(
+            texture.Get(),
+            nullptr,
+            target.GetAddressOf());
+    if (FAILED(target_hr) || !target) {
+        return Result<void>::failure(
+            ErrorCode::backend_unavailable,
+            "D3D11 failed to create multisample presentation target");
+    }
+
+    msaa_texture_ = std::move(texture);
+    msaa_render_target_ = std::move(target);
+    active_msaa_samples_ = samples;
+    return Result<void>::success();
+}
+
 Result<void> D3d11Ps1Presenter::draw_frame(
     const Ps1DisplayFrame& frame,
     TextureFilter texture_filter,
@@ -1013,6 +1095,9 @@ Result<void> D3d11Ps1Presenter::draw_frame(
     const auto quality =
         make_d3d11_presentation_quality(
             texture_filter, anti_aliasing);
+    const auto msaa_ready =
+        ensure_msaa_target(quality.aa_samples);
+    if (!msaa_ready) return msaa_ready;
 
     struct alignas(16) PixelConstants {
         float texel_x{};
@@ -1045,7 +1130,11 @@ Result<void> D3d11Ps1Presenter::draw_frame(
     context_->Unmap(pixel_constants_.Get(), 0u);
 
     const float clear[4]{0.0f, 0.0f, 0.0f, 1.0f};
-    context_->ClearRenderTargetView(render_target_.Get(), clear);
+    ID3D11RenderTargetView* target =
+        active_msaa_samples_ > 1u
+            ? msaa_render_target_.Get()
+            : render_target_.Get();
+    context_->ClearRenderTargetView(target, clear);
 
     const D3D11_VIEWPORT viewport =
         make_d3d11_aspect_viewport(
@@ -1053,7 +1142,6 @@ Result<void> D3d11Ps1Presenter::draw_frame(
             back_buffer_height_,
             aspect_ratio);
 
-    ID3D11RenderTargetView* target = render_target_.Get();
     ID3D11ShaderResourceView* srv = source_srv_.Get();
     ID3D11SamplerState* sampler = sampler_.Get();
     ID3D11Buffer* constants_buffer = pixel_constants_.Get();
@@ -1072,6 +1160,16 @@ Result<void> D3d11Ps1Presenter::draw_frame(
 
     ID3D11ShaderResourceView* null_srv = nullptr;
     context_->PSSetShaderResources(0u, 1u, &null_srv);
+
+    if (active_msaa_samples_ > 1u) {
+        context_->OMSetRenderTargets(0u, nullptr, nullptr);
+        context_->ResolveSubresource(
+            back_buffer_.Get(),
+            0u,
+            msaa_texture_.Get(),
+            0u,
+            DXGI_FORMAT_R8G8B8A8_UNORM);
+    }
     return Result<void>::success();
 }
 
@@ -1132,13 +1230,24 @@ Result<RendererCapabilities> probe_d3d11_renderer_capabilities() {
         TextureFilter::x8,
         TextureFilter::x16,
     };
-    caps.msaa_modes = {
-        Msaa::off,
-        Msaa::x2,
-        Msaa::x4,
-        Msaa::x8,
-        Msaa::x16,
-    };
+    caps.msaa_modes = {Msaa::off};
+    for (const auto mode : {
+             Msaa::x2,
+             Msaa::x4,
+             Msaa::x8,
+             Msaa::x16}) {
+        const UINT samples =
+            static_cast<UINT>(static_cast<int>(mode));
+        UINT quality_levels = 0u;
+        const HRESULT quality_hr =
+            device->CheckMultisampleQualityLevels(
+                DXGI_FORMAT_R8G8B8A8_UNORM,
+                samples,
+                &quality_levels);
+        if (SUCCEEDED(quality_hr) && quality_levels > 0u) {
+            caps.msaa_modes.push_back(mode);
+        }
+    }
 
     if (context) context->Release();
     device->Release();
