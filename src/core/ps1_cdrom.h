@@ -34,6 +34,7 @@ public:
     [[nodiscard]] std::uint8_t request_register() const noexcept;
     [[nodiscard]] bool irq_pending() const noexcept;
     [[nodiscard]] std::size_t deferred_response_count() const noexcept;
+    [[nodiscard]] bool muted() const noexcept;
     [[nodiscard]] std::uint64_t diagnostic_state_hash() const noexcept;
     [[nodiscard]] const std::deque<Ps1CdromCommandEvent>& recent_commands() const noexcept;
     [[nodiscard]] const std::optional<std::uint8_t>& last_unsupported_command() const noexcept;
@@ -62,6 +63,7 @@ private:
     std::uint8_t interrupt_flags_{};
     std::uint8_t request_register_{};
     std::uint8_t status_byte_{};
+    bool muted_{};
     std::uint64_t current_lba_{};
     std::deque<std::uint8_t> parameters_{};
     std::deque<std::uint8_t> responses_{};
