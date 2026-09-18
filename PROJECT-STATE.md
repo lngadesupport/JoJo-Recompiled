@@ -3,7 +3,7 @@
 ## Canonical line
 
 - Repository: `lngadesupport/JoJo-Recompiled`
-- Active development branch: `feature/ps1-controls-timing-saves-phase6`
+- Active development branch: `feature/ps1-gameplay-validation-phase7`
 - Guest platform: **Sony PlayStation 1**
 - Product scope: **JoJo PS1 only**
 - Shipping policy: one `JOJO-Recompiled.exe`
@@ -59,7 +59,7 @@ Phase 5 Final Gate: GitHub Actions run `35308419254` — Linux and Windows x64 p
 
 Commercial audio still requires a fresh real-image validation before it is described as proven in gameplay.
 
-### Phase 6 — controls/timing/saves: implemented; hardening and commercial validation active
+### Phase 6 — controls/timing/saves: complete
 
 Implemented on the active branch:
 
@@ -75,7 +75,8 @@ Implemented on the active branch:
 - corrected wide SIO0 RX FIFO access semantics.
 
 The first complete continuous-runtime Phase 6 baseline passed Linux and Windows x64 in GitHub Actions run `35310276546`.
-Later commits harden timing, GPUSTAT and SIO semantics and must remain green before Phase 6 is closed.
+The hardened Phase 6 completion head is `a7039ef62bc39b4622f4e8ced54a6298acccc7fd`.
+Phase 6 Fast Gate passed, and Final Gate run `35312132685` passed the complete Linux Release and Windows x64 Release graphs.
 
 ## Current truth boundary
 
@@ -106,15 +107,13 @@ The most recent saved commercial checkpoint available to development predates th
 3. **Phase 3 — PS1 hardware services** — complete
 4. **Phase 4 — GPU/GTE + rendered frame** — implementation complete; fresh commercial frame evidence pending
 5. **Phase 5 — SPU/audio** — implementation and CI complete; commercial validation pending
-6. **Phase 6 — controls/timing/saves** — implementation complete; final hardening/CI and commercial validation pending
-7. **Phase 7 — complete gameplay validation** — next evidence-driven phase
+6. **Phase 6 — controls/timing/saves** — complete
+7. **Phase 7 — complete gameplay validation** — active evidence-driven phase
 8. **Phase 8 — native x64 optimization and Windows release** — pending
 
 ## Next priority
 
-Finish the current Phase 6 hardening gates, then branch Phase 7 from the latest green head.
-
-Phase 7 is frontier-driven:
+Phase 7 is active on `feature/ps1-gameplay-validation-phase7` and is frontier-driven:
 
 1. run the supported user-supplied JoJo image on the current runtime;
 2. capture the first current production frontier;
