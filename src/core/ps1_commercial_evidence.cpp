@@ -15,6 +15,22 @@ void hash_byte(std::uint64_t& hash, std::uint8_t byte) noexcept {
 
 } // namespace
 
+
+std::string_view ps1_commercial_session_termination_name(
+    Ps1CommercialSessionTermination termination) noexcept {
+    switch (termination) {
+        case Ps1CommercialSessionTermination::bounded_run:
+            return "bounded_run";
+        case Ps1CommercialSessionTermination::frontier_stop:
+            return "frontier_stop";
+        case Ps1CommercialSessionTermination::manual_stop:
+            return "manual_stop";
+        case Ps1CommercialSessionTermination::periodic_checkpoint:
+            return "periodic_checkpoint";
+    }
+    return "bounded_run";
+}
+
 std::optional<Ps1CommercialFrameEvidence>
 make_ps1_commercial_frame_evidence(const Ps1DisplayFrame& frame) noexcept {
     if (frame.width == 0u || frame.height == 0u) return std::nullopt;
