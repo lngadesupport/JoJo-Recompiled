@@ -519,6 +519,10 @@ std::uint64_t Ps1HardwareServices::vblank_count() const noexcept {
     return vblank_count_;
 }
 
+const Ps1CdromController& Ps1HardwareServices::cdrom() const noexcept {
+    return cdrom_;
+}
+
 std::uint32_t Ps1HardwareServices::gpu_status() const noexcept {
     return gpu_.status();
 }
