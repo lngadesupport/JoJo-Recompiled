@@ -55,6 +55,26 @@ make_ps1_commercial_frame_evidence(const Ps1DisplayFrame& frame) noexcept {
     return evidence;
 }
 
+
+Ps1GameplayValidationSummary summarize_ps1_gameplay_validation(
+    const Ps1CommercialEvidenceReport& report) noexcept {
+    Ps1GameplayValidationSummary summary{};
+    summary.frame_observed =
+        report.first_frame.has_value() &&
+        report.first_frame->non_black_pixels != 0u;
+    summary.controller_poll_observed =
+        report.pad_poll_count[0] != 0u ||
+        report.pad_poll_count[1] != 0u;
+    summary.audio_generated = report.spu_sample_frames != 0u;
+    summary.memory_card_read_observed =
+        report.memory_card_read_sector_count[0] != 0u ||
+        report.memory_card_read_sector_count[1] != 0u;
+    summary.memory_card_write_observed =
+        report.memory_card_write_sector_count[0] != 0u ||
+        report.memory_card_write_sector_count[1] != 0u;
+    return summary;
+}
+
 Result<Ps1CommercialEvidenceRunner> Ps1CommercialEvidenceRunner::open(
     const std::filesystem::path& source,
     const Ps1DiscOpenOptions& open_options) {
