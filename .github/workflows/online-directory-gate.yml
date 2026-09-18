@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - feature/online-directory-service
+      - feature/phase8-online-integration
   workflow_dispatch:
 
 permissions:
