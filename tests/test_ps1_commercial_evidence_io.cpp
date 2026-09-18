@@ -20,6 +20,7 @@ int main() {
     report.source.revision_id = "jojo-usa-observed-b8b5dbf79cdb9fcf";
     report.frontier = jojo::Ps1CommercialFrontierClass::bios_call;
     report.session_termination = jojo::Ps1CommercialSessionTermination::manual_stop;
+    report.total_execution_steps = 123460u;
     report.total_instructions_retired = 123456u;
     report.total_native_x64_instructions_retired = 100000u;
     report.total_reference_instructions_retired = 23456u;
@@ -45,6 +46,7 @@ int main() {
     report.spu_sample_frames = 44100u;
     report.spu_nonzero_samples = 12345u;
     report.boot.stop_reason = jojo::Ps1BootStopReason::bios_call_unimplemented;
+    report.boot.execution_steps = 457u;
     report.boot.instructions_retired = 456u;
     report.boot.native_x64_instructions_retired = 123u;
     report.boot.reference_instructions_retired = 333u;
@@ -100,6 +102,7 @@ int main() {
     CHECK(text.find("frontier=bios_call") != std::string::npos);
     CHECK(text.find("session_termination=manual_stop") != std::string::npos);
     CHECK(text.find("stop_reason=bios_call_unimplemented") != std::string::npos);
+    CHECK(text.find("total_execution_steps=123460") != std::string::npos);
     CHECK(text.find("total_instructions_retired=123456") != std::string::npos);
     CHECK(text.find("total_native_x64_instructions_retired=100000") != std::string::npos);
     CHECK(text.find("total_reference_instructions_retired=23456") != std::string::npos);
@@ -137,6 +140,7 @@ int main() {
     CHECK(text.find("validation_memory_card_read_observed=1") != std::string::npos);
     CHECK(text.find("validation_memory_card_write_observed=1") != std::string::npos);
     CHECK(text.find("validation_memory_card_content_change_observed=1") != std::string::npos);
+    CHECK(text.find("segment_execution_steps=457") != std::string::npos);
     CHECK(text.find("segment_native_x64_instructions_retired=123") != std::string::npos);
     CHECK(text.find("segment_reference_instructions_retired=333") != std::string::npos);
     CHECK(text.find("segment_native_x64_enabled=1") != std::string::npos);
