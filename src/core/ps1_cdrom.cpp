@@ -194,6 +194,10 @@ std::size_t Ps1CdromController::deferred_response_count() const noexcept {
     return deferred_responses_.size();
 }
 
+bool Ps1CdromController::muted() const noexcept {
+    return muted_;
+}
+
 std::uint64_t Ps1CdromController::diagnostic_state_hash() const noexcept {
     std::uint64_t hash = kFnvOffset;
     hash_byte(hash, index_);
@@ -201,6 +205,7 @@ std::uint64_t Ps1CdromController::diagnostic_state_hash() const noexcept {
     hash_byte(hash, interrupt_flags_);
     hash_byte(hash, request_register_);
     hash_byte(hash, status_byte_);
+    hash_byte(hash, static_cast<std::uint8_t>(muted_ ? 1u : 0u));
     hash_u64(hash, current_lba_);
     hash_bytes(hash, parameters_);
     hash_bytes(hash, responses_);
@@ -327,6 +332,22 @@ R3000aBusResult Ps1CdromController::execute_command(std::uint8_t command) noexce
                 false,
             });
             if (!push_response(status_byte_)) return {R3000aBusStatus::unsupported, 0u};
+            interrupt_flags_ = 0x03u;
+            return {R3000aBusStatus::ok, 0u};
+
+        case 0x0Bu: // Mute
+            muted_ = true;
+            if (!push_response(status_byte_)) {
+                return {R3000aBusStatus::unsupported, 0u};
+            }
+            interrupt_flags_ = 0x03u;
+            return {R3000aBusStatus::ok, 0u};
+
+        case 0x0Cu: // Demute
+            muted_ = false;
+            if (!push_response(status_byte_)) {
+                return {R3000aBusStatus::unsupported, 0u};
+            }
             interrupt_flags_ = 0x03u;
             return {R3000aBusStatus::ok, 0u};
 
