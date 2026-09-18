@@ -93,9 +93,9 @@ void test_direct_instruction_cache_invalidates_changed_opcode() {
 
 void test_direct_instruction_cache_rejects_unsupported_opcode() {
     jojo::R3000aX64BlockCache cache;
-    const auto load = test_mips::i(0x23u, 8u, 9u, 0u);
+    const auto trapping_addi = test_mips::i(0x08u, 8u, 9u, 1u);
     const auto result =
-        cache.get_or_compile_instruction(0x80010000u, load);
+        cache.get_or_compile_instruction(0x80010000u, trapping_addi);
     CHECK(!result);
     CHECK(result.error == jojo::ErrorCode::backend_unavailable);
     CHECK(cache.stats().entries == 0u);
