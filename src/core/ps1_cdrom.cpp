@@ -20,7 +20,8 @@ constexpr std::uint8_t kStatActivityMask =
 constexpr std::uint64_t kFnvOffset = 14695981039346656037ull;
 constexpr std::uint64_t kFnvPrime = 1099511628211ull;
 constexpr std::uint32_t kCdCommandCompletionCycles = 33869u;
-constexpr std::uint32_t kCdSectorCycles = 451584u;
+constexpr std::uint32_t kCdSectorCyclesSingleSpeed = 451584u;
+constexpr std::uint32_t kCdSectorCyclesDoubleSpeed = 225792u;
 
 void hash_byte(std::uint64_t& hash, std::uint8_t value) noexcept {
     hash ^= value;
@@ -167,30 +168,73 @@ R3000aBusResult Ps1CdromController::write8(std::uint32_t physical,
 }
 
 void Ps1CdromController::step(std::uint32_t cpu_cycles) noexcept {
-    if (deferred_responses_.empty() || interrupt_flags_ != 0u) {
+    if (interrupt_flags_ != 0u) {
         return;
     }
 
-    auto& pending = deferred_responses_.front();
-    if (pending.delay_cycles > cpu_cycles) {
-        pending.delay_cycles -= cpu_cycles;
+    if (!deferred_responses_.empty()) {
+        auto& pending = deferred_responses_.front();
+        if (pending.delay_cycles > cpu_cycles) {
+            pending.delay_cycles -= cpu_cycles;
+            return;
+        }
+
+        if (pending.apply_response_to_status) {
+            status_byte_ = pending.response;
+        }
+        if (!push_response(pending.response)) {
+            return;
+        }
+        if (!pending.data.empty()) {
+            data_.assign(pending.data.begin(), pending.data.end());
+        }
+        if (pending.advance_lba) {
+            ++current_lba_;
+        }
+        interrupt_flags_ = pending.interrupt_code;
+        deferred_responses_.pop_front();
         return;
     }
 
-    if (pending.apply_response_to_status) {
-        status_byte_ = pending.response;
-    }
-    if (!push_response(pending.response)) {
+    // ReadN is a stream, not a one-shot command. After the INT3 command
+    // acknowledge the drive keeps producing INT1 + sector data at 75 Hz
+    // (or 150 Hz in double-speed mode) until Pause/Stop/Init terminates it.
+    // Keep at most one unread sector outstanding so DMA observes a stable
+    // 2048-byte transfer window.
+    if (!read_stream_active_ || disc_ == nullptr || !data_.empty()) {
         return;
     }
-    if (!pending.data.empty()) {
-        data_.assign(pending.data.begin(), pending.data.end());
+    if (read_cycles_remaining_ > cpu_cycles) {
+        read_cycles_remaining_ -= cpu_cycles;
+        return;
     }
-    if (pending.advance_lba) {
-        ++current_lba_;
+    if (current_lba_ >= disc_->logical_sector_count()) {
+        stop_read_stream();
+        status_byte_ = static_cast<std::uint8_t>(
+            status_byte_ & ~kStatRead);
+        return;
     }
-    interrupt_flags_ = pending.interrupt_code;
-    deferred_responses_.pop_front();
+
+    auto sector = disc_->read_sectors(current_lba_, 1u);
+    if (!sector || sector.value.size() != data_capacity) {
+        stop_read_stream();
+        status_byte_ = static_cast<std::uint8_t>(
+            status_byte_ & ~kStatRead);
+        return;
+    }
+
+    const auto reading_status = static_cast<std::uint8_t>(
+        (status_byte_ & ~kStatActivityMask) |
+        kStatMotor | kStatRead);
+    if (!push_response(reading_status)) {
+        return;
+    }
+
+    status_byte_ = reading_status;
+    data_.assign(sector.value.begin(), sector.value.end());
+    ++current_lba_;
+    read_cycles_remaining_ = sector_cycles();
+    interrupt_flags_ = 0x01u;
 }
 
 std::size_t Ps1CdromController::response_bytes_available() const noexcept {
@@ -269,6 +313,9 @@ std::uint64_t Ps1CdromController::diagnostic_state_hash() const noexcept {
     for (const auto value : pending_audio_matrix_) hash_byte(hash, value);
     for (const auto value : active_audio_matrix_) hash_byte(hash, value);
     hash_u64(hash, current_lba_);
+    hash_byte(hash, static_cast<std::uint8_t>(
+        read_stream_active_ ? 1u : 0u));
+    hash_u64(hash, read_cycles_remaining_);
     hash_bytes(hash, parameters_);
     hash_bytes(hash, responses_);
     hash_bytes(hash, data_);
@@ -315,6 +362,17 @@ bool Ps1CdromController::push_response(std::uint8_t value) noexcept {
     if (responses_.size() >= response_capacity) return false;
     responses_.push_back(value);
     return true;
+}
+
+std::uint32_t Ps1CdromController::sector_cycles() const noexcept {
+    return (mode_ & 0x80u) != 0u
+        ? kCdSectorCyclesDoubleSpeed
+        : kCdSectorCyclesSingleSpeed;
+}
+
+void Ps1CdromController::stop_read_stream() noexcept {
+    read_stream_active_ = false;
+    read_cycles_remaining_ = 0u;
 }
 
 void Ps1CdromController::clear_transfer_fifos() noexcept {
@@ -365,30 +423,25 @@ R3000aBusResult Ps1CdromController::execute_command(std::uint8_t command) noexce
             return {R3000aBusStatus::ok, 0u};
         }
 
-        case 0x06u: { // ReadN: INT3 acknowledge, then INT1+sector
-            if (disc_ == nullptr) return {R3000aBusStatus::unsupported, 0u};
-            auto sector = disc_->read_sectors(current_lba_, 1u);
-            if (!sector || sector.value.size() != data_capacity) {
+        case 0x06u: { // ReadN: INT3 acknowledge, then repeated INT1+sector
+            if (disc_ == nullptr ||
+                current_lba_ >= disc_->logical_sector_count()) {
                 return {R3000aBusStatus::unsupported, 0u};
             }
             data_.clear();
-            const auto reading_status = static_cast<std::uint8_t>(
-                (status_byte_ & ~kStatActivityMask) |
-                kStatMotor | kStatRead);
-            deferred_responses_.push_back(DeferredResponse{
-                0x01u,
-                reading_status,
-                kCdSectorCycles,
-                std::move(sector.value),
-                true,
-                true,
-            });
-            if (!push_response(status_byte_)) return {R3000aBusStatus::unsupported, 0u};
+            stop_read_stream();
+            read_stream_active_ = true;
+            read_cycles_remaining_ = sector_cycles();
+            if (!push_response(status_byte_)) {
+                stop_read_stream();
+                return {R3000aBusStatus::unsupported, 0u};
+            }
             interrupt_flags_ = 0x03u;
             return {R3000aBusStatus::ok, 0u};
         }
 
         case 0x07u: { // MotorOn
+            stop_read_stream();
             data_.clear();
             const auto completed_status = static_cast<std::uint8_t>(
                 (status_byte_ & ~kStatActivityMask) | kStatMotor);
@@ -406,6 +459,7 @@ R3000aBusResult Ps1CdromController::execute_command(std::uint8_t command) noexce
         }
 
         case 0x08u: { // Stop
+            stop_read_stream();
             data_.clear();
             status_byte_ = static_cast<std::uint8_t>(
                 status_byte_ & ~kStatActivityMask);
@@ -423,6 +477,7 @@ R3000aBusResult Ps1CdromController::execute_command(std::uint8_t command) noexce
         }
 
         case 0x09u: { // Pause
+            stop_read_stream();
             data_.clear();
             const auto completed_status = static_cast<std::uint8_t>(
                 (status_byte_ & ~kStatActivityMask) |
@@ -558,6 +613,7 @@ R3000aBusResult Ps1CdromController::execute_command(std::uint8_t command) noexce
             filter_file_ = 0u;
             filter_channel_ = 0u;
             current_lba_ = 0u;
+            stop_read_stream();
             last_unsupported_command_.reset();
             deferred_responses_.push_back(DeferredResponse{
                 0x02u,

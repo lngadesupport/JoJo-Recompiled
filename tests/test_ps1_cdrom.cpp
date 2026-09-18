@@ -210,7 +210,8 @@ int main() {
     CHECK(cd.write8(0x1F801800u, 0x00u).status ==
           jojo::R3000aBusStatus::ok);
 
-    // ReadN acknowledges with INT3, then produces INT1 plus one sector.
+    // ReadN acknowledges with INT3, then streams INT1 + sector data until
+    // Pause/Stop. Setmode=80h above selects the real PS1 double-speed cadence.
     CHECK(cd.write8(0x1F801801u, 0x06u).status == jojo::R3000aBusStatus::ok);
     CHECK(cd.data_bytes_available() == 0u);
     CHECK(cd.write8(0x1F801800u, 0x01u).status == jojo::R3000aBusStatus::ok);
@@ -235,6 +236,53 @@ int main() {
     CHECK(((words[0] >> 8u) & 0xFFu) == static_cast<std::uint32_t>('S'));
     CHECK(((words[0] >> 16u) & 0xFFu) == static_cast<std::uint32_t>('S'));
     CHECK(((words[0] >> 24u) & 0xFFu) == static_cast<std::uint32_t>('E'));
+    CHECK(cd.current_lba() == 26u);
+
+    // A second sector must arrive automatically without another ReadN.
+    // In mode 80h this is one 150 Hz sector interval (225792 CPU cycles).
+    cd.step(225792u);
+    CHECK(cd.data_bytes_available() == 2048u);
+    CHECK(cd.write8(0x1F801800u, 0x01u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK((cd.read8(0x1F801803u).value & 0x07u) == 0x01u);
+    const auto second_read_status = cd.read8(0x1F801801u);
+    CHECK(second_read_status.status == jojo::R3000aBusStatus::ok);
+    CHECK((second_read_status.value & 0x22u) == 0x22u);
+    CHECK(cd.write8(0x1F801803u, 0x07u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(cd.write8(0x1F801800u, 0x00u).status ==
+          jojo::R3000aBusStatus::ok);
+    std::fill(words.begin(), words.end(), 0xFFFFFFFFu);
+    CHECK(cd.read_data_words(words) == 512u);
+    CHECK(cd.data_bytes_available() == 0u);
+    CHECK(cd.current_lba() == 27u);
+
+    // Pause terminates the stream. Once its INT2 completion is acknowledged,
+    // no further sector may appear even if multiple sector intervals elapse.
+    CHECK(cd.write8(0x1F801801u, 0x09u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(cd.read8(0x1F801801u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(cd.write8(0x1F801800u, 0x01u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK((cd.read8(0x1F801803u).value & 0x07u) == 0x03u);
+    CHECK(cd.write8(0x1F801803u, 0x07u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(cd.write8(0x1F801800u, 0x00u).status ==
+          jojo::R3000aBusStatus::ok);
+    cd.step(33869u);
+    CHECK(cd.read8(0x1F801801u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(cd.write8(0x1F801800u, 0x01u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK((cd.read8(0x1F801803u).value & 0x07u) == 0x02u);
+    CHECK(cd.write8(0x1F801803u, 0x07u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(cd.write8(0x1F801800u, 0x00u).status ==
+          jojo::R3000aBusStatus::ok);
+    cd.step(451584u * 2u);
+    CHECK(cd.data_bytes_available() == 0u);
+    CHECK(cd.current_lba() == 27u);
 
     const auto cd_hash_before = cd.diagnostic_state_hash();
     CHECK(cd.write8(0x1F801800u, 0x01u).status ==

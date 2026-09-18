@@ -62,6 +62,8 @@ private:
 
     [[nodiscard]] bool push_response(std::uint8_t value) noexcept;
     [[nodiscard]] R3000aBusResult execute_command(std::uint8_t command) noexcept;
+    [[nodiscard]] std::uint32_t sector_cycles() const noexcept;
+    void stop_read_stream() noexcept;
     void clear_transfer_fifos() noexcept;
 
     const Ps1DiscSession* disc_{};
@@ -80,6 +82,8 @@ private:
     std::array<std::uint8_t, 4> active_audio_matrix_{
         0x80u, 0x00u, 0x80u, 0x00u};
     std::uint64_t current_lba_{};
+    bool read_stream_active_{};
+    std::uint32_t read_cycles_remaining_{};
     std::deque<std::uint8_t> parameters_{};
     std::deque<std::uint8_t> responses_{};
     std::deque<std::uint8_t> data_{};
