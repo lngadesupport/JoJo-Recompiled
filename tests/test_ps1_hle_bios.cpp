@@ -174,6 +174,74 @@ static void test_ready_event_can_be_delivered_by_hardware_pump() {
     CHECK(disabled_wait.gpr[2] == 0u);
 }
 
+static void test_bios_thread_open_change_close_flow() {
+    jojo::Ps1HleBios bios{};
+    CHECK(bios.current_thread_handle() == 0xFF000000u);
+    CHECK(bios.threads()[0].allocated);
+
+    auto open = make_cpu();
+    open.gpr[4] = 0x80010A90u;
+    open.gpr[5] = 0x801FEC00u;
+    open.gpr[6] = 0x00000000u;
+    CHECK(bios.dispatch(open, 0xB0u, 0x0Eu) ==
+          jojo::Ps1HleBiosDispatchStatus::handled);
+    CHECK(open.gpr[2] == 0xFF000001u);
+    CHECK(bios.threads()[1].allocated);
+    CHECK(bios.threads()[1].cpu.pc == 0x80010A90u);
+    CHECK(bios.threads()[1].cpu.next_pc == 0x80010A94u);
+    CHECK(bios.threads()[1].cpu.gpr[29] == 0x801FEC00u);
+    CHECK(bios.threads()[1].cpu.gpr[30] == 0x801FEC00u);
+    CHECK(bios.threads()[1].cpu.gpr[28] == 0u);
+
+    auto switch_to_worker = make_cpu();
+    switch_to_worker.gpr[4] = open.gpr[2];
+    switch_to_worker.gpr[31] = 0x80012340u;
+    switch_to_worker.gpr[8] = 0xCAFEBABEu;
+    CHECK(bios.dispatch(switch_to_worker, 0xB0u, 0x10u) ==
+          jojo::Ps1HleBiosDispatchStatus::handled);
+    CHECK(bios.current_thread_handle() == 0xFF000001u);
+    CHECK(switch_to_worker.pc == 0x80010A90u);
+    CHECK(switch_to_worker.next_pc == 0x80010A94u);
+    CHECK(switch_to_worker.gpr[29] == 0x801FEC00u);
+
+    switch_to_worker.gpr[4] = 0xFF000000u;
+    switch_to_worker.gpr[31] = 0x80010B00u;
+    switch_to_worker.gpr[9] = 0x10u;
+    CHECK(bios.dispatch(switch_to_worker, 0xB0u, 0x10u) ==
+          jojo::Ps1HleBiosDispatchStatus::handled);
+    CHECK(bios.current_thread_handle() == 0xFF000000u);
+    CHECK(switch_to_worker.pc == 0x80012340u);
+    CHECK(switch_to_worker.next_pc == 0x80012344u);
+    CHECK(switch_to_worker.gpr[2] == 1u);
+    CHECK(switch_to_worker.gpr[8] == 0xCAFEBABEu);
+
+    auto close = make_cpu();
+    close.gpr[4] = 0xFF000001u;
+    CHECK(bios.dispatch(close, 0xB0u, 0x0Fu) ==
+          jojo::Ps1HleBiosDispatchStatus::handled);
+    CHECK(close.gpr[2] == 1u);
+    CHECK(!bios.threads()[1].allocated);
+}
+
+static void test_bios_thread_slots_are_bounded() {
+    jojo::Ps1HleBios bios{};
+    for (std::uint32_t i = 1u; i < 4u; ++i) {
+        auto cpu = make_cpu();
+        cpu.gpr[4] = 0x80020000u + i * 0x100u;
+        cpu.gpr[5] = 0x801FF000u - i * 0x100u;
+        CHECK(bios.dispatch(cpu, 0xB0u, 0x0Eu) ==
+              jojo::Ps1HleBiosDispatchStatus::handled);
+        CHECK(cpu.gpr[2] == 0xFF000000u + i);
+    }
+
+    auto exhausted = make_cpu();
+    exhausted.gpr[4] = 0x80030000u;
+    exhausted.gpr[5] = 0x801FE000u;
+    CHECK(bios.dispatch(exhausted, 0xB0u, 0x0Eu) ==
+          jojo::Ps1HleBiosDispatchStatus::handled);
+    CHECK(exhausted.gpr[2] == 0xFFFFFFFFu);
+}
+
 static void test_callback_event_preserves_callback_without_fake_delivery() {
     jojo::Ps1HleBios bios{};
     auto open = make_cpu();
@@ -649,6 +717,8 @@ int main() {
     test_unknown_syscall_is_non_mutating();
     test_bios_event_lifecycle_and_ready_delivery();
     test_ready_event_can_be_delivered_by_hardware_pump();
+    test_bios_thread_open_change_close_flow();
+    test_bios_thread_slots_are_bounded();
     test_callback_event_preserves_callback_without_fake_delivery();
     test_backup_unit_init_aliases_mark_card_filesystem_ready();
     test_card2_lifecycle_tracks_pad_enable_and_start_stop();
