@@ -114,6 +114,8 @@ Ps1BootReport Ps1BootRuntime::run(const Ps1BootOptions& options) noexcept {
 
     const auto& hardware_at_start = bus_.hardware_services();
     const auto dma_transfer_count_at_start = hardware_at_start.completed_dma_transfer_count();
+    const auto cdrom_command_count_at_start =
+        hardware_at_start.cdrom().command_count();
     const auto gpu_gp0_word_count_at_start = hardware_at_start.gpu_gp0_word_count();
     const auto gpu_gp1_command_count_at_start = hardware_at_start.gpu_gp1_command_count();
     const auto vram_write_count_at_start = hardware_at_start.gpu_vram_write_count();
@@ -123,6 +125,27 @@ Ps1BootReport Ps1BootRuntime::run(const Ps1BootOptions& options) noexcept {
         const auto& hardware = bus_.hardware_services();
         report.dma_transfer_count =
             hardware.completed_dma_transfer_count() - dma_transfer_count_at_start;
+        const auto& cdrom = hardware.cdrom();
+        const auto cdrom_delta =
+            cdrom.command_count() - cdrom_command_count_at_start;
+        const auto& cdrom_history = cdrom.recent_commands();
+        const auto history_size =
+            static_cast<std::uint64_t>(cdrom_history.size());
+        const auto history_take_u64 =
+            cdrom_delta < history_size ? cdrom_delta : history_size;
+        const auto history_take =
+            static_cast<std::size_t>(history_take_u64);
+        report.recent_cdrom_commands.reserve(history_take);
+        for (std::size_t i = cdrom_history.size() - history_take;
+             i < cdrom_history.size();
+             ++i) {
+            const auto& event = cdrom_history[i];
+            report.recent_cdrom_commands.push_back(Ps1CdromCommandSummary{
+                event.command,
+                event.index,
+                event.status,
+            });
+        }
         report.gpu_gp0_command_count =
             hardware.gpu_gp0_word_count() - gpu_gp0_word_count_at_start;
         report.gpu_gp1_command_count =
@@ -228,7 +251,20 @@ Ps1BootReport Ps1BootRuntime::run(const Ps1BootOptions& options) noexcept {
                     report.unsupported_access->value,
                     false,
                 }, options.mmio_event_capacity);
-                const auto& gpu = bus_.hardware_services().gpu();
+                const auto& hardware =
+                    bus_.hardware_services();
+                const auto& cdrom = hardware.cdrom();
+                if (*physical == 0x1F801801u &&
+                    report.unsupported_access->write &&
+                    report.unsupported_access->width == 1u &&
+                    cdrom.last_unsupported_command() &&
+                    static_cast<std::uint8_t>(
+                        report.unsupported_access->value) ==
+                        *cdrom.last_unsupported_command()) {
+                    return finish(
+                        Ps1BootStopReason::device_command_unimplemented);
+                }
+                const auto& gpu = hardware.gpu();
                 if ((physical == std::optional<std::uint32_t>{0x1F801810u} &&
                      gpu.last_unsupported_gp0_command()) ||
                     (physical == std::optional<std::uint32_t>{0x1F801814u} &&
