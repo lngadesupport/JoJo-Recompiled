@@ -616,6 +616,18 @@ std::uint64_t Ps1Spu::nonzero_sample_count() const noexcept {
     return nonzero_sample_count_;
 }
 
+std::uint16_t Ps1Spu::control() const noexcept {
+    return control_;
+}
+
+std::uint16_t Ps1Spu::status() const noexcept {
+    return status_;
+}
+
+std::uint16_t Ps1Spu::transfer_control() const noexcept {
+    return transfer_control_;
+}
+
 bool Ps1Spu::dma_write_words(std::span<const std::uint32_t> words) noexcept {
     for (const auto value : words) {
         write_sound_ram16(static_cast<std::uint16_t>(value));
