@@ -8,7 +8,8 @@ namespace jojo {
 enum class SettingsPage {
     graphics,
     audio,
-    controls
+    controls,
+    accessibility
 };
 
 class SettingsMenuSession {
@@ -24,6 +25,7 @@ public:
     [[nodiscard]] Result<void> select_player(std::size_t player);
     [[nodiscard]] Result<void> set_graphics(const GraphicsSettings& graphics);
     [[nodiscard]] Result<void> set_audio(const AudioSettings& audio);
+    [[nodiscard]] Result<void> set_accessibility(const AccessibilitySettings& accessibility);
     [[nodiscard]] Result<void> select_device(
         std::size_t player,
         std::string device_id,
