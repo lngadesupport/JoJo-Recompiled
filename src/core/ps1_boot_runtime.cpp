@@ -1,10 +1,8 @@
 #include "core/ps1_boot_runtime.h"
 
 #include "core/ps1_executable_loader.h"
-#include "core/r3000a_ir.h"
 #include "core/r3000a_reference_executor.h"
 
-#include <array>
 #include <set>
 #include <utility>
 
@@ -228,31 +226,29 @@ Ps1BootReport Ps1BootRuntime::run(const Ps1BootOptions& options) noexcept {
         if (native_x64_enabled_ &&
             pc_in_native_text &&
             observed_opcode.status == R3000aBusStatus::ok) {
-            const std::array<std::uint32_t, 1> word{observed_opcode.value};
-            const auto block = lift_r3000a_basic_block(cpu_.pc, word);
-            if (block) {
-                const auto compiled =
-                    native_x64_cache_.get_or_compile(block.value);
-                if (compiled) {
-                    const auto native =
-                        execute_r3000a_x64_block(*compiled.value, cpu_);
-                    if (native.status == R3000aX64ExecutionStatus::executed) {
-                        ++report.instructions_retired;
-                        ++report.native_x64_instructions_retired;
-                        ++instructions_since_progress;
-                        bus_.hardware_services().step(1u);
-                        cpu_.external_interrupt_pending =
-                            bus_.hardware_services().interrupt_pending() ? 1u : 0u;
-                        if (options.stagnation_instruction_limit != 0u &&
-                            instructions_since_progress >=
-                                options.stagnation_instruction_limit) {
-                            return finish(Ps1BootStopReason::diagnostic_stall);
-                        }
-                        continue;
+            const auto compiled =
+                native_x64_cache_.get_or_compile_instruction(
+                    cpu_.pc,
+                    observed_opcode.value);
+            if (compiled) {
+                const auto native =
+                    execute_r3000a_x64_block(*compiled.value, cpu_);
+                if (native.status == R3000aX64ExecutionStatus::executed) {
+                    ++report.instructions_retired;
+                    ++report.native_x64_instructions_retired;
+                    ++instructions_since_progress;
+                    bus_.hardware_services().step(1u);
+                    cpu_.external_interrupt_pending =
+                        bus_.hardware_services().interrupt_pending() ? 1u : 0u;
+                    if (options.stagnation_instruction_limit != 0u &&
+                        instructions_since_progress >=
+                            options.stagnation_instruction_limit) {
+                        return finish(Ps1BootStopReason::diagnostic_stall);
                     }
-                    if (native.status == R3000aX64ExecutionStatus::host_error) {
-                        return finish(Ps1BootStopReason::fatal_runtime_error);
-                    }
+                    continue;
+                }
+                if (native.status == R3000aX64ExecutionStatus::host_error) {
+                    return finish(Ps1BootStopReason::fatal_runtime_error);
                 }
             }
         }
