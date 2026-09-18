@@ -150,6 +150,20 @@ std::string format_ps1_commercial_evidence_report(
         << report.session_vblank_count << '\n';
     out << "spu_sample_frames=" << report.spu_sample_frames << '\n';
     out << "spu_nonzero_samples=" << report.spu_nonzero_samples << '\n';
+    out << "interrupt_status=" << hex32(report.interrupt_status) << '\n';
+    out << "interrupt_mask=" << hex32(report.interrupt_mask) << '\n';
+    out << "cpu_cop0_status=" << hex32(report.cpu_cop0_status) << '\n';
+    out << "cpu_cop0_cause=" << hex32(report.cpu_cop0_cause) << '\n';
+    out << "cpu_external_interrupt_pending="
+        << static_cast<unsigned>(report.cpu_external_interrupt_pending)
+        << '\n';
+    out << "bios_interrupt_hook_address=";
+    if (report.bios_interrupt_hook_address) {
+        out << hex32(*report.bios_interrupt_hook_address);
+    } else {
+        out << "none";
+    }
+    out << '\n';
     out << "gpu_display_enabled=" << (report.gpu_display.enabled ? 1 : 0) << '\n';
     out << "gpu_display_rgb24=" << (report.gpu_display.rgb24 ? 1 : 0) << '\n';
     out << "gpu_display_pal=" << (report.gpu_display.pal ? 1 : 0) << '\n';
