@@ -5,6 +5,35 @@
 namespace jojo {
 namespace {
 
+constexpr std::uint64_t kFnvOffset = 14695981039346656037ull;
+constexpr std::uint64_t kFnvPrime = 1099511628211ull;
+
+void hash_byte(std::uint64_t& hash, std::uint8_t value) noexcept {
+    hash ^= value;
+    hash *= kFnvPrime;
+}
+
+void hash_bool(std::uint64_t& hash, bool value) noexcept {
+    hash_byte(hash, static_cast<std::uint8_t>(value ? 1u : 0u));
+}
+
+void hash_u16(std::uint64_t& hash, std::uint16_t value) noexcept {
+    hash_byte(hash, static_cast<std::uint8_t>(value));
+    hash_byte(hash, static_cast<std::uint8_t>(value >> 8u));
+}
+
+void hash_u32(std::uint64_t& hash, std::uint32_t value) noexcept {
+    for (unsigned shift = 0u; shift < 32u; shift += 8u) {
+        hash_byte(hash, static_cast<std::uint8_t>(value >> shift));
+    }
+}
+
+void hash_u64(std::uint64_t& hash, std::uint64_t value) noexcept {
+    for (unsigned shift = 0u; shift < 64u; shift += 8u) {
+        hash_byte(hash, static_cast<std::uint8_t>(value >> shift));
+    }
+}
+
 std::uint32_t normalize_transfer_width(std::uint32_t raw) noexcept {
     return ((raw - 1u) & 0x3FFu) + 1u;
 }
@@ -871,6 +900,89 @@ std::uint64_t Ps1GpuIngress::vram_write_count() const noexcept {
 
 Ps1GpuDisplayState Ps1GpuIngress::display_state() const noexcept {
     return display_;
+}
+
+std::uint64_t Ps1GpuIngress::diagnostic_state_hash() const noexcept {
+    std::uint64_t hash = kFnvOffset;
+    hash_u32(hash, status_);
+    hash_u32(hash, gpuread_latch_);
+    hash_u64(hash, gp0_word_count_);
+    hash_u64(hash, gp1_command_count_);
+    hash_u64(hash, vram_write_count_);
+
+    hash_u64(hash, vram_.size());
+    for (const auto pixel : vram_) hash_u16(hash, pixel);
+
+    hash_bool(hash, display_.enabled);
+    hash_bool(hash, display_.rgb24);
+    hash_bool(hash, display_.pal);
+    hash_bool(hash, display_.interlaced);
+    hash_u32(hash, display_.start_x);
+    hash_u32(hash, display_.start_y);
+    hash_u32(hash, display_.width);
+    hash_u32(hash, display_.height);
+
+    hash_byte(hash, static_cast<std::uint8_t>(gp0_mode_));
+    hash_u16(hash, fill_color_);
+    hash_u32(hash, fill_x_);
+    hash_u32(hash, fill_y_);
+    hash_u16(hash, draw_color_);
+    hash_u32(hash, static_cast<std::uint32_t>(draw_x_));
+    hash_u32(hash, static_cast<std::uint32_t>(draw_y_));
+    hash_u32(hash, draw_area_left_);
+    hash_u32(hash, draw_area_top_);
+    hash_u32(hash, draw_area_right_);
+    hash_u32(hash, draw_area_bottom_);
+    hash_u32(hash, static_cast<std::uint32_t>(draw_offset_x_));
+    hash_u32(hash, static_cast<std::uint32_t>(draw_offset_y_));
+    hash_u32(hash, texture_page_x_);
+    hash_u32(hash, texture_page_y_);
+    hash_byte(hash, texture_depth_);
+    hash_byte(hash, texture_u_);
+    hash_byte(hash, texture_v_);
+    hash_u32(hash, texture_modulation_color_);
+    hash_bool(hash, texture_raw_);
+    hash_byte(hash, texture_window_mask_x_);
+    hash_byte(hash, texture_window_mask_y_);
+    hash_byte(hash, texture_window_offset_x_);
+    hash_byte(hash, texture_window_offset_y_);
+    hash_bool(hash, texture_x_flip_);
+    hash_bool(hash, texture_y_flip_);
+    hash_u32(hash, texture_fixed_width_);
+    hash_u32(hash, texture_fixed_height_);
+    hash_u32(hash, texture_clut_x_);
+    hash_u32(hash, texture_clut_y_);
+
+    hash_u64(hash, polygon_words_.size());
+    for (const auto word : polygon_words_) hash_u32(hash, word);
+    hash_u64(hash, polygon_words_expected_);
+
+    hash_u32(hash, copy_source_x_);
+    hash_u32(hash, copy_source_y_);
+    hash_u32(hash, copy_destination_x_);
+    hash_u32(hash, copy_destination_y_);
+    hash_u32(hash, transfer_x_);
+    hash_u32(hash, transfer_y_);
+    hash_u32(hash, transfer_width_);
+    hash_u32(hash, transfer_height_);
+    hash_u32(hash, transfer_pixel_index_);
+    hash_u32(hash, transfer_pixels_remaining_);
+    hash_u32(hash, readback_x_);
+    hash_u32(hash, readback_y_);
+    hash_u32(hash, readback_width_);
+    hash_u32(hash, readback_height_);
+    hash_u32(hash, readback_pixel_index_);
+    hash_u32(hash, readback_pixels_remaining_);
+
+    hash_bool(hash, last_unsupported_gp0_command_.has_value());
+    if (last_unsupported_gp0_command_) {
+        hash_byte(hash, *last_unsupported_gp0_command_);
+    }
+    hash_bool(hash, last_unsupported_gp1_command_.has_value());
+    if (last_unsupported_gp1_command_) {
+        hash_byte(hash, *last_unsupported_gp1_command_);
+    }
+    return hash;
 }
 
 const std::optional<std::uint8_t>& Ps1GpuIngress::last_unsupported_gp0_command() const noexcept {
