@@ -2,96 +2,107 @@
 
 ## Product contract
 
-The end user receives and launches one Windows x64 application: `JOJO-Recompiled.exe`.
+The end user launches one Windows x64 application: `JOJO-Recompiled.exe`.
 
-The active guest platform is **Sony PlayStation 1**. The project targets **this JoJo title/revision family only**; it is not a general PlayStation emulator.
+The active guest platform is **Sony PlayStation 1** and the product scope is the supported JoJo PS1 revision family only. This is not a general-purpose PlayStation emulator.
 
-The user supplies their own legally obtained PS1 image. Active source formats are `.iso`, `.bin`, and `.cue`. The source is read-only. The user chooses the installation root; `%LOCALAPPDATA%\JOJO Recompiled\game` is only a proposed default.
+The user supplies a legally obtained `.iso`, `.bin`, or `.cue`. The source remains read-only and authoritative. Runtime settings, diagnostics and raw PS1 Memory Cards live in application-owned writable user directories.
 
-The repository, CI, artifacts, and releases contain no commercial game image, extracted PS-X EXE, proprietary PlayStation BIOS, or copyrighted game assets.
+The repository, CI, artifacts and releases contain no commercial game image, extracted PS-X EXE, proprietary PlayStation BIOS, copyrighted artwork, music, stages, or unrestricted guest-memory dumps.
 
-## Current milestone — PS1 M1 foundation
+## Current program state
 
-Implemented and repository-test verified:
+The project has moved beyond the original M1 direct-source foundation.
 
-- PS1-only media acceptance and `.gdi` rejection;
-- raw MODE1/2352 and MODE2/2352 logical-sector handling;
-- ISO9660 filesystem access;
-- strict `SYSTEM.CNF` boot-path resolution;
-- `PS-X EXE` header validation, metadata extraction, and full-file hashing;
-- observed USA whole-image fingerprint recognition;
-- user-selectable install root;
-- manifest v2 plus transactional generation staging/activation;
-- legacy incompatible-installation classification;
-- Linux and Windows CI with an explicit PS1 active-architecture gate;
-- removal of Dreamcast/SH-4 guest/backend source, tests, targets, and workflow contracts from the active project.
+### Phase 1 — direct-source foundation
 
-M1 deliberately stops before CPU execution. The following are not M1 capabilities:
+Complete. The shipping runtime resolves the source directly through a persistent binding, `Data/ROM` discovery or file selection. `SYSTEM.CNF`, PS-X EXE metadata and runtime sectors are consumed without a prepared extracted installation.
 
-- R3000A/MIPS execution;
-- MIPS CFG/IR execution;
-- native x64 code generation for R3000A;
-- commercial BIOS/HLE coverage;
-- commercial boot;
-- GPU rendering;
-- SPU audio;
-- original-game input integration;
-- gameplay.
+### Phase 2 — deterministic commercial frontier
 
-The known commercial whole-image fingerprint has been observed, but the corrected PS1 pipeline still requires a fresh local run to observe `SYSTEM.CNF` and validate the commercial `PS-X EXE` on the user's real image.
+Complete. The direct-disc commercial runner owns the media session and reports explicit BIOS/MMIO/CD-ROM/DMA/GPU/CPU frontiers with bounded diagnostic evidence.
 
-## M2 — R3000A reference execution
+### Phase 3 — hardware-services foundation
 
-Start only after M1 commercial-image metadata has been observed locally. Build an R3000A-compatible MIPS I reference executor with synthetic TDD and explicit diagnostics.
+Complete. Interrupts, root counters, DMA, title-scoped CD-ROM, GPU ingress and direct-media ownership are integrated behind the PS1 bus.
 
-Required baseline semantics include 32 GPRs with `$zero` invariant, HI/LO, PC, little-endian memory behavior, branch delay slots, load delay semantics, and alignment/exception behavior actually required by the game. COP0 and GTE/COP2 are added according to observed JoJo requirements rather than by implementing a generic PS1 compatibility matrix.
+### Phase 4 — GPU/GTE/rendering foundation
 
-No M2 completion claim is valid without Linux and Windows tests for the exact semantics introduced.
+Implementation exists and is synthetic-test covered: GTE/COP2, GP0/GP1 state, VRAM transfers, rasterization, texture sampling, display extraction and D3D11 presentation.
 
-## M3 — MIPS CFG/IR and native x64 backend
+The acceptance boundary remains strict: a current non-empty commercial frame must be observed locally before rendering is considered commercially verified.
 
-After reference semantics are stable:
+### Phase 5 — SPU/audio
 
-- discover executable code regions and control flow;
-- lift supported R3000A instructions into explicit IR;
-- preserve delay-slot/load-delay behavior in CFG/IR boundaries;
-- add host x64 lowering with an architecture/versioned cache;
-- bind cache identity to the exact revision and commercial executable hash;
-- reject incompatible legacy caches.
+Implementation and Linux/Windows CI are complete for the current synthetic contracts: SPU register/RAM model, DMA4, ADPCM, pitch, loop/ENDX, ADSR, 44.1 kHz stereo mixing and Windows XAudio2 output.
 
-`native-codegen-ready` is not equivalent to bootable or playable.
+Commercial audio evidence is still required.
 
-## M4 — JoJo PS1 runtime services
+### Phase 6 — controls/timing/saves
 
-Add only the services the game demonstrably uses:
+The continuous Windows runtime now integrates:
 
-- PS1 main memory and bus/MMIO diagnostics;
-- BIOS HLE without a proprietary BIOS dependency;
-- interrupts and timers;
-- DMA;
-- GTE/COP2;
-- GPU;
-- CD-ROM/runtime disc access;
-- controllers;
-- SPU/audio.
+- SIO0 controller and Memory Card transport;
+- two digital controller ports;
+- keyboard/XInput/HID → JoJo PS1 button bridge;
+- raw 128 KiB PS1 `.mcr` persistence;
+- VBlank IRQ0 and SIO IRQ7 behavior;
+- PAL/NTSC/interlace-aware timing driven by GP1 display mode;
+- bounded frame execution slices for host responsiveness;
+- periodic Memory Card flushes;
+- continuous frame/audio/input servicing.
 
-Unknown MMIO, HLE, or coprocessor operations must fail with diagnostics including PC/address/operation context. Silent zero-filled fake success is not an acceptable compatibility strategy.
+This phase is closed only after its latest Linux and Windows final gates are green.
 
-## M5 — Observable commercial checkpoints
+## Phase 7 — current commercial gameplay validation
 
-Promote evidence in small checkpoints: executable entry reached, first expected service boundary, first GPU command stream, first visible frame/logo/menu, controller response, audio, and finally gameplay. Each checkpoint must be backed by a local legally supplied run and reproducible diagnostics where feasible.
+Phase 7 is the next evidence-driven phase.
 
-Do not label the game `bootable`, `rendering`, `audio-working`, `playable`, or similar until the corresponding evidence exists.
+The workflow is:
 
-## Retained console-neutral host infrastructure
+1. launch the supported user-supplied image on the latest green runtime;
+2. capture the first current production frontier;
+3. implement the exact missing behavior with synthetic regression coverage;
+4. repeat through visible title/menu progression;
+5. verify controller response, audio and Memory Card behavior in the commercial game;
+6. reach and complete a representative fight;
+7. preserve diagnostics for every unsupported BIOS/MMIO/CD-ROM/GPU/CPU dependency.
 
-Presentation/settings/input models, mod runtime, training tools, rollback/networking utilities, ISO/media infrastructure, revision fingerprints, Windows UI plumbing, hashing, and CI remain available as host-side infrastructure. They are not automatically integrated into the original PS1 game merely because their standalone tests pass.
+Broad speculative hardware emulation is not the strategy. Real title evidence controls scope.
 
-Historical Dreamcast/SH-4 plans and specs under `docs/superpowers/` remain project history only.
+## Phase 8 — native x64 optimization and release
 
-### Production completion program (R2)
+The reference R3000A executor remains the correctness oracle until the gameplay path is stable.
 
-The machine-checkable truth vocabulary remains in [`PRODUCTION-READINESS.tsv`](PRODUCTION-READINESS.tsv). Its workstreams are interpreted against the active PS1 architecture:
+The later native-backend program will:
+
+- discover title code regions and control flow;
+- lift supported R3000A semantics into explicit IR;
+- preserve branch/load-delay and exception behavior;
+- lower validated IR to Windows x64;
+- bind derived caches to the exact supported revision/executable identity;
+- cross-check native execution against the reference runtime;
+- add final performance, packaging and release gates.
+
+`native-codegen-ready` is not equivalent to playable or production-ready.
+
+## Commercial evidence policy
+
+Synthetic fixtures prove only the contracts they exercise.
+
+Do not label the game `bootable`, `rendering`, `audio-working`, `playable`, save-compatible, or release-ready based only on unit/CI coverage. Those claims require current evidence from the supported user-supplied commercial image.
+
+Diagnostic fallbacks must stay explicit and may not silently become production semantics.
+
+## Retained host infrastructure
+
+Presentation/settings/input models, mod runtime, training tools, rollback/networking utilities, ISO/media infrastructure, revision fingerprints, Windows UI plumbing, hashing and CI remain available as host-side infrastructure. They become part of original-game behavior only when explicitly wired into and validated through the PS1 runtime.
+
+Historical Dreamcast/SH-4 plans and superseded installation-generation documents remain project history only.
+
+## Production completion program (R2)
+
+The machine-readable truth vocabulary remains in [`PRODUCTION-READINESS.tsv`](PRODUCTION-READINESS.tsv):
 
 - R2.1 — repository truth/release gates;
 - R2.2 — commercial revision enablement;
@@ -100,15 +111,16 @@ The machine-checkable truth vocabulary remains in [`PRODUCTION-READINESS.tsv`](P
 - R2.5 — online product modes/integration;
 - R2.6 — production validation/release.
 
-A workstream is not complete because code exists. Synthetic fixtures prove only their explicit contracts, and `blocked-external-evidence` never counts as verified.
+A workstream is not complete because code exists. `blocked-external-evidence` is not equivalent to verified.
 
 ## Architectural rules
 
 - Commercial source media is read-only.
 - No proprietary BIOS is distributed or required by design.
-- No commercial bytes are committed to Git/CI/releases.
+- No commercial payload bytes are committed to Git/CI/releases.
 - Unsupported PS1 behavior produces explicit diagnostics.
 - Game requirements drive hardware/HLE scope; generic emulator completeness is a non-goal.
 - Simulation state is not owned by rendering or networking.
-- Conversion progress reflects real stages, not timers.
+- User saves/configuration remain separate from the commercial source image.
+- Derived caches must be reproducible and disposable.
 - The distributable application artifact remains one `JOJO-Recompiled.exe`.
