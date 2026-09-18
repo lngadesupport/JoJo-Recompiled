@@ -100,6 +100,18 @@ std::string format_ps1_commercial_evidence_report(
         << '\n';
     out << "stop_reason=" << ps1_boot_stop_reason_name(report.boot.stop_reason) << '\n';
     out << "total_instructions_retired=" << report.total_instructions_retired << '\n';
+    out << "total_native_x64_instructions_retired="
+        << report.total_native_x64_instructions_retired << '\n';
+    out << "total_reference_instructions_retired="
+        << report.total_reference_instructions_retired << '\n';
+    out << "total_native_x64_cache_compilations="
+        << report.total_native_x64_cache_compilations << '\n';
+    out << "total_native_x64_cache_reuses="
+        << report.total_native_x64_cache_reuses << '\n';
+    out << "total_native_x64_cache_invalidations="
+        << report.total_native_x64_cache_invalidations << '\n';
+    out << "total_native_x64_cache_evictions="
+        << report.total_native_x64_cache_evictions << '\n';
     out << "execution_segments=" << report.execution_segments << '\n';
     out << "completed_frames=" << report.completed_frames << '\n';
     out << "observed_non_black_frames="
