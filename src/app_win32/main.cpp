@@ -108,6 +108,7 @@ std::size_t binding_capture_player=0u;
 jojo::GameAction binding_capture_action=jojo::GameAction::attack_light;
 jojo::InputFrame binding_capture_previous{};
 std::wstring binding_capture_status{};
+jojo::ResolvedPlayerInput ui_previous_input{};
 
 std::wstring wide(const std::string& s) {
     if (s.empty()) return {};
@@ -1036,6 +1037,43 @@ void handle_launcher_action(jojo::win32::LauncherUiAction action){
     if(win)InvalidateRect(win,nullptr,FALSE);
 }
 
+void poll_launcher_controller(){
+    if(!input_host||binding_capture_active||game_runner)return;
+
+    const auto& device_id=app_settings.input.players[0].selected_device;
+    const bool gamepad=
+        device_id.rfind("xinput:",0)==0||
+        device_id.rfind("hid:",0)==0;
+    if(!gamepad)return;
+
+    const auto frame=input_host->snapshot();
+    const auto resolved=jojo::resolve_player_actions(
+        app_settings.input,
+        frame)[0];
+
+    const auto rising=[&](jojo::GameAction action){
+        return resolved.pressed(action)&&!ui_previous_input.pressed(action);
+    };
+
+    WPARAM key=0;
+    if(rising(jojo::GameAction::up))key=VK_UP;
+    else if(rising(jojo::GameAction::down))key=VK_DOWN;
+    else if(rising(jojo::GameAction::left))key=VK_LEFT;
+    else if(rising(jojo::GameAction::right))key=VK_RIGHT;
+    else if(rising(jojo::GameAction::attack_light)||
+            rising(jojo::GameAction::start))key=VK_RETURN;
+    else if(rising(jojo::GameAction::pause))key=VK_ESCAPE;
+
+    ui_previous_input=resolved;
+    if(key!=0){
+        handle_launcher_action(
+            launcher_ui.key_down(
+                key,
+                app_settings,
+                input_host->registry()));
+    }
+}
+
 void make_fonts(){
     title_font=CreateFontW(-42,0,0,0,FW_HEAVY,FALSE,FALSE,FALSE,DEFAULT_CHARSET,OUT_DEFAULT_PRECIS,CLIP_DEFAULT_PRECIS,CLEARTYPE_QUALITY,DEFAULT_PITCH,L"Segoe UI Black");
     body_font=CreateFontW(-19,0,0,0,FW_SEMIBOLD,FALSE,FALSE,FALSE,DEFAULT_CHARSET,OUT_DEFAULT_PRECIS,CLIP_DEFAULT_PRECIS,CLEARTYPE_QUALITY,DEFAULT_PITCH,L"Segoe UI");
@@ -1095,6 +1133,10 @@ LRESULT CALLBACK proc(HWND h,UINT m,WPARAM w,LPARAM l){
         if(w==ID_UI_TIMER){
             poll_binding_capture();
             poll_online_session();
+            poll_launcher_controller();
+            if(launcher_ui.online_open()){
+                InvalidateRect(h,nullptr,FALSE);
+            }
             return 0;
         }
         break;
