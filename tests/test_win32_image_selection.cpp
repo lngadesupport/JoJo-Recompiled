@@ -237,10 +237,10 @@ void inspect_application(DWORD ui_thread) {
     if (checkpoint_exists) {
         check(GetParent(checkpoint_button) == window && IsWindowVisible(checkpoint_button),
               "checkpoint button is visible");
-        check(window_text(checkpoint_button) == L"EXECUTAR CHECKPOINT",
-              "checkpoint button text remains explicit");
+        check(window_text(checkpoint_button) == L"INICIAR JOGO",
+              "runtime button explicitly starts the game");
         check(!IsWindowEnabled(checkpoint_button),
-              "checkpoint is disabled until the selected original image validates");
+              "runtime start is disabled until the selected original image validates");
     }
     const bool can_drop = check((GetWindowLongPtrW(window, GWL_EXSTYLE) & WS_EX_ACCEPTFILES) != 0,
                                 "application accepts files dropped from Explorer");
