@@ -65,6 +65,7 @@ int msaa_rank(Msaa mode) noexcept {
         case Msaa::x2: return 2;
         case Msaa::x4: return 4;
         case Msaa::x8: return 8;
+        case Msaa::x16: return 16;
     }
     return -1;
 }
