@@ -33,6 +33,12 @@ int main() {
     report.boot.gpu_gp1_command_count = 8u;
     report.boot.vram_write_count = 9u;
     report.boot.presented_frames = 1u;
+    report.first_frame = jojo::Ps1CommercialFrameEvidence{
+        320u,
+        240u,
+        0x0123456789ABCDEFull,
+        1234u,
+    };
     report.boot.cpu_diagnostic = jojo::R3000aDiagnostic{
         jojo::R3000aBoundaryCode::cop2_unimplemented,
         jojo::R3000aStage::cop2,
@@ -67,6 +73,10 @@ int main() {
     CHECK(text.find("cdrom_event_0_command=6") != std::string::npos);
     CHECK(text.find("dma_transfer_count=4") != std::string::npos);
     CHECK(text.find("gpu_gp0_command_count=7") != std::string::npos);
+    CHECK(text.find("frame_width=320") != std::string::npos);
+    CHECK(text.find("frame_height=240") != std::string::npos);
+    CHECK(text.find("frame_hash_fnv1a64=0123456789abcdef") != std::string::npos);
+    CHECK(text.find("frame_non_black_pixels=1234") != std::string::npos);
     CHECK(text.find("cpu_boundary=" +
                     std::to_string(static_cast<unsigned>(jojo::R3000aBoundaryCode::cop2_unimplemented))) !=
           std::string::npos);

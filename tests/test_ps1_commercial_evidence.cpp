@@ -18,6 +18,78 @@ std::vector<std::uint8_t> read_all(const fs::path& path) {
     return {std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>()};
 }
 
+void test_frame_evidence_requires_non_black_visible_pixels() {
+    jojo::Ps1DisplayFrame black{};
+    black.width = 2u;
+    black.height = 1u;
+    black.rgba8 = {0xFF000000u, 0xFF000000u};
+    CHECK(!jojo::make_ps1_commercial_frame_evidence(black).has_value());
+
+    jojo::Ps1DisplayFrame visible = black;
+    visible.rgba8[1] = 0xFF0000FFu;
+    const auto first = jojo::make_ps1_commercial_frame_evidence(visible);
+    const auto second = jojo::make_ps1_commercial_frame_evidence(visible);
+    CHECK(first.has_value());
+    CHECK(second.has_value());
+    if (first && second) {
+        CHECK(first->width == 2u);
+        CHECK(first->height == 1u);
+        CHECK(first->non_black_pixels == 1u);
+        CHECK(first->frame_hash_fnv1a64 == second->frame_hash_fnv1a64);
+        CHECK(first->frame_hash_fnv1a64 != 0u);
+    }
+}
+
+void test_runner_promotes_visible_gpu_output_to_commercial_frame(const fs::path& temp) {
+    auto fixture = test_ps1::make_disc_fixture();
+    fixture.executable = test_ps1::make_psx_exe_from_words({
+        test_mips::i(0x0Fu, 0u, 8u, 0x1F80u), // r8 = MMIO base
+
+        test_mips::i(0x0Fu, 0u, 9u, 0xA000u),
+        test_mips::i(0x2Bu, 8u, 9u, 0x1810u), // GP0 A0
+        test_mips::i(0x09u, 0u, 9u, 0x0000u),
+        test_mips::i(0x2Bu, 8u, 9u, 0x1810u), // destination (0,0)
+        test_mips::i(0x0Fu, 0u, 9u, 0x0001u),
+        test_mips::i(0x0Du, 9u, 9u, 0x0001u),
+        test_mips::i(0x2Bu, 8u, 9u, 0x1810u), // size 1x1
+        test_mips::i(0x09u, 0u, 9u, 0x001Fu),
+        test_mips::i(0x2Bu, 8u, 9u, 0x1810u), // red BGR555 pixel
+
+        test_mips::i(0x0Fu, 0u, 9u, 0x0300u),
+        test_mips::i(0x2Bu, 8u, 9u, 0x1814u), // display enabled
+        test_mips::i(0x0Fu, 0u, 9u, 0x0800u),
+        test_mips::i(0x0Du, 9u, 9u, 0x0001u),
+        test_mips::i(0x2Bu, 8u, 9u, 0x1814u), // 320x240 display mode
+
+        test_mips::j(0x02u, 0x8001003Cu >> 2),
+        0x00000000u,
+    });
+    const auto source = test_ps1::write_cooked_iso(temp / "visible-frame.iso", fixture);
+
+    jojo::Ps1DiscOpenOptions open_options{};
+    open_options.revision_profiles.push_back(
+        test_ps1::make_revision_profile(fixture, "synthetic-visible-frame"));
+
+    auto runner = jojo::Ps1CommercialEvidenceRunner::open(source, open_options);
+    CHECK(runner);
+    if (!runner) return;
+
+    jojo::Ps1CommercialEvidenceOptions options{};
+    options.boot.instruction_budget = 40u;
+    const auto report = runner.value.run(options);
+
+    CHECK(report.frontier == jojo::Ps1CommercialFrontierClass::commercial_frame_presented);
+    CHECK(report.boot.stop_reason == jojo::Ps1BootStopReason::commercial_frame_presented);
+    CHECK(report.boot.presented_frames == 1u);
+    CHECK(report.first_frame.has_value());
+    if (report.first_frame) {
+        CHECK(report.first_frame->width == 320u);
+        CHECK(report.first_frame->height == 240u);
+        CHECK(report.first_frame->non_black_pixels == 1u);
+        CHECK(report.first_frame->frame_hash_fnv1a64 != 0u);
+    }
+}
+
 void test_normal_mode_retains_disc_and_never_mutates_source(const fs::path& temp) {
     auto fixture = test_ps1::make_disc_fixture();
     const auto source = test_ps1::write_cooked_iso(temp / "normal.iso", fixture);
@@ -150,6 +222,8 @@ int main() {
     fs::create_directories(temp, ec);
     CHECK(!ec);
 
+    test_frame_evidence_requires_non_black_visible_pixels();
+    test_runner_promotes_visible_gpu_output_to_commercial_frame(temp);
     test_normal_mode_retains_disc_and_never_mutates_source(temp);
     test_runner_attaches_direct_disc_to_runtime_cdrom(temp);
     test_bios_fallback_is_opt_in_and_recorded(temp);
