@@ -8,12 +8,14 @@ namespace {
 constexpr std::uint32_t kBiosA0 = 0x000000A0u;
 constexpr std::uint32_t kBiosB0 = 0x000000B0u;
 constexpr std::uint32_t kBiosC0 = 0x000000C0u;
+constexpr std::uint32_t kA0Write = 0x00000003u;
 constexpr std::uint32_t kA0InitHeap = 0x00000039u;
 constexpr std::uint32_t kA0FlushCache = 0x00000044u;
 constexpr std::uint32_t kA0RemoveIso9660 = 0x00000056u;
 constexpr std::uint32_t kA0RemoveIso9660Alias = 0x00000072u;
 constexpr std::uint32_t kB0ResetEntryInt = 0x00000018u;
 constexpr std::uint32_t kB0HookEntryInt = 0x00000019u;
+constexpr std::uint32_t kB0Write = 0x00000035u;
 constexpr std::uint32_t kB0GetC0Table = 0x00000056u;
 constexpr std::uint32_t kB0ChangeClearPad = 0x0000005Bu;
 constexpr std::uint32_t kC0ChangeClearRCnt = 0x0000000Au;
@@ -78,6 +80,15 @@ Ps1HleBiosDispatchStatus Ps1HleBios::dispatch(
     R3000aState& cpu,
     std::uint32_t table_physical,
     std::uint32_t selector) noexcept {
+    if (((table_physical == kBiosA0 && selector == kA0Write) ||
+         (table_physical == kBiosB0 && selector == kB0Write)) &&
+        (cpu.gpr[4] == 1u || cpu.gpr[4] == 2u)) {
+        // stdout/stderr are diagnostic sinks in the BIOS-less runtime.
+        cpu.gpr[2] = cpu.gpr[6];
+        return_from_bios_call(cpu);
+        return Ps1HleBiosDispatchStatus::handled;
+    }
+
     if (table_physical == kBiosA0 && selector == kA0InitHeap) {
         heap_state_ = Ps1BiosHeapState{cpu.gpr[4], cpu.gpr[5]};
         return_from_bios_call(cpu);
