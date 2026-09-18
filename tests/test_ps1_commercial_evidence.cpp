@@ -194,6 +194,40 @@ void test_runner_continues_bounded_budget_until_real_frontier(const fs::path& te
     }
 }
 
+void test_runner_emits_vblank_at_ps1_frame_boundaries(
+    const fs::path& temp) {
+    auto fixture = test_ps1::make_disc_fixture();
+    fixture.executable = test_ps1::make_psx_exe_from_words({
+        test_mips::j(0x02u, 0x80010000u >> 2),
+        0x00000000u,
+    });
+    const auto source =
+        test_ps1::write_cooked_iso(temp / "timed-vblank.iso", fixture);
+
+    jojo::Ps1DiscOpenOptions open_options{};
+    open_options.revision_profiles.push_back(
+        test_ps1::make_revision_profile(
+            fixture, "synthetic-timed-vblank"));
+
+    auto runner =
+        jojo::Ps1CommercialEvidenceRunner::open(
+            source, open_options);
+    CHECK(runner);
+    if (!runner) return;
+
+    jojo::Ps1CommercialEvidenceOptions options{};
+    options.boot.instruction_budget = 600000u;
+    options.max_execution_segments = 2u;
+    const auto report = runner.value.run(options);
+
+    CHECK(report.frontier ==
+          jojo::Ps1CommercialFrontierClass::execution_budget);
+    CHECK(report.completed_frames >= 1u);
+    CHECK(report.session_vblank_count ==
+          report.completed_frames);
+    CHECK(report.total_execution_steps < 1200000u);
+}
+
 void test_normal_mode_retains_disc_and_never_mutates_source(const fs::path& temp) {
     auto fixture = test_ps1::make_disc_fixture();
     const auto source = test_ps1::write_cooked_iso(temp / "normal.iso", fixture);
@@ -404,6 +438,7 @@ int main() {
     test_frame_progress_preserves_first_visible_and_counts_changes();
     test_runner_promotes_visible_gpu_output_to_commercial_frame(temp);
     test_runner_continues_bounded_budget_until_real_frontier(temp);
+    test_runner_emits_vblank_at_ps1_frame_boundaries(temp);
     test_normal_mode_retains_disc_and_never_mutates_source(temp);
     test_runner_attaches_direct_disc_to_runtime_cdrom(temp);
     test_runner_segment_api_preserves_runtime_state(temp);
