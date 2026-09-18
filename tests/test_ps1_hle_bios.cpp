@@ -53,6 +53,25 @@ static void test_a0_remove_iso9660_aliases() {
     check_remove_alias(0x72u);
 }
 
+
+static void test_b0_18_resetentryint_clears_custom_hook() {
+    jojo::Ps1HleBios bios{};
+
+    auto hooked = make_cpu();
+    hooked.gpr[4] = 0x00006000u;
+    CHECK(bios.dispatch(hooked, 0xB0u, 0x19u) ==
+          jojo::Ps1HleBiosDispatchStatus::handled);
+    CHECK(bios.interrupt_hook_address().has_value());
+
+    auto reset = make_cpu();
+    reset.gpr[2] = 0x12345678u;
+    CHECK(bios.dispatch(reset, 0xB0u, 0x18u) ==
+          jojo::Ps1HleBiosDispatchStatus::handled);
+    CHECK(!bios.interrupt_hook_address().has_value());
+    CHECK(reset.gpr[2] == 0x12345678u);
+    check_returned_through_ra(reset);
+}
+
 static void test_b0_19_hookentryint() {
     jojo::Ps1HleBios bios{};
     auto cpu = make_cpu();
@@ -203,6 +222,7 @@ static void test_hash_is_deterministic_and_tracks_all_hle_state() {
 int main() {
     test_a0_39_initheap();
     test_a0_remove_iso9660_aliases();
+    test_b0_18_resetentryint_clears_custom_hook();
     test_b0_19_hookentryint();
     test_b0_5b_changeclearpad();
     test_c0_0a_changeclearrcnt_returns_previous_state();
