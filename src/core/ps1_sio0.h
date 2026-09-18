@@ -37,6 +37,8 @@ public:
     [[nodiscard]] const Ps1MemoryCard& memory_card(std::uint32_t port) const noexcept;
     [[nodiscard]] std::uint64_t digital_pad_poll_count(
         std::uint32_t port) const noexcept;
+    [[nodiscard]] std::uint64_t digital_pad_pressed_poll_count(
+        std::uint32_t port) const noexcept;
     [[nodiscard]] std::uint64_t memory_card_read_sector_count(
         std::uint32_t port) const noexcept;
     [[nodiscard]] std::uint64_t memory_card_write_sector_count(
@@ -73,6 +75,7 @@ private:
     std::array<std::uint16_t, 2> pad_buttons_{0xFFFFu, 0xFFFFu};
     std::array<Ps1MemoryCard, 2> memory_cards_{};
     std::array<std::uint64_t, 2> digital_pad_poll_count_{};
+    std::array<std::uint64_t, 2> digital_pad_pressed_poll_count_{};
     std::array<std::uint64_t, 2> memory_card_read_sector_count_{};
     std::array<std::uint64_t, 2> memory_card_write_sector_count_{};
     std::deque<std::uint8_t> rx_fifo_{};
