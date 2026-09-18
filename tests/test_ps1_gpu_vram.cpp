@@ -6,7 +6,27 @@
 static int failures = 0;
 #define CHECK(x) do { if (!(x)) { std::cerr << __FILE__ << ':' << __LINE__ << " CHECK failed: " #x "\n"; ++failures; } } while (0)
 
+static void test_gpu_hash_tracks_vram_and_control_state() {
+    jojo::Ps1GpuIngress gpu{};
+    const auto baseline = gpu.diagnostic_state_hash();
+
+    CHECK(gpu.write_gp1(0x03000000u).status ==
+          jojo::R3000aBusStatus::ok);
+    const auto display_hash = gpu.diagnostic_state_hash();
+    CHECK(display_hash != baseline);
+
+    CHECK(gpu.write_gp0(0x020000FFu).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(gpu.write_gp0(0x00000000u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(gpu.write_gp0(0x00010001u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(gpu.vram_pixel(0u, 0u) != 0u);
+    CHECK(gpu.diagnostic_state_hash() != display_hash);
+}
+
 int main() {
+    test_gpu_hash_tracks_vram_and_control_state();
     jojo::Ps1GpuIngress gpu;
 
     // GP0(A0h): CPU -> VRAM image transfer. Three 16-bit pixels are packed
