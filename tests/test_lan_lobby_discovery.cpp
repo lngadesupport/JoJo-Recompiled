@@ -18,6 +18,7 @@ void test_advertisement_round_trip() {
     ad.players = 1u;
     ad.max_players = 2u;
     ad.password_required = false;
+    ad.in_game = true;
     ad.in_game = false;
 
     const auto encoded = jojo::encode_lan_lobby_advertisement(ad);
