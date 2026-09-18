@@ -73,6 +73,43 @@ int main() {
     }
     hw.cancel_pending_dma_transfer();
 
+    // Request mode 1 uses BCR block-size * block-count and does
+    // not require the manual trigger bit. JoJo uses this for SPU DMA.
+    const std::uint32_t ch4_enable = 1u << (4u * 4u + 3u);
+    CHECK(hw.write32(0x1F8010F0u, ch4_enable).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(hw.write32(0x1F8010C0u, 0x00004000u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(hw.write32(0x1F8010C4u, 0x00030010u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(hw.write32(0x1F8010C8u, 0x01000201u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(hw.pending_dma_transfer().has_value());
+    if (hw.pending_dma_transfer()) {
+        CHECK(hw.pending_dma_transfer()->channel == 4u);
+        CHECK(hw.pending_dma_transfer()->madr == 0x00004000u);
+        CHECK(hw.pending_dma_transfer()->words == 48u);
+        CHECK(hw.pending_dma_transfer()->from_ram);
+    }
+    hw.cancel_pending_dma_transfer();
+
+    // CD request mode is also accepted with device->RAM direction.
+    CHECK(hw.write32(0x1F8010F0u, ch3_enable).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(hw.write32(0x1F8010B0u, 0x00005000u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(hw.write32(0x1F8010B4u, 0x00020020u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(hw.write32(0x1F8010B8u, 0x01000200u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(hw.pending_dma_transfer().has_value());
+    if (hw.pending_dma_transfer()) {
+        CHECK(hw.pending_dma_transfer()->channel == 3u);
+        CHECK(hw.pending_dma_transfer()->words == 64u);
+        CHECK(!hw.pending_dma_transfer()->from_ram);
+    }
+    hw.cancel_pending_dma_transfer();
+
     const std::uint32_t ch0_enable = 1u << 3u;
     CHECK(hw.write32(0x1F8010F0u, ch0_enable).status == jojo::R3000aBusStatus::ok);
     CHECK(hw.write32(0x1F801088u, 0x11000000u).status == jojo::R3000aBusStatus::unsupported);

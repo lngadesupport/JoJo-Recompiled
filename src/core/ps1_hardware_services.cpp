@@ -418,10 +418,17 @@ R3000aBusResult Ps1HardwareServices::write32(std::uint32_t physical,
             pending_dma_transfer_.has_value()) {
             return {R3000aBusStatus::unsupported, 0u};
         }
-        if ((value & kDmaSyncMask) != 0u ||
-            (value & kDmaTrigger) == 0u ||
+        const auto sync_mode =
+            static_cast<std::uint32_t>((value & kDmaSyncMask) >> 9u);
+        if (sync_mode > 1u ||
             (value & kDmaStepDecrement) != 0u ||
             (value & kDmaChopping) != 0u) {
+            return {R3000aBusStatus::unsupported, 0u};
+        }
+        if (sync_mode == 0u && (value & kDmaTrigger) == 0u) {
+            return {R3000aBusStatus::unsupported, 0u};
+        }
+        if (sync_mode == 1u && (value & kDmaTrigger) != 0u) {
             return {R3000aBusStatus::unsupported, 0u};
         }
 
@@ -429,8 +436,24 @@ R3000aBusResult Ps1HardwareServices::write32(std::uint32_t physical,
         if (!supported_dma_device_direction(dma_channel_index, from_ram)) {
             return {R3000aBusStatus::unsupported, 0u};
         }
-        const auto words = dma.bcr & 0xFFFFu;
-        if (words == 0u || words > 0x10000u) {
+
+        std::uint64_t words64 = 0u;
+        if (sync_mode == 0u) {
+            const auto word_count = dma.bcr & 0xFFFFu;
+            words64 = word_count == 0u ? 0x10000u : word_count;
+        } else {
+            const auto block_size = dma.bcr & 0xFFFFu;
+            const auto block_count = (dma.bcr >> 16u) & 0xFFFFu;
+            const auto effective_size =
+                block_size == 0u ? 0x10000ull : block_size;
+            const auto effective_count =
+                block_count == 0u ? 0x10000ull : block_count;
+            words64 = effective_size * effective_count;
+        }
+
+        constexpr std::uint64_t kMaxMainRamWords =
+            (2u * 1024u * 1024u) / 4u;
+        if (words64 == 0u || words64 > kMaxMainRamWords) {
             return {R3000aBusStatus::unsupported, 0u};
         }
 
@@ -438,7 +461,7 @@ R3000aBusResult Ps1HardwareServices::write32(std::uint32_t physical,
         pending_dma_transfer_ = Ps1DmaTransferRequest{
             static_cast<std::uint8_t>(dma_channel_index),
             dma.madr,
-            words,
+            static_cast<std::uint32_t>(words64),
             from_ram,
         };
         return {R3000aBusStatus::ok, 0u};
