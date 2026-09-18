@@ -7,14 +7,25 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <vector>
 
 namespace jojo {
+
+struct R3000aX64MemoryAccess {
+    MipsOp op{MipsOp::reserved};
+    std::uint8_t rs{};
+    std::uint8_t rt{};
+    std::uint8_t width{};
+    std::uint16_t immediate{};
+    bool write{};
+};
 
 struct R3000aX64Code {
     std::uint32_t entry_pc{};
     std::size_t instruction_count{};
     std::vector<std::uint8_t> bytes;
+    std::optional<R3000aX64MemoryAccess> memory_access;
     std::shared_ptr<void> executable_owner;
     const void* executable_entry{};
 };
@@ -44,6 +55,7 @@ struct R3000aX64ExecutionResult {
 
 [[nodiscard]] R3000aX64ExecutionResult execute_r3000a_x64_block(
     const R3000aX64Code& code,
-    R3000aState& state) noexcept;
+    R3000aState& state,
+    std::uint8_t* main_ram = nullptr) noexcept;
 
 } // namespace jojo
