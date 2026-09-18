@@ -368,7 +368,10 @@ LRESULT CALLBACK game_proc(HWND h,UINT m,WPARAM w,LPARAM l){
         if(w!=SIZE_MINIMIZED && game_presenter && !game_frame.rgba8.empty()){
             const auto presented=game_presenter->present(
                 game_frame,
-                app_settings.graphics.vsync);
+                app_settings.graphics.vsync,
+                app_settings.graphics.texture_filter,
+                app_settings.graphics.msaa,
+                app_settings.graphics.aspect_ratio);
             (void)presented;
         }
         return 0;
@@ -459,7 +462,10 @@ bool show_game_frame(jojo::Ps1DisplayFrame frame){
     UpdateWindow(game_window);
     const auto presented=game_presenter->present(
                 game_frame,
-                app_settings.graphics.vsync);
+                app_settings.graphics.vsync,
+                app_settings.graphics.texture_filter,
+                app_settings.graphics.msaa,
+                app_settings.graphics.aspect_ratio);
     return static_cast<bool>(presented);
 }
 
