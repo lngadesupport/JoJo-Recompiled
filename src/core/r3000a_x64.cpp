@@ -76,6 +76,33 @@ void emit_store_eax_gpr(
     emit_u32(out, gpr_offset(reg));
 }
 
+void emit_load_eax_state(
+    std::vector<std::uint8_t>& out,
+    std::uint32_t offset) {
+    emit_u8(out, 0x8Bu);
+    emit_u8(out, 0x81u);
+    emit_u32(out, offset);
+}
+
+void emit_store_eax_state(
+    std::vector<std::uint8_t>& out,
+    std::uint32_t offset) {
+    emit_u8(out, 0x89u);
+    emit_u8(out, 0x81u);
+    emit_u32(out, offset);
+}
+
+void emit_variable_shift(
+    std::vector<std::uint8_t>& out,
+    std::uint8_t shift_modrm) {
+    // Preserve the Windows x64 first argument (state pointer in RCX)
+    // while CL is used as the variable shift count.
+    emit_u8(out, 0x49u); emit_u8(out, 0x89u); emit_u8(out, 0xCBu); // mov r11, rcx
+    emit_u8(out, 0x89u); emit_u8(out, 0xD1u);                    // mov ecx, edx
+    emit_u8(out, 0xD3u); emit_u8(out, shift_modrm);             // shift eax, cl
+    emit_u8(out, 0x4Cu); emit_u8(out, 0x89u); emit_u8(out, 0xD9u); // mov rcx, r11
+}
+
 void emit_mov_state_imm32(
     std::vector<std::uint8_t>& out,
     std::uint32_t offset,
@@ -118,6 +145,13 @@ bool r3000a_op_is_x64_lowerable(MipsOp op) noexcept {
         case MipsOp::sll:
         case MipsOp::srl:
         case MipsOp::sra:
+        case MipsOp::sllv:
+        case MipsOp::srlv:
+        case MipsOp::srav:
+        case MipsOp::mfhi:
+        case MipsOp::mthi:
+        case MipsOp::mflo:
+        case MipsOp::mtlo:
         case MipsOp::addu:
         case MipsOp::subu:
         case MipsOp::bit_and:
@@ -179,6 +213,44 @@ Result<R3000aX64Code> emit_r3000a_x64_alu_block(
                                              : 0xF8u);
                 emit_u8(out, static_cast<std::uint8_t>(ins.sa & 31u));
                 emit_store_eax_gpr(out, ins.rd);
+                break;
+
+            case MipsOp::sllv:
+            case MipsOp::srlv:
+            case MipsOp::srav:
+                emit_load_eax_gpr(out, ins.rt);
+                emit_load_edx_gpr(out, ins.rs);
+                emit_variable_shift(
+                    out,
+                    ins.op == MipsOp::sllv ? 0xE0u
+                    : ins.op == MipsOp::srlv ? 0xE8u
+                                              : 0xF8u);
+                emit_store_eax_gpr(out, ins.rd);
+                break;
+
+            case MipsOp::mfhi:
+                emit_load_eax_state(
+                    out,
+                    static_cast<std::uint32_t>(offsetof(R3000aState, hi)));
+                emit_store_eax_gpr(out, ins.rd);
+                break;
+            case MipsOp::mthi:
+                emit_load_eax_gpr(out, ins.rs);
+                emit_store_eax_state(
+                    out,
+                    static_cast<std::uint32_t>(offsetof(R3000aState, hi)));
+                break;
+            case MipsOp::mflo:
+                emit_load_eax_state(
+                    out,
+                    static_cast<std::uint32_t>(offsetof(R3000aState, lo)));
+                emit_store_eax_gpr(out, ins.rd);
+                break;
+            case MipsOp::mtlo:
+                emit_load_eax_gpr(out, ins.rs);
+                emit_store_eax_state(
+                    out,
+                    static_cast<std::uint32_t>(offsetof(R3000aState, lo)));
                 break;
 
             case MipsOp::addu:
