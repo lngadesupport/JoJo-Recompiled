@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <optional>
+#include <string_view>
 #include <vector>
 
 namespace jojo {
@@ -36,6 +37,16 @@ struct Ps1CommercialEvidenceOptions {
     std::vector<Ps1BiosFallback> diagnostic_bios_fallbacks;
 };
 
+enum class Ps1CommercialSessionTermination : std::uint8_t {
+    bounded_run,
+    frontier_stop,
+    manual_stop,
+    periodic_checkpoint,
+};
+
+[[nodiscard]] std::string_view ps1_commercial_session_termination_name(
+    Ps1CommercialSessionTermination termination) noexcept;
+
 struct Ps1CommercialRuntimeCounters {
     std::array<std::uint64_t, 2> pad_poll_count{};
     std::array<std::uint64_t, 2> memory_card_read_sector_count{};
@@ -46,9 +57,12 @@ struct Ps1CommercialRuntimeCounters {
 struct Ps1CommercialEvidenceReport {
     GameSourceBinding source{};
     Ps1CommercialFrontierClass frontier{Ps1CommercialFrontierClass::none};
+    Ps1CommercialSessionTermination session_termination{
+        Ps1CommercialSessionTermination::bounded_run};
     Ps1BootReport boot{};
     std::uint64_t total_instructions_retired{};
     std::uint32_t execution_segments{};
+    std::uint64_t completed_frames{};
     std::array<std::uint64_t, 2> pad_poll_count{};
     std::array<std::uint64_t, 2> memory_card_read_sector_count{};
     std::array<std::uint64_t, 2> memory_card_write_sector_count{};
