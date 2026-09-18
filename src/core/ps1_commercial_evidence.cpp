@@ -3,6 +3,41 @@
 #include <utility>
 
 namespace jojo {
+namespace {
+
+constexpr std::uint64_t kFnv1a64Offset = 14695981039346656037ull;
+constexpr std::uint64_t kFnv1a64Prime = 1099511628211ull;
+
+void hash_byte(std::uint64_t& hash, std::uint8_t byte) noexcept {
+    hash ^= byte;
+    hash *= kFnv1a64Prime;
+}
+
+} // namespace
+
+std::optional<Ps1CommercialFrameEvidence>
+make_ps1_commercial_frame_evidence(const Ps1DisplayFrame& frame) noexcept {
+    if (frame.width == 0u || frame.height == 0u) return std::nullopt;
+    const auto expected =
+        static_cast<std::size_t>(frame.width) * static_cast<std::size_t>(frame.height);
+    if (frame.rgba8.size() != expected) return std::nullopt;
+
+    Ps1CommercialFrameEvidence evidence{};
+    evidence.width = frame.width;
+    evidence.height = frame.height;
+    evidence.frame_hash_fnv1a64 = kFnv1a64Offset;
+
+    for (const auto pixel : frame.rgba8) {
+        if ((pixel & 0x00FFFFFFu) != 0u) ++evidence.non_black_pixels;
+        hash_byte(evidence.frame_hash_fnv1a64, static_cast<std::uint8_t>(pixel));
+        hash_byte(evidence.frame_hash_fnv1a64, static_cast<std::uint8_t>(pixel >> 8u));
+        hash_byte(evidence.frame_hash_fnv1a64, static_cast<std::uint8_t>(pixel >> 16u));
+        hash_byte(evidence.frame_hash_fnv1a64, static_cast<std::uint8_t>(pixel >> 24u));
+    }
+
+    if (evidence.non_black_pixels == 0u) return std::nullopt;
+    return evidence;
+}
 
 Result<Ps1CommercialEvidenceRunner> Ps1CommercialEvidenceRunner::open(
     const std::filesystem::path& source,
@@ -35,6 +70,16 @@ Ps1CommercialEvidenceReport Ps1CommercialEvidenceRunner::run(
         auto segment = runtime_.run(options.boot);
         report.total_instructions_retired += segment.instructions_retired;
         report.boot = std::move(segment);
+
+        const auto frame = runtime_.display_frame();
+        report.first_frame = make_ps1_commercial_frame_evidence(frame);
+        if (report.first_frame) {
+            report.boot.presented_frames = 1u;
+            report.boot.stop_reason = Ps1BootStopReason::commercial_frame_presented;
+            report.frontier = Ps1CommercialFrontierClass::commercial_frame_presented;
+            return report;
+        }
+
         report.frontier = classify_ps1_commercial_frontier(report.boot);
 
         if (report.frontier != Ps1CommercialFrontierClass::bios_call) {

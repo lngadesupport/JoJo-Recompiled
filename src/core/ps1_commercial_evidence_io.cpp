@@ -29,6 +29,12 @@ std::string optional_hex32(const std::optional<std::uint32_t>& value) {
     return value ? hex32(*value) : "none";
 }
 
+std::string hex64_plain(std::uint64_t value) {
+    std::ostringstream out;
+    out << std::hex << std::nouppercase << std::setfill('0') << std::setw(16) << value;
+    return out.str();
+}
+
 std::string optional_u8(const std::optional<std::uint8_t>& value) {
     return value ? std::to_string(static_cast<unsigned>(*value)) : "none";
 }
@@ -94,6 +100,17 @@ std::string format_ps1_commercial_evidence_report(
     out << "gpu_gp1_command_count=" << report.boot.gpu_gp1_command_count << '\n';
     out << "vram_write_count=" << report.boot.vram_write_count << '\n';
     out << "presented_frames=" << report.boot.presented_frames << '\n';
+    if (report.first_frame) {
+        out << "frame_width=" << report.first_frame->width << '\n';
+        out << "frame_height=" << report.first_frame->height << '\n';
+        out << "frame_hash_fnv1a64=" << hex64_plain(report.first_frame->frame_hash_fnv1a64) << '\n';
+        out << "frame_non_black_pixels=" << report.first_frame->non_black_pixels << '\n';
+    } else {
+        out << "frame_width=none\n"
+            << "frame_height=none\n"
+            << "frame_hash_fnv1a64=none\n"
+            << "frame_non_black_pixels=none\n";
+    }
 
     if (report.boot.cpu_diagnostic) {
         const auto& cpu = *report.boot.cpu_diagnostic;

@@ -8,9 +8,20 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <optional>
 #include <vector>
 
 namespace jojo {
+
+struct Ps1CommercialFrameEvidence {
+    std::uint32_t width{};
+    std::uint32_t height{};
+    std::uint64_t frame_hash_fnv1a64{};
+    std::uint64_t non_black_pixels{};
+};
+
+[[nodiscard]] std::optional<Ps1CommercialFrameEvidence>
+make_ps1_commercial_frame_evidence(const Ps1DisplayFrame& frame) noexcept;
 
 struct Ps1CommercialDiagnosticDecision {
     std::uint32_t bios_table{};
@@ -28,6 +39,7 @@ struct Ps1CommercialEvidenceReport {
     Ps1CommercialFrontierClass frontier{Ps1CommercialFrontierClass::none};
     Ps1BootReport boot{};
     std::uint64_t total_instructions_retired{};
+    std::optional<Ps1CommercialFrameEvidence> first_frame{};
     std::vector<Ps1CommercialDiagnosticDecision> diagnostic_decisions;
 };
 
