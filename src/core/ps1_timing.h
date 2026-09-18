@@ -16,6 +16,14 @@ struct Ps1VideoTimingSpec {
     std::uint64_t refresh_denominator{};
 };
 
+struct Ps1VideoReferenceClockState {
+    Ps1VideoTimingMode mode{Ps1VideoTimingMode::ntsc_non_interlaced};
+    std::uint64_t remainder{};
+    friend bool operator==(
+        const Ps1VideoReferenceClockState&,
+        const Ps1VideoReferenceClockState&) = default;
+};
+
 [[nodiscard]] constexpr Ps1VideoTimingSpec ps1_video_timing_spec(
     Ps1VideoTimingMode mode) noexcept {
     switch (mode) {
@@ -45,6 +53,9 @@ public:
     void set_mode(Ps1VideoTimingMode mode) noexcept;
     [[nodiscard]] Ps1VideoTimingMode mode() const noexcept;
     [[nodiscard]] std::uint64_t remainder() const noexcept;
+    [[nodiscard]] Ps1VideoReferenceClockState save_state() const noexcept;
+    [[nodiscard]] bool load_state(
+        Ps1VideoReferenceClockState state) noexcept;
 
 private:
     Ps1VideoTimingMode mode_{Ps1VideoTimingMode::ntsc_non_interlaced};
