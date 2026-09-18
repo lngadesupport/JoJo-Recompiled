@@ -8,6 +8,7 @@
 #include "core/ps1_rollback_runtime.h"
 #include "core/ps1_timing.h"
 #include "core/online_session.h"
+#include "core/lan_lobby_discovery.h"
 #include "core/settings.h"
 #include "platform/windows/controller_win32.h"
 #include "launcher_ui.h"
@@ -104,6 +105,7 @@ std::deque<std::wstring> logs;
 bool validated=false;
 jojo::win32::LauncherUi launcher_ui{};
 jojo::OnlineSessionController online_session{};
+std::optional<jojo::LanLobbyDiscovery> lan_lobby_discovery{};
 std::unique_ptr<jojo::Ps1RollbackSimulation> online_rollback_simulation{};
 std::unique_ptr<jojo::RollbackSession> online_rollback_session{};
 std::deque<jojo::NetworkPacket> pending_online_gameplay_packets{};
@@ -849,6 +851,108 @@ std::uint64_t online_now_ms(){
             std::chrono::steady_clock::now().time_since_epoch()).count());
 }
 
+void ensure_lan_lobby_discovery(){
+    if(lan_lobby_discovery) return;
+    auto created=jojo::LanLobbyDiscovery::create();
+    if(created){
+        lan_lobby_discovery=std::move(created.value);
+    }else{
+        add_log(L"Aviso: descoberta LAN indisponível: "+wide(created.detail));
+    }
+}
+
+void update_lan_host_advertisement(){
+    if(!lan_lobby_discovery) return;
+    auto& model=launcher_ui.online_model();
+
+    const bool should_advertise=
+        model.local_player_is_host &&
+        model.screen==jojo::OnlineLobbyScreen::lobby &&
+        model.create_room.privacy==jojo::OnlineRoomPrivacy::public_room;
+    if(!should_advertise){
+        (void)lan_lobby_discovery->set_host(std::nullopt);
+        return;
+    }
+
+    jojo::LanLobbyAdvertisement advertisement{};
+    advertisement.name=model.create_room.name;
+    advertisement.region=model.region;
+    advertisement.game_revision=model.local_game_revision;
+    advertisement.gameplay_port=27886u;
+    advertisement.players=
+        online_session.view().state==jojo::OnlineSessionState::connected
+        ?2u:1u;
+    advertisement.max_players=
+        static_cast<std::uint8_t>(
+            std::clamp<std::uint32_t>(
+                model.create_room.max_players,2u,8u));
+    advertisement.password_required=
+        model.create_room.privacy==jojo::OnlineRoomPrivacy::private_room;
+
+    const auto advertised=
+        lan_lobby_discovery->set_host(advertisement);
+    if(!advertised){
+        model.status="LAN ADVERTISEMENT ERROR: "+advertised.detail;
+    }
+}
+
+void refresh_lan_rooms(){
+    ensure_lan_lobby_discovery();
+    auto& model=launcher_ui.online_model();
+    if(!lan_lobby_discovery){
+        model.status="LAN DISCOVERY IS UNAVAILABLE.";
+        return;
+    }
+
+    const auto requested=lan_lobby_discovery->request_scan();
+    if(!requested){
+        model.status="LAN SCAN FAILED: "+requested.detail;
+        return;
+    }
+    jojo::online_set_rooms(model,{});
+    model.status="SEARCHING LAN LOBBIES...";
+}
+
+void poll_lan_lobby_discovery(){
+    if(!lan_lobby_discovery) return;
+
+    update_lan_host_advertisement();
+    const auto polled=lan_lobby_discovery->poll();
+    if(!polled){
+        auto& model=launcher_ui.online_model();
+        if(model.screen==jojo::OnlineLobbyScreen::public_servers){
+            model.status="LAN DISCOVERY ERROR: "+polled.detail;
+        }
+        return;
+    }
+
+    auto& model=launcher_ui.online_model();
+    if(model.screen!=jojo::OnlineLobbyScreen::public_servers) return;
+    if(model.rooms==polled.value) return;
+
+    std::optional<std::string> selected_id{};
+    if(model.selected_room &&
+       *model.selected_room<model.rooms.size()){
+        selected_id=model.rooms[*model.selected_room].id;
+    }
+
+    model.rooms=polled.value;
+    model.selected_room.reset();
+    if(selected_id){
+        for(std::size_t i=0u;i<model.rooms.size();++i){
+            if(model.rooms[i].id==*selected_id){
+                model.selected_room=i;
+                break;
+            }
+        }
+    }
+
+    if(!model.rooms.empty()){
+        model.status=
+            "LAN LOBBIES FOUND: "+std::to_string(model.rooms.size());
+    }
+}
+
 
 jojo::RollbackInput current_online_local_input(){
     if(!input_host) return {};
@@ -1296,11 +1400,7 @@ void handle_launcher_action(jojo::win32::LauncherUiAction action){
             L"PRESS A CONTROL FOR "+capture_action_name(binding_capture_action)+L"...";
         break;
     case jojo::win32::LauncherUiAction::online_refresh_rooms:{
-        auto& model=launcher_ui.online_model();
-        jojo::online_set_rooms(model,{});
-        model.status=
-            "PUBLIC DIRECTORY SERVICE NOT CONFIGURED. "
-            "DIRECT UDP + ROLLBACK CORE IS AVAILABLE.";
+        refresh_lan_rooms();
         break;
     }
     case jojo::win32::LauncherUiAction::online_host_room:{
@@ -1324,6 +1424,8 @@ void handle_launcher_action(jojo::win32::LauncherUiAction action){
             online_session.reset();
             break;
         }
+        ensure_lan_lobby_discovery();
+        update_lan_host_advertisement();
         const auto local=online_session.view().local_endpoint;
         if(local){
             model.status=
@@ -1419,6 +1521,9 @@ void handle_launcher_action(jojo::win32::LauncherUiAction action){
         }
         online_session.reset();
         online_lobby_sync_sent=false;
+        if(lan_lobby_discovery){
+            (void)lan_lobby_discovery->set_host(std::nullopt);
+        }
         jojo::online_open_home(launcher_ui.online_model());
         break;
     }
@@ -1544,6 +1649,7 @@ LRESULT CALLBACK proc(HWND h,UINT m,WPARAM w,LPARAM l){
         win=h;
         create_controls(h);
         input_host=std::make_unique<jojo::win32::Win32InputHost>();
+        ensure_lan_lobby_discovery();
         if(input_host){
             const auto registered=input_host->register_raw_input(h);
             if(!registered) add_log(L"Aviso: Raw Input indisponível: "+wide(registered.detail));
@@ -1576,6 +1682,7 @@ LRESULT CALLBACK proc(HWND h,UINT m,WPARAM w,LPARAM l){
         if(w==ID_UI_TIMER){
             poll_binding_capture();
             poll_online_session();
+            poll_lan_lobby_discovery();
             poll_launcher_controller();
             if(launcher_ui.online_open()){
                 InvalidateRect(h,nullptr,FALSE);
@@ -1645,6 +1752,7 @@ LRESULT CALLBACK proc(HWND h,UINT m,WPARAM w,LPARAM l){
     case WM_PAINT:{PAINTSTRUCT ps{};HDC dc=BeginPaint(h,&ps);RECT c{};GetClientRect(h,&c);paint(dc,c);EndPaint(h,&ps);return 0;}
     case WM_CLOSE:
         online_session.reset();
+        lan_lobby_discovery.reset();
         if(game_runner) stop_game_runtime();
         DestroyWindow(h);
         return 0;
