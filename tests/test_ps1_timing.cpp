@@ -44,6 +44,34 @@ int main() {
     CHECK(jojo::ps1_frame_seconds(
               Ps1VideoTimingMode::pal_interlaced) == 0.02);
 
+
+    jojo::Ps1FrameSliceBudget slices{65536u};
+    const auto frame_budget = slices.begin_frame(
+        Ps1VideoTimingMode::ntsc_non_interlaced);
+    CHECK(frame_budget == 566121u);
+    std::uint64_t sliced_total = 0u;
+    std::uint32_t slice_count = 0u;
+    while (!slices.frame_complete()) {
+        const auto slice = slices.next_slice_ticks();
+        CHECK(slice > 0u);
+        CHECK(slice <= 65536u);
+        sliced_total += slice;
+        ++slice_count;
+        CHECK(slices.consume(slice));
+    }
+    CHECK(sliced_total == frame_budget);
+    CHECK(slice_count == 9u);
+    CHECK(slices.remaining_ticks() == 0u);
+    CHECK(slices.next_slice_ticks() == 0u);
+    CHECK(!slices.consume(1u));
+
+    const auto pal_budget = slices.begin_frame(
+        Ps1VideoTimingMode::pal_interlaced);
+    CHECK(pal_budget == 677376u);
+    CHECK(slices.next_slice_ticks() == 65536u);
+    CHECK(slices.consume(65536u));
+    CHECK(slices.remaining_ticks() == pal_budget - 65536u);
+
     clock.reset();
     CHECK(clock.remainder() == 0u);
     return failures ? 1 : 0;
