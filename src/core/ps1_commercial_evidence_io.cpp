@@ -107,6 +107,10 @@ std::string format_ps1_commercial_evidence_report(
     out << "frame_change_count=" << report.frame_change_count << '\n';
     out << "pad0_poll_count=" << report.pad_poll_count[0] << '\n';
     out << "pad1_poll_count=" << report.pad_poll_count[1] << '\n';
+    out << "pad0_pressed_poll_count="
+        << report.pad_pressed_poll_count[0] << '\n';
+    out << "pad1_pressed_poll_count="
+        << report.pad_pressed_poll_count[1] << '\n';
     out << "memory_card0_read_sector_count="
         << report.memory_card_read_sector_count[0] << '\n';
     out << "memory_card0_write_sector_count="
@@ -123,6 +127,8 @@ std::string format_ps1_commercial_evidence_report(
         << (validation.dynamic_video_observed ? 1 : 0) << '\n';
     out << "validation_controller_poll_observed="
         << (validation.controller_poll_observed ? 1 : 0) << '\n';
+    out << "validation_controller_input_observed="
+        << (validation.controller_input_observed ? 1 : 0) << '\n';
     out << "validation_audio_non_silent_observed="
         << (validation.audio_non_silent_observed ? 1 : 0) << '\n';
     out << "validation_memory_card_read_observed="
