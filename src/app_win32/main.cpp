@@ -328,7 +328,9 @@ LRESULT CALLBACK game_proc(HWND h,UINT m,WPARAM w,LPARAM l){
         BeginPaint(h,&ps);
         EndPaint(h,&ps);
         if(game_presenter && !game_frame.rgba8.empty()){
-            const auto presented=game_presenter->present(game_frame);
+            const auto presented=game_presenter->present(
+                game_frame,
+                app_settings.graphics.vsync);
             (void)presented;
         }
         return 0;
@@ -345,6 +347,7 @@ LRESULT CALLBACK game_proc(HWND h,UINT m,WPARAM w,LPARAM l){
         return 0;
     case WM_DESTROY:
         if(h==game_window){
+            ChangeDisplaySettingsW(nullptr,0);
             game_presenter.reset();
             game_frame={};
             game_window=nullptr;
@@ -372,6 +375,44 @@ bool show_game_frame(jojo::Ps1DisplayFrame frame){
             GetModuleHandleW(nullptr),
             nullptr);
         if(!game_window) return false;
+
+        MONITORINFO monitor_info{};
+        monitor_info.cbSize=sizeof(monitor_info);
+        const HMONITOR monitor=MonitorFromWindow(
+            game_window,
+            MONITOR_DEFAULTTONEAREST);
+        if(monitor&&GetMonitorInfoW(monitor,&monitor_info)){
+            const auto capabilities=jojo::probe_d3d11_renderer_capabilities();
+            if(capabilities){
+                jojo::PresentationInputs inputs{};
+                inputs.simulation_resolution={frame.width,frame.height};
+                inputs.desktop_resolution={
+                    static_cast<std::uint32_t>(
+                        monitor_info.rcMonitor.right-monitor_info.rcMonitor.left),
+                    static_cast<std::uint32_t>(
+                        monitor_info.rcMonitor.bottom-monitor_info.rcMonitor.top)};
+                inputs.dpi=GetDpiForWindow(game_window);
+                const auto presentation=jojo::build_presentation_plan(
+                    app_settings.graphics,
+                    inputs,
+                    capabilities.value);
+                if(presentation){
+                    const auto window_plan=jojo::make_win32_window_plan(
+                        presentation.value,
+                        monitor_info.rcMonitor,
+                        inputs.dpi);
+                    if(window_plan){
+                        const auto applied=jojo::apply_win32_window_plan(
+                            game_window,
+                            window_plan.value);
+                        if(!applied){
+                            add_log(L"Falha ao aplicar modo de vídeo: "+
+                                wide(applied.detail));
+                        }
+                    }
+                }
+            }
+        }
 
         auto presenter=jojo::D3d11Ps1Presenter::create(game_window);
         if(!presenter){
