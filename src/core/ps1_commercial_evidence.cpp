@@ -110,4 +110,8 @@ const Ps1DiscSession& Ps1CommercialEvidenceRunner::disc_session() const noexcept
     return disc_;
 }
 
+Ps1DisplayFrame Ps1CommercialEvidenceRunner::display_frame() const {
+    return runtime_.display_frame();
+}
+
 } // namespace jojo

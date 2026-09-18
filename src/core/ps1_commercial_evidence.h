@@ -55,6 +55,7 @@ public:
         const Ps1CommercialEvidenceOptions& options) noexcept;
 
     [[nodiscard]] const Ps1DiscSession& disc_session() const noexcept;
+    [[nodiscard]] Ps1DisplayFrame display_frame() const;
 
 private:
     Ps1DiscSession disc_{};
