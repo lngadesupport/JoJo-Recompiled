@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <cstring>
 #include <limits>
+#include <memory>
 #include <type_traits>
 #include <utility>
 
@@ -280,6 +281,45 @@ Result<R3000aX64Code> emit_r3000a_x64_alu_block(
         static_cast<std::uint32_t>(block.instructions.size()));
     emit_u8(out, 0xC3u);
 
+#if defined(_WIN32) && defined(_M_X64)
+    void* memory = VirtualAlloc(
+        nullptr,
+        code.bytes.size(),
+        MEM_COMMIT | MEM_RESERVE,
+        PAGE_READWRITE);
+    if (!memory) {
+        return Result<R3000aX64Code>::failure(
+            ErrorCode::backend_unavailable,
+            "failed to allocate executable memory for R3000A x64 block");
+    }
+
+    std::memcpy(memory, code.bytes.data(), code.bytes.size());
+    DWORD old_protection = 0u;
+    if (!VirtualProtect(
+            memory,
+            code.bytes.size(),
+            PAGE_EXECUTE_READ,
+            &old_protection)) {
+        VirtualFree(memory, 0u, MEM_RELEASE);
+        return Result<R3000aX64Code>::failure(
+            ErrorCode::backend_unavailable,
+            "failed to protect R3000A x64 block as executable");
+    }
+    FlushInstructionCache(
+        GetCurrentProcess(),
+        memory,
+        code.bytes.size());
+
+    code.executable_owner = std::shared_ptr<void>(
+        memory,
+        [](void* allocation) noexcept {
+            if (allocation) {
+                VirtualFree(allocation, 0u, MEM_RELEASE);
+            }
+        });
+    code.executable_entry = memory;
+#endif
+
     return Result<R3000aX64Code>::success(std::move(code));
 }
 
@@ -296,34 +336,14 @@ R3000aX64ExecutionResult execute_r3000a_x64_block(
              state.external_interrupt_pending & 0xFCu) << 8u);
 
 #if defined(_WIN32) && defined(_M_X64)
-    void* memory = VirtualAlloc(
-        nullptr,
-        code.bytes.size(),
-        MEM_COMMIT | MEM_RESERVE,
-        PAGE_READWRITE);
-    if (!memory) {
+    if (!code.executable_owner || !code.executable_entry) {
         return {R3000aX64ExecutionStatus::host_error, 0u};
     }
-
-    std::memcpy(memory, code.bytes.data(), code.bytes.size());
-    DWORD old_protection = 0u;
-    if (!VirtualProtect(
-            memory,
-            code.bytes.size(),
-            PAGE_EXECUTE_READ,
-            &old_protection)) {
-        VirtualFree(memory, 0u, MEM_RELEASE);
-        return {R3000aX64ExecutionStatus::host_error, 0u};
-    }
-    FlushInstructionCache(
-        GetCurrentProcess(),
-        memory,
-        code.bytes.size());
 
     using Entry = std::uint32_t (*)(R3000aState*);
-    const auto entry = reinterpret_cast<Entry>(memory);
+    const auto entry = reinterpret_cast<Entry>(
+        const_cast<void*>(code.executable_entry));
     const auto retired = entry(&state);
-    VirtualFree(memory, 0u, MEM_RELEASE);
 
     if (retired != code.instruction_count) {
         return {R3000aX64ExecutionStatus::host_error, retired};
