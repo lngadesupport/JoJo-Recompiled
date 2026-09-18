@@ -154,6 +154,34 @@ int main() {
     CHECK(cd.write8(0x1F801800u, 0x00u).status ==
           jojo::R3000aBusStatus::ok);
 
+    // Mute/Demute are single-phase INT3 commands and preserve
+    // deterministic CD audio state.
+    CHECK(cd.write8(0x1F801801u, 0x0Bu).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(cd.muted());
+    CHECK(cd.read8(0x1F801801u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(cd.write8(0x1F801800u, 0x01u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK((cd.read8(0x1F801803u).value & 0x07u) == 0x03u);
+    CHECK(cd.write8(0x1F801803u, 0x07u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(cd.write8(0x1F801800u, 0x00u).status ==
+          jojo::R3000aBusStatus::ok);
+
+    CHECK(cd.write8(0x1F801801u, 0x0Cu).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(!cd.muted());
+    CHECK(cd.read8(0x1F801801u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(cd.write8(0x1F801800u, 0x01u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK((cd.read8(0x1F801803u).value & 0x07u) == 0x03u);
+    CHECK(cd.write8(0x1F801803u, 0x07u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(cd.write8(0x1F801800u, 0x00u).status ==
+          jojo::R3000aBusStatus::ok);
+
     // Unknown commands remain explicit; they are never guessed successful.
     const auto commands_before_unknown = cd.command_count();
     CHECK(cd.write8(0x1F801801u, 0x7Fu).status == jojo::R3000aBusStatus::unsupported);
