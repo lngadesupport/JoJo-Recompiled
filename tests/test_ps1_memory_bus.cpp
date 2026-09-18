@@ -30,7 +30,7 @@ int main() {
     CHECK(imask_disabled.status == jojo::R3000aBusStatus::ok);
     CHECK(imask_disabled.value == 0x0000u);
 
-    CHECK(bus.read32(0x1F801074u).status == jojo::R3000aBusStatus::unsupported);
+    CHECK(bus.read32(0x1F801074u).status == jojo::R3000aBusStatus::ok);
     CHECK(bus.write16(0x1F801070u, 0x0000u).status == jojo::R3000aBusStatus::ok);
     CHECK(bus.read16(0x1F801070u).status == jojo::R3000aBusStatus::ok);
 
@@ -95,12 +95,12 @@ int main() {
     bus.set_diagnostic_mmio_probe_enabled(false);
     CHECK(bus.read32(0x1F801500u).status == jojo::R3000aBusStatus::unsupported);
 
-    const auto unsupported = bus.read32(0x1F801070u);
+    const auto unsupported = bus.read32(0x1F801500u);
     CHECK(unsupported.status == jojo::R3000aBusStatus::unsupported);
     CHECK(bus.last_unsupported_access().has_value());
     if (bus.last_unsupported_access()) {
-        CHECK(bus.last_unsupported_access()->guest_address == 0x1F801070u);
-        CHECK(bus.last_unsupported_access()->physical_address == 0x1F801070u);
+        CHECK(bus.last_unsupported_access()->guest_address == 0x1F801500u);
+        CHECK(bus.last_unsupported_access()->physical_address == 0x1F801500u);
         CHECK(bus.last_unsupported_access()->width == 4u);
         CHECK(!bus.last_unsupported_access()->write);
     }
