@@ -132,6 +132,44 @@ static void test_direct_session_handshake_and_gameplay_packet_round_trip() {
     CHECK(client.value.telemetry().packets_sent >= 2u);
 }
 
+static void test_reliable_lobby_control_is_delivered_and_acknowledged() {
+    const auto timing = fast_timing();
+    auto host = jojo::DirectUdpSession::bind(
+        jojo::DirectSessionRole::host,
+        jojo::NetworkEndpoint::loopback(0u), timing);
+    auto client = jojo::DirectUdpSession::bind(
+        jojo::DirectSessionRole::client,
+        jojo::NetworkEndpoint::loopback(0u), timing);
+    CHECK(host && client);
+    if (!host || !client) return;
+
+    CHECK(client.value.connect(host.value.local_endpoint(), 100u));
+    CHECK(host.value.poll(100u));
+    CHECK(client.value.poll(100u));
+    CHECK(host.value.poll(100u));
+    CHECK(client.value.state() == jojo::DirectSessionState::connected);
+
+    const std::vector<std::uint8_t> chat{'H', 'E', 'L', 'L', 'O'};
+    CHECK(client.value.send_reliable_control(
+        jojo::NetworkPacketKind::lobby_chat, chat, 110u));
+
+    const auto delivered = host.value.poll(110u);
+    CHECK(delivered);
+    if (delivered) {
+        CHECK(delivered.value.size() == 1u);
+        if (delivered.value.size() == 1u) {
+            CHECK(delivered.value[0].kind == jojo::NetworkPacketKind::lobby_chat);
+            CHECK(delivered.value[0].payload == chat);
+        }
+    }
+
+    CHECK(client.value.poll(110u));
+    CHECK(client.value.poll(120u));
+    const auto duplicate = host.value.poll(120u);
+    CHECK(duplicate);
+    if (duplicate) CHECK(duplicate.value.empty());
+}
+
 static void test_session_ignores_spoofed_peer_and_disconnects_cleanly() {
     auto host = jojo::DirectUdpSession::bind(
         jojo::DirectSessionRole::host, jojo::NetworkEndpoint::loopback(0u));
@@ -271,6 +309,7 @@ int main() {
     test_loopback_udp_is_nonblocking_and_preserves_datagrams();
     test_transport_bounds_datagrams_and_parses_network_packets();
     test_direct_session_handshake_and_gameplay_packet_round_trip();
+    test_reliable_lobby_control_is_delivered_and_acknowledged();
     test_session_ignores_spoofed_peer_and_disconnects_cleanly();
     test_reconnect_timing_configuration_is_validated();
     test_heartbeat_liveness_reconnects_same_pinned_peer();
