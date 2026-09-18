@@ -245,6 +245,12 @@ Ps1BootReport Ps1BootRuntime::run(const Ps1BootOptions& options) noexcept {
     return finish(Ps1BootStopReason::execution_budget_exhausted);
 }
 
+void Ps1BootRuntime::signal_vblank() noexcept {
+    bus_.hardware_services().signal_vblank();
+    cpu_.external_interrupt_pending =
+        bus_.hardware_services().interrupt_pending() ? 1u : 0u;
+}
+
 bool Ps1BootRuntime::apply_diagnostic_bios_fallback(Ps1BiosFallback fallback) noexcept {
     if (!diagnostic_bios_frontier_pending_) {
         return false;
