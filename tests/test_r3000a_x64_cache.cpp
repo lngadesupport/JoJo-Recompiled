@@ -26,7 +26,13 @@ void test_cache_reuses_identical_block() {
     const auto second = cache.get_or_compile(block);
     CHECK(first);
     CHECK(second);
-    if (first && second) CHECK(first.value == second.value);
+    if (first && second) {
+        CHECK(first.value == second.value);
+#if defined(_WIN32) && defined(_M_X64)
+        CHECK(first.value->executable_entry != nullptr);
+        CHECK(first.value->executable_entry == second.value->executable_entry);
+#endif
+    }
     const auto stats = cache.stats();
     CHECK(stats.entries == 1u);
     CHECK(stats.compilations == 1u);
