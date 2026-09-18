@@ -5,6 +5,7 @@
 #include "core/ps1_commercial_evidence_io.h"
 #include "core/ps1_disc_session.h"
 #include "core/ps1_input_bridge.h"
+#include "core/ps1_timing.h"
 #include "core/settings.h"
 #include "platform/windows/controller_win32.h"
 #include "presentation_host.h"
@@ -65,7 +66,6 @@ constexpr int ID_SELECT_SOURCE = 1002;
 constexpr int ID_VALIDATE_SOURCE = 1003;
 constexpr int ID_RUN_CHECKPOINT = 1006;
 constexpr UINT_PTR ID_GAME_TIMER = 2001u;
-constexpr std::uint64_t GAME_SLICE_INSTRUCTIONS = 565044u;
 constexpr COLORREF BG=RGB(13,8,22), PANEL=RGB(35,21,53), TEXT=RGB(248,244,252), MUTED=RGB(185,169,198);
 constexpr COLORREF PURPLE=RGB(119,73,196), MAGENTA=RGB(220,64,166), GOLD=RGB(235,193,83);
 HWND win{}, source_box{}, source_btn{}, validate_btn{}, checkpoint_btn{}, game_window{};
@@ -78,6 +78,7 @@ std::unique_ptr<jojo::Ps1CommercialEvidenceRunner> game_runner{};
 jojo::Ps1DisplayFrame game_frame{};
 std::uint64_t game_total_instructions{};
 std::uint32_t game_execution_segments{};
+jojo::Ps1NtscReferenceClock game_reference_clock{};
 std::chrono::steady_clock::time_point next_game_tick{};
 fs::path settings_path, binding_path, executable_root;
 jojo::AppSettings app_settings{};
@@ -344,6 +345,7 @@ void stop_game_runtime(const jojo::Ps1BootReport* final_boot=nullptr){
     game_audio_host.reset();
     game_total_instructions=0u;
     game_execution_segments=0u;
+    game_reference_clock.reset();
     if(checkpoint_btn) SetWindowTextW(checkpoint_btn,L"INICIAR JOGO");
     refresh_actions();
     if(win) InvalidateRect(win,nullptr,FALSE);
@@ -374,7 +376,7 @@ void game_tick(){
 
     const auto now=std::chrono::steady_clock::now();
     const auto frame_period=std::chrono::duration_cast<std::chrono::steady_clock::duration>(
-        std::chrono::duration<double>(1001.0/60000.0));
+        std::chrono::duration<double>(jojo::ps1_ntsc_frame_seconds()));
     if(now<next_game_tick) return;
     if(now-next_game_tick>frame_period*4) next_game_tick=now;
     next_game_tick+=frame_period;
@@ -382,7 +384,7 @@ void game_tick(){
     apply_current_input(*game_runner);
 
     jojo::Ps1BootOptions options{};
-    options.instruction_budget=GAME_SLICE_INSTRUCTIONS;
+    options.instruction_budget=game_reference_clock.next_frame_ticks();
     options.trace_capacity=64u;
     options.mmio_event_capacity=64u;
     options.bios_event_capacity=64u;
@@ -454,6 +456,7 @@ void run_checkpoint(){
         std::move(runner.value));
     game_total_instructions=0u;
     game_execution_segments=0u;
+    game_reference_clock.reset();
     next_game_tick=std::chrono::steady_clock::now();
 
     if(!SetTimer(win,ID_GAME_TIMER,1u,nullptr)){
