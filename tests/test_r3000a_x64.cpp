@@ -27,6 +27,13 @@ void test_x64_emitter_accepts_only_v0_safe_subset() {
         CHECK(!code.value.bytes.empty());
         CHECK(code.value.instruction_count == words.size());
         CHECK(code.value.bytes.back() == 0xC3u);
+#if defined(_WIN32) && defined(_M_X64)
+        CHECK(code.value.executable_owner != nullptr);
+        CHECK(code.value.executable_entry != nullptr);
+#else
+        CHECK(code.value.executable_owner == nullptr);
+        CHECK(code.value.executable_entry == nullptr);
+#endif
     }
 
     const std::array<std::uint32_t, 1> variable_shift{
@@ -63,10 +70,21 @@ void test_x64_machine_code_matches_reference_executor() {
     native.next_pc = 0x80010004u;
     auto reference = native;
 
+    const auto entry_before = code.value.executable_entry;
     const auto executed =
         jojo::execute_r3000a_x64_block(code.value, native);
     CHECK(executed.status == jojo::R3000aX64ExecutionStatus::executed);
     CHECK(executed.instructions_retired == words.size());
+    CHECK(code.value.executable_entry == entry_before);
+
+    jojo::R3000aState second_native{};
+    second_native.pc = 0x80010000u;
+    second_native.next_pc = 0x80010004u;
+    const auto second_executed =
+        jojo::execute_r3000a_x64_block(code.value, second_native);
+    CHECK(second_executed.status == jojo::R3000aX64ExecutionStatus::executed);
+    CHECK(code.value.executable_entry == entry_before);
+    CHECK(second_native.gpr == native.gpr);
 
     TestR3000aBus bus;
     for (std::size_t i = 0; i < words.size(); ++i) {
