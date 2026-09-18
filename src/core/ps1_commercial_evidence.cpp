@@ -64,6 +64,10 @@ Ps1BootReport Ps1CommercialEvidenceRunner::run_segment(
     return runtime_.run(options);
 }
 
+void Ps1CommercialEvidenceRunner::signal_vblank() noexcept {
+    runtime_.signal_vblank();
+}
+
 Ps1CommercialEvidenceReport Ps1CommercialEvidenceRunner::run(
     const Ps1CommercialEvidenceOptions& options) noexcept {
     runtime_.bus().hardware_services().attach_disc(&disc_);
