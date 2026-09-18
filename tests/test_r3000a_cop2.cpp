@@ -1,4 +1,5 @@
 #include "core/r3000a_reference_executor.h"
+#include "core/ps1_gte.h"
 #include "r3000a_test_bus.h"
 
 #include <cstdint>
