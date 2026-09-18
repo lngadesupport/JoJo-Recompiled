@@ -462,6 +462,52 @@ static void test_retired_instruction_advances_hardware_once() {
     CHECK(runtime.bus().hardware_services().timer_counter(0u) == 1u);
 }
 
+static void test_runtime_snapshot_restores_deterministically() {
+    const std::vector<std::uint32_t> words{
+        test_mips::i(0x09u, 8u, 8u, 1u),
+        test_mips::j(0x02u, 0x80010000u >> 2),
+        0x00000000u,
+    };
+    auto runtime = make_runtime(words);
+    runtime.set_native_x64_enabled(true);
+
+    const auto warmup = runtime.run({9u});
+    CHECK(warmup.stop_reason ==
+          jojo::Ps1BootStopReason::execution_budget_exhausted);
+    runtime.signal_vblank();
+    runtime.bus().hardware_services().sio0().set_digital_pad_buttons(
+        0u, 0x7FFFu);
+
+    const auto snapshot = runtime.save_state();
+    const auto before_hash = runtime.diagnostic_state_hash();
+    const auto before_cpu = runtime.cpu_state();
+
+    const auto first = runtime.run({18u});
+    const auto first_hash = runtime.diagnostic_state_hash();
+    const auto first_cpu = runtime.cpu_state();
+    CHECK(first.stop_reason ==
+          jojo::Ps1BootStopReason::execution_budget_exhausted);
+    CHECK(first_hash != before_hash);
+
+    const auto restored = runtime.load_state(snapshot);
+    CHECK(restored);
+    CHECK(runtime.diagnostic_state_hash() == before_hash);
+    CHECK(runtime.cpu_state().gpr == before_cpu.gpr);
+    CHECK(runtime.cpu_state().pc == before_cpu.pc);
+    CHECK(runtime.cpu_state().next_pc == before_cpu.next_pc);
+    CHECK(runtime.native_x64_enabled());
+
+    const auto second = runtime.run({18u});
+    CHECK(second.stop_reason == first.stop_reason);
+    CHECK(second.instructions_retired == first.instructions_retired);
+    CHECK(second.native_x64_instructions_retired ==
+          first.native_x64_instructions_retired);
+    CHECK(runtime.diagnostic_state_hash() == first_hash);
+    CHECK(runtime.cpu_state().gpr == first_cpu.gpr);
+    CHECK(runtime.cpu_state().pc == first_cpu.pc);
+    CHECK(runtime.cpu_state().next_pc == first_cpu.next_pc);
+}
+
 static void test_deterministic_replay_matches_full_m3a_state() {
     const std::vector<std::uint32_t> words{
         test_mips::j(0x02u, 0x80010000u >> 2),
@@ -533,6 +579,7 @@ int main() {
     test_runtime_exposes_host_neutral_gpu_display_frame();
     test_entercriticalsection_syscall_is_hle_without_vector_walk();
     test_retired_instruction_advances_hardware_once();
+    test_runtime_snapshot_restores_deterministically();
     test_deterministic_replay_matches_full_m3a_state();
     return failures ? 1 : 0;
 }
