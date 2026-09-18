@@ -60,8 +60,10 @@ Ps1GameplayValidationSummary summarize_ps1_gameplay_validation(
     const Ps1CommercialEvidenceReport& report) noexcept {
     Ps1GameplayValidationSummary summary{};
     summary.frame_observed =
-        report.first_frame.has_value() &&
-        report.first_frame->non_black_pixels != 0u;
+        report.observed_non_black_frames != 0u ||
+        (report.first_frame.has_value() &&
+         report.first_frame->non_black_pixels != 0u);
+    summary.dynamic_video_observed = report.frame_change_count != 0u;
     summary.controller_poll_observed =
         report.pad_poll_count[0] != 0u ||
         report.pad_poll_count[1] != 0u;
@@ -138,6 +140,7 @@ Ps1CommercialEvidenceReport Ps1CommercialEvidenceRunner::run(
         const auto frame = runtime_.display_frame();
         report.first_frame = make_ps1_commercial_frame_evidence(frame);
         if (report.first_frame) {
+            report.observed_non_black_frames = 1u;
             report.boot.presented_frames = 1u;
             report.boot.stop_reason = Ps1BootStopReason::commercial_frame_presented;
             report.frontier = Ps1CommercialFrontierClass::commercial_frame_presented;
