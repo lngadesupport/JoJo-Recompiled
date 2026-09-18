@@ -10,6 +10,16 @@
 
 namespace jojo {
 
+struct Ps1SpuAdpcmHistory {
+    std::int32_t previous{};
+    std::int32_t older{};
+};
+
+struct Ps1SpuDecodedBlock {
+    std::array<std::int16_t, 28> samples{};
+    std::uint8_t flags{};
+};
+
 struct Ps1SpuVoiceState {
     std::uint16_t volume_left{};
     std::uint16_t volume_right{};
@@ -32,6 +42,10 @@ public:
     static constexpr std::uint32_t mmio_end = 0x1F801E7Fu;
 
     Ps1Spu();
+
+    [[nodiscard]] static Ps1SpuDecodedBlock decode_adpcm_block(
+        std::span<const std::uint8_t, 16> block,
+        Ps1SpuAdpcmHistory& history) noexcept;
 
     [[nodiscard]] R3000aBusResult read16(std::uint32_t physical) noexcept;
     [[nodiscard]] R3000aBusResult write16(

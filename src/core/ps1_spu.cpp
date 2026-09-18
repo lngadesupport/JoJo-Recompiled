@@ -1,6 +1,7 @@
 #include "core/ps1_spu.h"
 
 #include <algorithm>
+#include <array>
 
 namespace jojo {
 namespace {
@@ -66,6 +67,48 @@ void hash_u32(std::uint64_t& hash, std::uint32_t value) noexcept {
 } // namespace
 
 Ps1Spu::Ps1Spu() : sound_ram_(sound_ram_size, 0u) {}
+
+Ps1SpuDecodedBlock Ps1Spu::decode_adpcm_block(
+    std::span<const std::uint8_t, 16> block,
+    Ps1SpuAdpcmHistory& history) noexcept {
+    static constexpr std::array<std::int32_t, 5> positive{
+        0, 60, 115, 98, 122};
+    static constexpr std::array<std::int32_t, 5> negative{
+        0, 0, -52, -55, -60};
+
+    Ps1SpuDecodedBlock decoded{};
+    decoded.flags = block[1];
+
+    const auto shift = std::min<std::uint32_t>(block[0] & 0x0Fu, 12u);
+    const auto raw_filter = static_cast<std::uint32_t>((block[0] >> 4u) & 0x0Fu);
+    const auto filter = std::min<std::uint32_t>(raw_filter, 4u);
+
+    std::size_t output = 0u;
+    for (std::size_t byte_index = 2u; byte_index < block.size(); ++byte_index) {
+        const auto packed = block[byte_index];
+        for (unsigned half = 0u; half < 2u; ++half) {
+            const auto nibble_raw = static_cast<std::uint8_t>(
+                half == 0u ? (packed & 0x0Fu) : (packed >> 4u));
+            const auto nibble = static_cast<std::int32_t>(
+                nibble_raw >= 8u
+                    ? static_cast<int>(nibble_raw) - 16
+                    : static_cast<int>(nibble_raw));
+
+            std::int32_t sample = (nibble * 4096) >> shift;
+            const std::int32_t predicted =
+                (history.previous * positive[filter] +
+                 history.older * negative[filter] + 32) >> 6;
+            sample += predicted;
+            sample = std::clamp<std::int32_t>(sample, -32768, 32767);
+
+            decoded.samples[output++] = static_cast<std::int16_t>(sample);
+            history.older = history.previous;
+            history.previous = sample;
+        }
+    }
+    return decoded;
+}
+
 
 bool Ps1Spu::decode_voice_register(
     std::uint32_t physical,
