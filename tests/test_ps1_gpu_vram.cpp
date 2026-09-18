@@ -48,7 +48,9 @@ int main() {
         const auto second = read_gpu.read_gp0();
         CHECK(second.status == jojo::R3000aBusStatus::ok);
         CHECK(second.value == 0x00003333u);
-        CHECK(read_gpu.read_gp0().status == jojo::R3000aBusStatus::unsupported);
+        const auto latched = read_gpu.read_gp0();
+        CHECK(latched.status == jojo::R3000aBusStatus::ok);
+        CHECK(latched.value == 0u);
     }
 
     // GP0(20h): flat-shaded opaque triangle rasterizes into VRAM.
