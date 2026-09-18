@@ -51,6 +51,7 @@ add_library(jojo_core STATIC
   src/core/r3000a_ir.cpp
   src/core/r3000a_cfg.cpp
   src/core/r3000a_native_plan.cpp
+  src/core/r3000a_native_alu.cpp
   src/core/r3000a_reference_executor.cpp
   src/core/revision.cpp
   src/core/runtime.cpp
