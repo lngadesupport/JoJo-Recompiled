@@ -19,6 +19,8 @@ jobs:
         run: >-
           cmake --build build --target
           jojo_ps1_hardware_irq_timer_tests
+          jojo_ps1_cdrom_tests
+          jojo_ps1_commercial_frontier_tests
           jojo_ps1_gpu_ingress_tests
           jojo_ps1_sio0_tests
           jojo_ps1_memory_card_tests
@@ -31,5 +33,5 @@ jobs:
       - name: Run Phase 6 focused tests
         run: >-
           ctest --test-dir build -R
-          "jojo_ps1_(hardware_irq_timer|gpu_ingress|sio0|memory_card|input_bridge|timing|memory_bus|boot_runtime|commercial_evidence)_tests"
+          "jojo_ps1_(hardware_irq_timer|cdrom|commercial_frontier|gpu_ingress|sio0|memory_card|input_bridge|timing|memory_bus|boot_runtime|commercial_evidence)_tests"
           --output-on-failure
