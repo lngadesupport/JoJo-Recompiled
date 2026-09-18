@@ -75,8 +75,7 @@ void test_runner_promotes_visible_gpu_output_to_commercial_frame(const fs::path&
     if (!runner) return;
 
     jojo::Ps1CommercialEvidenceOptions options{};
-    options.boot.instruction_budget = 4u;
-    options.max_execution_segments = 16u;
+    options.boot.instruction_budget = 40u;
     const auto report = runner.value.run(options);
 
     CHECK(report.frontier == jojo::Ps1CommercialFrontierClass::commercial_frame_presented);
@@ -97,6 +96,43 @@ void test_runner_promotes_visible_gpu_output_to_commercial_frame(const fs::path&
         CHECK(report.first_frame->height == 240u);
         CHECK(report.first_frame->non_black_pixels == 1u);
         CHECK(report.first_frame->frame_hash_fnv1a64 != 0u);
+    }
+}
+
+void test_runner_continues_bounded_budget_until_real_frontier(const fs::path& temp) {
+    auto fixture = test_ps1::make_disc_fixture();
+    fixture.executable = test_ps1::make_psx_exe_from_words({
+        test_mips::i(0x0Fu, 0u, 8u, 0x1F80u), // MMIO base
+        0x00000000u,
+        0x00000000u,
+        0x00000000u,
+        0x00000000u,
+        0x00000000u,
+        test_mips::i(0x23u, 8u, 9u, 0x1040u), // unsupported SIO read
+        0x00000000u,
+    });
+    const auto source = test_ps1::write_cooked_iso(temp / "segmented-frontier.iso", fixture);
+
+    jojo::Ps1DiscOpenOptions open_options{};
+    open_options.revision_profiles.push_back(
+        test_ps1::make_revision_profile(fixture, "synthetic-segmented-frontier"));
+
+    auto runner = jojo::Ps1CommercialEvidenceRunner::open(source, open_options);
+    CHECK(runner);
+    if (!runner) return;
+
+    jojo::Ps1CommercialEvidenceOptions options{};
+    options.boot.instruction_budget = 2u;
+    options.max_execution_segments = 8u;
+    const auto report = runner.value.run(options);
+
+    CHECK(report.frontier == jojo::Ps1CommercialFrontierClass::mmio_access);
+    CHECK(report.boot.stop_reason == jojo::Ps1BootStopReason::mmio_unimplemented);
+    CHECK(report.total_instructions_retired > options.boot.instruction_budget);
+    CHECK(report.total_instructions_retired == 6u);
+    CHECK(report.boot.unsupported_access.has_value());
+    if (report.boot.unsupported_access) {
+        CHECK(report.boot.unsupported_access->physical_address == 0x1F801040u);
     }
 }
 
@@ -234,6 +270,7 @@ int main() {
 
     test_frame_evidence_requires_non_black_visible_pixels();
     test_runner_promotes_visible_gpu_output_to_commercial_frame(temp);
+    test_runner_continues_bounded_budget_until_real_frontier(temp);
     test_normal_mode_retains_disc_and_never_mutates_source(temp);
     test_runner_attaches_direct_disc_to_runtime_cdrom(temp);
     test_bios_fallback_is_opt_in_and_recorded(temp);
