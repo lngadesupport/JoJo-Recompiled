@@ -197,8 +197,19 @@ Ps1CommercialEvidenceReport Ps1CommercialEvidenceRunner::run(
         report.spu_sample_frames = counters.spu_sample_frames;
         report.spu_nonzero_samples = counters.spu_nonzero_samples;
 
-        const auto& gpu =
-            runtime_.bus().hardware_services().gpu();
+        const auto& hardware =
+            runtime_.bus().hardware_services();
+        report.interrupt_status = hardware.interrupt_status();
+        report.interrupt_mask = hardware.interrupt_mask();
+        const auto& cpu = runtime_.cpu_state();
+        report.cpu_cop0_status = cpu.cop0.status;
+        report.cpu_cop0_cause = cpu.cop0.cause;
+        report.cpu_external_interrupt_pending =
+            cpu.external_interrupt_pending;
+        report.bios_interrupt_hook_address =
+            runtime_.bios_interrupt_hook_address();
+
+        const auto& gpu = hardware.gpu();
         report.gpu_display = gpu.display_state();
         report.gpu_nonzero_vram_words = 0u;
         report.gpu_display_region_nonzero_words = 0u;
@@ -231,8 +242,7 @@ Ps1CommercialEvidenceReport Ps1CommercialEvidenceRunner::run(
             }
         }
 
-        const auto& spu =
-            runtime_.bus().hardware_services().spu();
+        const auto& spu = hardware.spu();
         report.spu_control = spu.control();
         report.spu_status = spu.status();
         report.spu_transfer_control = spu.transfer_control();
