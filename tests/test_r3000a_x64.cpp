@@ -50,6 +50,53 @@ void test_x64_emitter_accepts_only_v0_safe_subset() {
 }
 
 
+
+#if defined(_WIN32) && defined(_M_X64)
+void test_x64_mult_and_multu_match_reference() {
+    const std::array<std::uint32_t, 6> words{
+        test_mips::r(8u, 9u, 0u, 0u, 0x18u),   // MULT
+        test_mips::r(0u, 0u, 10u, 0u, 0x12u),  // MFLO
+        test_mips::r(0u, 0u, 11u, 0u, 0x10u),  // MFHI
+        test_mips::r(8u, 9u, 0u, 0u, 0x19u),   // MULTU
+        test_mips::r(0u, 0u, 12u, 0u, 0x12u),  // MFLO
+        test_mips::r(0u, 0u, 13u, 0u, 0x10u),  // MFHI
+    };
+    const auto block = jojo::lift_r3000a_basic_block(0x80010000u, words);
+    CHECK(block);
+    if (!block) return;
+    const auto code = jojo::emit_r3000a_x64_alu_block(block.value);
+    CHECK(code);
+    if (!code) return;
+
+    jojo::R3000aState native{};
+    native.pc = 0x80010000u;
+    native.next_pc = 0x80010004u;
+    native.gpr[8] = 0xFFFFFFFEu;
+    native.gpr[9] = 3u;
+    auto reference = native;
+
+    const auto executed =
+        jojo::execute_r3000a_x64_block(code.value, native);
+    CHECK(executed.status == jojo::R3000aX64ExecutionStatus::executed);
+    CHECK(executed.instructions_retired == words.size());
+
+    TestR3000aBus bus;
+    for (std::size_t i = 0; i < words.size(); ++i) {
+        bus.store32(
+            0x80010000u + static_cast<std::uint32_t>(i * 4u),
+            words[i]);
+        CHECK(jojo::step_r3000a(reference, bus).status ==
+              jojo::R3000aStepStatus::retired);
+    }
+
+    CHECK(native.gpr == reference.gpr);
+    CHECK(native.hi == reference.hi);
+    CHECK(native.lo == reference.lo);
+    CHECK(native.pc == reference.pc);
+    CHECK(native.next_pc == reference.next_pc);
+}
+#endif
+
 #if defined(_WIN32) && defined(_M_X64)
 void test_x64_variable_shifts_and_hilo_match_reference() {
     const std::array<std::uint32_t, 7> words{
@@ -153,6 +200,7 @@ void test_x64_machine_code_matches_reference_executor() {
 int main() {
     test_x64_emitter_accepts_only_v0_safe_subset();
 #if defined(_WIN32) && defined(_M_X64)
+    test_x64_mult_and_multu_match_reference();
     test_x64_variable_shifts_and_hilo_match_reference();
     test_x64_machine_code_matches_reference_executor();
 #endif
