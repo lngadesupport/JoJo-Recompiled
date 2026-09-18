@@ -4,6 +4,7 @@
 #include "core/ps1_executable_loader.h"
 #include "core/r3000a_reference_executor.h"
 
+#include <new>
 #include <set>
 #include <utility>
 
@@ -501,6 +502,43 @@ std::uint64_t Ps1BootRuntime::diagnostic_state_hash() const noexcept {
 
 Ps1DisplayFrame Ps1BootRuntime::display_frame() const {
     return capture_ps1_display_frame(bus_.hardware_services().gpu());
+}
+
+Ps1BootRuntimeState Ps1BootRuntime::save_state() const {
+    return Ps1BootRuntimeState{
+        bus_,
+        cpu_,
+        bios_,
+        native_text_begin_,
+        native_text_end_,
+        native_x64_enabled_,
+        diagnostic_bios_frontier_pending_,
+    };
+}
+
+Result<void> Ps1BootRuntime::load_state(const Ps1BootRuntimeState& state) {
+    try {
+        Ps1MemoryBus restored_bus = state.bus;
+        Ps1HleBios restored_bios = state.bios;
+
+        bus_ = std::move(restored_bus);
+        cpu_ = state.cpu;
+        bios_ = std::move(restored_bios);
+        native_text_begin_ = state.native_text_begin;
+        native_text_end_ = state.native_text_end;
+        native_x64_enabled_ = state.native_x64_enabled;
+        diagnostic_bios_frontier_pending_ =
+            state.diagnostic_bios_frontier_pending;
+
+        // Compiled host code is derived state. Never restore stale cache
+        // entries across a guest-state rewind.
+        native_x64_cache_.clear();
+        return Result<void>::success();
+    } catch (const std::bad_alloc&) {
+        return Result<void>::failure(
+            ErrorCode::backend_unavailable,
+            "insufficient memory while restoring PS1 runtime snapshot");
+    }
 }
 
 const R3000aState& Ps1BootRuntime::cpu_state() const noexcept {
