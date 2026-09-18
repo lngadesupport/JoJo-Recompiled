@@ -84,7 +84,7 @@ if(WIN32)
   target_compile_definitions(jojo_win32_image_selection_tests PRIVATE UNICODE _UNICODE _WIN32_WINNT=0x0A00 WINVER=0x0A00)
   target_link_libraries(
     jojo_win32_image_selection_tests
-    PRIVATE jojo_core shell32 ole32 uuid d3d11 d3dcompiler dxgi xaudio2
+    PRIVATE jojo_core jojo_win32_input_host shell32 ole32 uuid d3d11 d3dcompiler dxgi xaudio2
   )
   add_test(NAME jojo_win32_image_selection_tests COMMAND jojo_win32_image_selection_tests)
   set_tests_properties(jojo_win32_image_selection_tests PROPERTIES TIMEOUT 45)

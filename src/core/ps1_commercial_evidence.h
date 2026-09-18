@@ -59,6 +59,9 @@ public:
     [[nodiscard]] const Ps1DiscSession& disc_session() const noexcept;
     [[nodiscard]] Ps1DisplayFrame display_frame() const;
     [[nodiscard]] std::vector<std::int16_t> drain_audio_samples();
+    void set_pad_buttons(
+        std::uint32_t port,
+        std::uint16_t active_low_buttons) noexcept;
 
 private:
     Ps1DiscSession disc_{};

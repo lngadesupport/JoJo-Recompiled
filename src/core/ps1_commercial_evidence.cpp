@@ -128,4 +128,12 @@ std::vector<std::int16_t> Ps1CommercialEvidenceRunner::drain_audio_samples() {
     return runtime_.bus().hardware_services().spu().drain_audio_samples();
 }
 
+void Ps1CommercialEvidenceRunner::set_pad_buttons(
+    std::uint32_t port,
+    std::uint16_t active_low_buttons) noexcept {
+    runtime_.bus().hardware_services().sio0().set_digital_pad_buttons(
+        port,
+        active_low_buttons);
+}
+
 } // namespace jojo

@@ -4,7 +4,9 @@
 #include "core/ps1_commercial_evidence.h"
 #include "core/ps1_commercial_evidence_io.h"
 #include "core/ps1_disc_session.h"
+#include "core/ps1_input_bridge.h"
 #include "core/settings.h"
+#include "platform/windows/controller_win32.h"
 #include "presentation_host.h"
 #include "audio_host.h"
 #include <windows.h>
@@ -67,6 +69,7 @@ HFONT title_font{}, body_font{}, small_font{}, button_font{};
 HBRUSH edit_brush{};
 std::optional<jojo::D3d11Ps1Presenter> game_presenter{};
 std::unique_ptr<jojo::XAudio2Ps1AudioHost> game_audio_host{};
+std::unique_ptr<jojo::win32::Win32InputHost> input_host{};
 jojo::Ps1DisplayFrame game_frame{};
 fs::path settings_path, binding_path, executable_root;
 jojo::AppSettings app_settings{};
@@ -284,6 +287,17 @@ bool show_game_frame(jojo::Ps1DisplayFrame frame){
     return static_cast<bool>(presented);
 }
 
+
+void apply_current_input(jojo::Ps1CommercialEvidenceRunner& runner){
+    if(!input_host) return;
+    const auto frame=input_host->snapshot();
+    const auto resolved=jojo::resolve_player_actions(app_settings.input,frame);
+    const auto pads=jojo::ps1_digital_pad_frame(resolved);
+    for(std::size_t player=0;player<pads.size();++player){
+        runner.set_pad_buttons(static_cast<std::uint32_t>(player),pads[player]);
+    }
+}
+
 void run_checkpoint(){
     if(!validated || source.empty()) return;
 
@@ -295,6 +309,8 @@ void run_checkpoint(){
         InvalidateRect(win,nullptr,FALSE);
         return;
     }
+
+    apply_current_input(runner.value);
 
     jojo::Ps1CommercialEvidenceOptions options{};
     options.boot.instruction_budget=250000u;
@@ -374,9 +390,23 @@ LRESULT CALLBACK proc(HWND h,UINT m,WPARAM w,LPARAM l){
     case WM_CREATE:
         win=h;
         create_controls(h);
+        input_host=std::make_unique<jojo::win32::Win32InputHost>();
+        if(input_host){
+            const auto registered=input_host->register_raw_input(h);
+            if(!registered) add_log(L"Aviso: Raw Input indisponível: "+wide(registered.detail));
+        }
         if(!source.empty()){
             status=L"Imagem detectada automaticamente. Validando diretamente da fonte original...";
             validate_source();
+        }
+        return 0;
+    case WM_INPUT:
+        if(input_host) input_host->handle_raw_input(reinterpret_cast<HRAWINPUT>(l));
+        return 0;
+    case WM_INPUT_DEVICE_CHANGE:
+        if(input_host){
+            const auto changes=input_host->refresh_devices();
+            (void)changes;
         }
         return 0;
     case WM_COMMAND:
@@ -444,6 +474,7 @@ int WINAPI wWinMain(HINSTANCE inst,HINSTANCE,PWSTR,int show){
     if(game_window && IsWindow(game_window)) DestroyWindow(game_window);
     game_presenter.reset();
     game_audio_host.reset();
+    input_host.reset();
     game_frame={};
     if(title_font)DeleteObject(title_font);if(body_font)DeleteObject(body_font);if(small_font)DeleteObject(small_font);if(edit_brush)DeleteObject(edit_brush);CoUninitialize();return static_cast<int>(msg.wParam);
 }
