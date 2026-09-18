@@ -84,15 +84,46 @@ int main() {
         CHECK(s.gpr[11] == 0x0BADF00Du);
     }
 
-    // COP2 command execution remains an explicit boundary until 4B.
+    // Supported GTE commands retire through the ordinary CPU path.
     {
         TestR3000aBus bus;
         auto s = base_state();
-        bus.store32(0x1000u, (0x12u << 26) | (0x10u << 21) | 0x01u);
+        s.gte.data[12] = 0u;
+        s.gte.data[13] = 100u;
+        s.gte.data[14] = 100u << 16u;
+        bus.store32(0x1000u, (0x12u << 26) | (0x10u << 21) | 0x06u); // NCLIP
+        const auto r = jojo::step_r3000a(s, bus);
+        CHECK(r.status == jojo::R3000aStepStatus::retired);
+        CHECK(static_cast<std::int32_t>(s.gte.data[24]) == 10000);
+        CHECK(s.pc == 0x1004u);
+    }
+
+    // Unknown real GTE opcodes remain an explicit frontier.
+    {
+        TestR3000aBus bus;
+        auto s = base_state();
+        bus.store32(0x1000u, (0x12u << 26) | (0x10u << 21) | 0x02u);
         const auto r = jojo::step_r3000a(s, bus);
         CHECK(r.status == jojo::R3000aStepStatus::boundary);
         CHECK(r.diagnostic.boundary == jojo::R3000aBoundaryCode::cop2_unimplemented);
         CHECK(r.diagnostic.coprocessor && *r.diagnostic.coprocessor == 2u);
+    }
+
+    // Register helper semantics are visible through MTC2/MFC2.
+    {
+        TestR3000aBus bus;
+        auto s = base_state();
+        s.gpr[8] = 0x00007C1Fu;
+        bus.store32(0x1000u, cop2(4u, 8u, 28u)); // MTC2 IRGB
+        bus.store32(0x1004u, cop2(0u, 9u, 29u)); // MFC2 ORGB
+        bus.store32(0x1008u, 0u);
+        CHECK(jojo::step_r3000a(s, bus).status == jojo::R3000aStepStatus::retired);
+        CHECK(s.gte.data[9] == 0x00000F80u);
+        CHECK(s.gte.data[10] == 0u);
+        CHECK(s.gte.data[11] == 0x00000F80u);
+        CHECK(jojo::step_r3000a(s, bus).status == jojo::R3000aStepStatus::retired);
+        CHECK(jojo::step_r3000a(s, bus).status == jojo::R3000aStepStatus::retired);
+        CHECK(s.gpr[9] == 0x00007C1Fu);
     }
 
     return failures ? 1 : 0;
