@@ -753,9 +753,66 @@ OnlineUiAction OnlineUi::mouse_up(
         return OnlineUiAction::none;
     }
 
+    if (model.screen == OnlineLobbyScreen::home && name_keyboard_open_) {
+        constexpr float start_y = 285.0f;
+        constexpr float cell_w = 80.0f;
+        constexpr float cell_h = 54.0f;
+        constexpr float gap_x = 8.0f;
+        constexpr float gap_y = 14.0f;
+
+        for (std::size_t row = 0u; row < 4u; ++row) {
+            const auto text = keyboard_row_text(row);
+            const float row_width =
+                static_cast<float>(text.size()) * cell_w +
+                static_cast<float>(text.size() - 1u) * gap_x;
+            const float row_x = (kUiWidth - row_width) * 0.5f;
+            const float row_y =
+                start_y + static_cast<float>(row) * (cell_h + gap_y);
+            for (std::size_t column = 0u; column < text.size(); ++column) {
+                const float key_x =
+                    row_x + static_cast<float>(column) * (cell_w + gap_x);
+                if (inside(
+                        x, y,
+                        key_x, row_y,
+                        key_x + cell_w, row_y + cell_h)) {
+                    keyboard_row_ = row;
+                    keyboard_column_ = column;
+                    activate_name_keyboard_key(model);
+                    return OnlineUiAction::none;
+                }
+            }
+        }
+
+        constexpr float action_y = 585.0f;
+        constexpr std::array<float, 3> action_x{
+            350.0f, 630.0f, 950.0f};
+        constexpr std::array<float, 3> action_w{
+            260.0f, 300.0f, 300.0f};
+        for (std::size_t column = 0u; column < 3u; ++column) {
+            if (inside(
+                    x, y,
+                    action_x[column], action_y,
+                    action_x[column] + action_w[column],
+                    action_y + 62.0f)) {
+                keyboard_row_ = 4u;
+                keyboard_column_ = column;
+                activate_name_keyboard_key(model);
+                return OnlineUiAction::none;
+            }
+        }
+
+        if (inside(x, y, 60.0f, 770.0f, 190.0f, 865.0f)) {
+            name_keyboard_open_ = false;
+        }
+        return OnlineUiAction::none;
+    }
+
     if (model.screen == OnlineLobbyScreen::home) {
         if (inside(x, y, 375, 140, 710, 186)) {
-            text_field_ = TextField::player_name;
+            name_keyboard_open_ = true;
+            keyboard_row_ = 0u;
+            keyboard_column_ = 0u;
+            text_field_ = TextField::none;
             return OnlineUiAction::none;
         }
         if (inside(x, y, 375, 202, 835, 248)) {
@@ -903,6 +960,38 @@ OnlineUiAction OnlineUi::mouse_up(
 OnlineUiAction OnlineUi::key_down(
     WPARAM key,
     OnlineLobbyModel& model) {
+    if (model.screen == OnlineLobbyScreen::home && name_keyboard_open_) {
+        if (key == VK_ESCAPE) {
+            name_keyboard_open_ = false;
+            return OnlineUiAction::none;
+        }
+        if (key == VK_LEFT) {
+            move_name_keyboard(-1, 0);
+            return OnlineUiAction::none;
+        }
+        if (key == VK_RIGHT) {
+            move_name_keyboard(1, 0);
+            return OnlineUiAction::none;
+        }
+        if (key == VK_UP) {
+            move_name_keyboard(0, -1);
+            return OnlineUiAction::none;
+        }
+        if (key == VK_DOWN) {
+            move_name_keyboard(0, 1);
+            return OnlineUiAction::none;
+        }
+        if (key == VK_RETURN || key == VK_SPACE) {
+            activate_name_keyboard_key(model);
+            return OnlineUiAction::none;
+        }
+        if (key == VK_BACK) {
+            if (!model.player_name.empty()) model.player_name.pop_back();
+            return OnlineUiAction::none;
+        }
+        return OnlineUiAction::none;
+    }
+
     if (key == VK_ESCAPE) {
         text_field_ = TextField::none;
         switch (model.screen) {
@@ -962,6 +1051,17 @@ OnlineUiAction OnlineUi::key_down(
 void OnlineUi::char_input(
     wchar_t ch,
     OnlineLobbyModel& model) {
+    if (model.screen == OnlineLobbyScreen::home && name_keyboard_open_) {
+        if (ch == L'\b') {
+            if (!model.player_name.empty()) model.player_name.pop_back();
+            return;
+        }
+        if (ch >= 32 && ch <= 126 && model.player_name.size() < 24u) {
+            model.player_name.push_back(static_cast<char>(ch));
+        }
+        return;
+    }
+
     auto edit_string = [ch](std::string& value, std::size_t limit) {
         if (ch == L'\b') {
             if (!value.empty()) value.pop_back();
