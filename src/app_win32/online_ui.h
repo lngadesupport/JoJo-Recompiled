@@ -5,6 +5,7 @@
 #include "core/online_lobby.h"
 
 #include <cstddef>
+#include <string>
 #include <string_view>
 #include <windows.h>
 
