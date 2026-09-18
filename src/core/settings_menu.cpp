@@ -38,6 +38,18 @@ Result<void> SettingsMenuSession::set_audio(const AudioSettings& audio) {
     return Result<void>::success();
 }
 
+Result<void> SettingsMenuSession::set_accessibility(
+    const AccessibilitySettings& accessibility) {
+    if (!validate_accessibility(accessibility)) {
+        return Result<void>::failure(
+            ErrorCode::invalid_settings,
+            "accessibility settings are outside supported ranges");
+    }
+    draft_.accessibility = accessibility;
+    dirty_ = true;
+    return Result<void>::success();
+}
+
 Result<void> SettingsMenuSession::select_device(std::size_t player,
                                                 std::string device_id,
                                                 const InputDeviceRegistry& registry) {
