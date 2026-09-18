@@ -56,6 +56,51 @@ void test_cache_invalidates_same_entry_when_guest_code_changes() {
     CHECK(stats.invalidations == 1u);
 }
 
+
+void test_direct_instruction_cache_reuses_pc_and_opcode() {
+    jojo::R3000aX64BlockCache cache;
+    const auto opcode = test_mips::i(0x0Fu, 0u, 8u, 0x1234u);
+    const auto first =
+        cache.get_or_compile_instruction(0x80010000u, opcode);
+    const auto second =
+        cache.get_or_compile_instruction(0x80010000u, opcode);
+    CHECK(first);
+    CHECK(second);
+    if (first && second) {
+        CHECK(first.value == second.value);
+#if defined(_WIN32) && defined(_M_X64)
+        CHECK(first.value->executable_entry != nullptr);
+        CHECK(first.value->executable_entry == second.value->executable_entry);
+#endif
+    }
+    const auto stats = cache.stats();
+    CHECK(stats.entries == 1u);
+    CHECK(stats.compilations == 1u);
+    CHECK(stats.reuses == 1u);
+}
+
+void test_direct_instruction_cache_invalidates_changed_opcode() {
+    jojo::R3000aX64BlockCache cache;
+    const auto first_opcode = test_mips::i(0x0Fu, 0u, 8u, 0x1234u);
+    const auto changed_opcode = test_mips::i(0x0Fu, 0u, 8u, 0x5678u);
+    CHECK(cache.get_or_compile_instruction(0x80010000u, first_opcode));
+    CHECK(cache.get_or_compile_instruction(0x80010000u, changed_opcode));
+    const auto stats = cache.stats();
+    CHECK(stats.entries == 1u);
+    CHECK(stats.compilations == 2u);
+    CHECK(stats.invalidations == 1u);
+}
+
+void test_direct_instruction_cache_rejects_unsupported_opcode() {
+    jojo::R3000aX64BlockCache cache;
+    const auto load = test_mips::i(0x23u, 8u, 9u, 0u);
+    const auto result =
+        cache.get_or_compile_instruction(0x80010000u, load);
+    CHECK(!result);
+    CHECK(result.error == jojo::ErrorCode::backend_unavailable);
+    CHECK(cache.stats().entries == 0u);
+}
+
 void test_unsupported_block_is_not_cached() {
     jojo::R3000aX64BlockCache cache;
     const std::array<std::uint32_t, 1> words{
@@ -74,6 +119,9 @@ void test_unsupported_block_is_not_cached() {
 int main() {
     test_cache_reuses_identical_block();
     test_cache_invalidates_same_entry_when_guest_code_changes();
+    test_direct_instruction_cache_reuses_pc_and_opcode();
+    test_direct_instruction_cache_invalidates_changed_opcode();
+    test_direct_instruction_cache_rejects_unsupported_opcode();
     test_unsupported_block_is_not_cached();
     return failures ? 1 : 0;
 }
