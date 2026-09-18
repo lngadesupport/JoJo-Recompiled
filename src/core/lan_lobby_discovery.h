@@ -16,12 +16,14 @@ inline constexpr std::uint16_t kLanLobbyDiscoveryPort = 27887u;
 
 struct LanLobbyAdvertisement {
     std::string name{"JOJO Lobby"};
+    std::string owner{"PLAYER"};
     std::string region{"LAN"};
     std::string game_revision{};
     std::uint16_t gameplay_port{27886u};
     std::uint8_t players{1u};
     std::uint8_t max_players{2u};
     bool password_required{};
+    bool in_game{};
 
     friend bool operator==(
         const LanLobbyAdvertisement&,
