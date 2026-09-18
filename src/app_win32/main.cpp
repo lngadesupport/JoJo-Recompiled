@@ -337,7 +337,9 @@ LRESULT CALLBACK game_proc(HWND h,UINT m,WPARAM w,LPARAM l){
     }
     case WM_SIZE:
         if(w!=SIZE_MINIMIZED && game_presenter && !game_frame.rgba8.empty()){
-            const auto presented=game_presenter->present(game_frame);
+            const auto presented=game_presenter->present(
+                game_frame,
+                app_settings.graphics.vsync);
             (void)presented;
         }
         return 0;
@@ -426,7 +428,9 @@ bool show_game_frame(jojo::Ps1DisplayFrame frame){
     game_frame=std::move(frame);
     ShowWindow(game_window,SW_SHOWNORMAL);
     UpdateWindow(game_window);
-    const auto presented=game_presenter->present(game_frame);
+    const auto presented=game_presenter->present(
+                game_frame,
+                app_settings.graphics.vsync);
     return static_cast<bool>(presented);
 }
 
