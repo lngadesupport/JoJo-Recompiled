@@ -850,10 +850,15 @@ void poll_online_session(){
     if(view.state==jojo::OnlineSessionState::connected){
         if(!model.local_player_is_host &&
            model.screen!=jojo::OnlineLobbyScreen::lobby){
-            const auto joined=jojo::online_enter_joined_lobby(model);
-            if(!joined){
-                model.screen=jojo::OnlineLobbyScreen::lobby;
-                model.local_player_is_host=false;
+            if(model.selected_room){
+                const auto joined=jojo::online_enter_joined_lobby(model);
+                if(!joined){
+                    model.status=joined.detail;
+                    InvalidateRect(win,nullptr,FALSE);
+                    return;
+                }
+            }else{
+                jojo::online_enter_direct_lobby(model);
             }
             online_lobby_sync_sent=false;
         }
@@ -1108,8 +1113,7 @@ void handle_launcher_action(jojo::win32::LauncherUiAction action){
         auto& model=launcher_ui.online_model();
         online_session.reset();
         online_lobby_sync_sent=false;
-        if(model.selected_room &&
-           model.screen==jojo::OnlineLobbyScreen::connecting){
+        if(model.screen==jojo::OnlineLobbyScreen::connecting){
             jojo::online_open_public_servers(model);
         }else{
             jojo::online_cancel_match_search(model);
