@@ -232,7 +232,7 @@ static void test_a0_33_remains_unimplemented() {
 static void test_mmio_access_stops_with_structured_evidence() {
     const std::vector<std::uint32_t> words{
         test_mips::i(0x0Fu, 0u, 8u, 0x1F80u),
-        test_mips::i(0x0Du, 8u, 8u, 0x1070u),
+        test_mips::i(0x0Du, 8u, 8u, 0x1500u),
         test_mips::i(0x23u, 8u, 9u, 0u),
     };
     auto runtime = make_runtime(words);
@@ -241,7 +241,7 @@ static void test_mmio_access_stops_with_structured_evidence() {
     CHECK(report.instructions_retired == 2u);
     CHECK(report.unsupported_access.has_value());
     if (report.unsupported_access) {
-        CHECK(report.unsupported_access->guest_address == 0x1F801070u);
+        CHECK(report.unsupported_access->guest_address == 0x1F801500u);
         CHECK(report.unsupported_access->width == 4u);
         CHECK(!report.unsupported_access->write);
     }
