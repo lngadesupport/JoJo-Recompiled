@@ -1140,14 +1140,25 @@ void poll_online_session(){
                 break;
             }
             case jojo::NetworkPacketKind::lobby_start:
-                if(!model.local_player_is_host){
+                if(!model.local_player_is_host &&
+                   jojo::online_game_revision_matches(model)){
                     jojo::online_request_start(model);
-                    model.status="HOST STARTED MATCH • PREPARING ROLLBACK HANDOFF";
+                    model.status="HOST STARTED MATCH • PREPARING NATIVE ROLLBACK";
                 }
+                break;
+            case jojo::NetworkPacketKind::input:
+            case jojo::NetworkPacketKind::state_hash:
+                handle_online_gameplay_packet(packet);
                 break;
             default:
                 break;
             }
+        }
+
+        if(model.start_requested &&
+           !model.local_player_is_host &&
+           !online_rollback_session){
+            (void)start_online_game_runtime();
         }
 
         if(!model.start_requested){
@@ -1430,7 +1441,8 @@ void handle_launcher_action(jojo::win32::LauncherUiAction action){
         const std::vector<std::uint8_t> empty{};
         if(send_online_control(jojo::NetworkPacketKind::lobby_start,empty)){
             jojo::online_request_start(model);
-            model.status="START SYNCHRONIZED • PREPARING ROLLBACK HANDOFF";
+            model.status="START SYNCHRONIZED • STARTING NATIVE ROLLBACK";
+            (void)start_online_game_runtime();
         }
         break;
     }
