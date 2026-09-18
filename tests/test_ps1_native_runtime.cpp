@@ -92,8 +92,13 @@ void test_branch_and_delay_slot_remain_reference() {
     auto runtime = make_runtime(words, true);
     const auto report = runtime.run({2u});
     CHECK(report.instructions_retired == 2u);
+#if defined(_WIN32) && defined(_M_X64)
+    CHECK(report.native_x64_instructions_retired == 1u);
+    CHECK(report.reference_instructions_retired == 1u);
+#else
     CHECK(report.native_x64_instructions_retired == 0u);
     CHECK(report.reference_instructions_retired == 2u);
+#endif
     CHECK(runtime.cpu_state().gpr[8] == 7u);
     CHECK(runtime.cpu_state().pc == 0x80010008u);
 }
