@@ -7,6 +7,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <set>
 #include <span>
 #include <utility>
 #include <vector>
@@ -522,7 +523,14 @@ public:
                     return Result<std::vector<NetworkPacket>>::failure(
                         acknowledged.error, acknowledged.detail);
                 }
-                delivered.push_back(packet);
+
+                const bool first_delivery =
+                    received_application_sequences_.insert(packet.sequence).second;
+                if (received_application_sequences_.size() > 256u) {
+                    received_application_sequences_.erase(
+                        received_application_sequences_.begin());
+                }
+                if (first_delivery) delivered.push_back(packet);
                 continue;
             }
 
@@ -731,6 +739,7 @@ private:
     NetworkTelemetry telemetry_{};
     std::uint32_t next_sequence_{1u};
     std::uint32_t hello_sequence_{};
+    std::set<std::uint32_t> received_application_sequences_{};
     std::uint64_t last_peer_receive_ms_{};
     std::uint64_t last_heartbeat_send_ms_{};
     std::uint64_t reconnect_started_ms_{};
