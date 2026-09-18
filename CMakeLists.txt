@@ -54,6 +54,7 @@ add_library(jojo_core STATIC
   src/core/r3000a_native_alu.cpp
   src/core/r3000a_x64.cpp
   src/core/r3000a_x64_cache.cpp
+  src/core/r3000a_dispatch.cpp
   src/core/r3000a_reference_executor.cpp
   src/core/revision.cpp
   src/core/runtime.cpp
@@ -162,6 +163,7 @@ add_jojo_test(jojo_r3000a_native_plan_tests tests/test_r3000a_native_plan.cpp)
 add_jojo_test(jojo_r3000a_native_alu_tests tests/test_r3000a_native_alu.cpp)
 add_jojo_test(jojo_r3000a_x64_tests tests/test_r3000a_x64.cpp)
 add_jojo_test(jojo_r3000a_x64_cache_tests tests/test_r3000a_x64_cache.cpp)
+add_jojo_test(jojo_r3000a_dispatch_tests tests/test_r3000a_dispatch.cpp)
 add_jojo_test(jojo_r3000a_integer_tests tests/test_r3000a_integer.cpp)
 add_jojo_test(jojo_r3000a_exception_tests tests/test_r3000a_exceptions.cpp)
 add_jojo_test(jojo_r3000a_hilo_tests tests/test_r3000a_hilo.cpp)
