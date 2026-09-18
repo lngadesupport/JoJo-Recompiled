@@ -25,6 +25,9 @@ class R3000aX64BlockCache {
 public:
     [[nodiscard]] Result<const R3000aX64Code*> get_or_compile(
         const R3000aIrBlock& block);
+    [[nodiscard]] Result<const R3000aX64Code*> get_or_compile_instruction(
+        std::uint32_t pc,
+        std::uint32_t raw_opcode);
 
     void invalidate(std::uint32_t entry_pc) noexcept;
     void clear() noexcept;
