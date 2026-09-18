@@ -26,6 +26,7 @@ enum class LauncherUiAction {
     online_refresh_rooms,
     online_host_room,
     online_connect_room,
+    online_connect_direct,
     online_begin_matchmaking,
     online_cancel_matchmaking,
     online_leave_lobby,
