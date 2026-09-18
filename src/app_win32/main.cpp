@@ -367,6 +367,30 @@ jojo::Result<void> save_game_session_report(
         make_game_session_report(termination,boot_override));
 }
 
+
+std::wstring validation_status_text(
+    const jojo::Ps1GameplayValidationSummary& validation){
+    const wchar_t* video=validation.dynamic_video_observed
+        ? L"dinâmico"
+        : (validation.frame_observed ? L"visível" : L"não");
+    const wchar_t* input=validation.controller_input_observed
+        ? L"ativo"
+        : (validation.controller_poll_observed ? L"poll" : L"não");
+    const wchar_t* audio=validation.audio_non_silent_observed
+        ? L"ativo"
+        : L"não";
+    const bool save_read=validation.memory_card_read_observed;
+    const bool save_write=validation.memory_card_write_observed;
+    const wchar_t* save=save_write
+        ? L"escrita"
+        : (save_read ? L"leitura" : L"não");
+
+    return L"vídeo "+std::wstring(video)+
+        L" • input "+input+
+        L" • áudio "+audio+
+        L" • save "+save;
+}
+
 void stop_game_runtime(const jojo::Ps1BootReport* final_boot){
     if(!game_runner) return;
 
@@ -506,15 +530,18 @@ void game_tick(){
         if(!flushed) add_log(L"Aviso: autosave do Memory Card falhou: "+wide(flushed.detail));
         const auto checkpoint_path=
             app_root()/L"diagnostics"/L"commercial-session.txt";
-        const auto checkpoint=save_game_session_report(
-            checkpoint_path,
+        const auto checkpoint_report=make_game_session_report(
             jojo::Ps1CommercialSessionTermination::periodic_checkpoint);
+        const auto checkpoint=jojo::save_ps1_commercial_evidence_report_atomic(
+            checkpoint_path,checkpoint_report);
         if(!checkpoint){
             add_log(L"Aviso: checkpoint de validação falhou: "+wide(checkpoint.detail));
         }
-        status=L"Jogo em execução • frames: "+
-            std::to_wstring(game_completed_frames)+
-            L" • instruções: "+std::to_wstring(game_total_instructions);
+        const auto validation=
+            jojo::summarize_ps1_gameplay_validation(checkpoint_report);
+        status=L"Jogo • frames: "+
+            std::to_wstring(game_completed_frames)+L" • "+
+            validation_status_text(validation);
         InvalidateRect(win,nullptr,FALSE);
     }
 }
