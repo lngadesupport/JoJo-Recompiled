@@ -281,6 +281,50 @@ static void test_mega_probe_continues_through_unknown_mmio_and_records_events() 
     CHECK(runtime.cpu_state().gpr[10] == 0x00001234u);
 }
 
+
+static void test_bios_gpu_cw_routes_command_to_real_gpu() {
+    const std::vector<std::uint32_t> words{
+        test_mips::i(0x0Fu, 0u, 4u, 0xE300u),
+        test_mips::i(0x0Du, 4u, 4u, 0x0000u),
+        test_mips::i(0x09u, 0u, 9u, 0x0049u),
+        test_mips::i(0x09u, 0u, 10u, 0x00A0u),
+        test_mips::r(10u, 0u, 31u, 0u, 0x09u),
+        0x00000000u,
+        test_mips::i(0x09u, 0u, 16u, 0x1234u),
+        test_mips::j(0x02u, 0x8001001Cu >> 2),
+        0x00000000u,
+    };
+
+    auto runtime = make_runtime(words);
+    const auto before = runtime.bus().hardware_services().gpu_gp0_word_count();
+    const auto report = runtime.run({16u});
+
+    CHECK(report.stop_reason == jojo::Ps1BootStopReason::execution_budget_exhausted);
+    CHECK(runtime.bus().hardware_services().gpu_gp0_word_count() == before + 1u);
+    CHECK(runtime.cpu_state().gpr[2] == 0u);
+    CHECK(runtime.cpu_state().gpr[16] == 0x1234u);
+}
+
+static void test_bios_gpu_status_and_gp1_use_real_gpu() {
+    const std::vector<std::uint32_t> words{
+        test_mips::i(0x0Fu, 0u, 4u, 0x0300u),
+        test_mips::i(0x09u, 0u, 9u, 0x0048u),
+        test_mips::i(0x09u, 0u, 10u, 0x00A0u),
+        test_mips::r(10u, 0u, 31u, 0u, 0x09u),
+        0x00000000u,
+        test_mips::i(0x09u, 0u, 9u, 0x004Du),
+        test_mips::r(10u, 0u, 31u, 0u, 0x09u),
+        0x00000000u,
+    };
+
+    auto runtime = make_runtime(words);
+    const auto before = runtime.bus().hardware_services().gpu_gp1_command_count();
+    const auto report = runtime.run({14u});
+    CHECK(report.stop_reason == jojo::Ps1BootStopReason::execution_budget_exhausted);
+    CHECK(runtime.bus().hardware_services().gpu_gp1_command_count() == before + 1u);
+    CHECK(runtime.cpu_state().gpr[2] == runtime.bus().hardware_services().gpu_status());
+}
+
 static void test_boot_report_captures_segment_gpu_activity() {
     const std::vector<std::uint32_t> words{
         test_mips::i(0x0Fu, 0u, 8u, 0x1F80u),
@@ -471,6 +515,8 @@ int main() {
     test_a0_33_remains_unimplemented();
     test_mmio_access_stops_with_structured_evidence();
     test_mega_probe_continues_through_unknown_mmio_and_records_events();
+    test_bios_gpu_cw_routes_command_to_real_gpu();
+    test_bios_gpu_status_and_gp1_use_real_gpu();
     test_boot_report_captures_segment_gpu_activity();
     test_cdrom_command_frontier_records_command_evidence();
     test_gpu_frontier_records_unsupported_gp0_command();
