@@ -3,6 +3,7 @@
 #include "core/ps1_disc_session.h"
 #include "core/r3000a_bus.h"
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <deque>
