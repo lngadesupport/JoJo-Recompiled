@@ -15,6 +15,7 @@
 #include "presentation_host.h"
 #include "audio_host.h"
 #include <windows.h>
+#include <algorithm>
 #include <windowsx.h>
 #include <knownfolders.h>
 #include <shellapi.h>
