@@ -4,6 +4,7 @@
 #define NOMINMAX
 #include "core/input.h"
 #include "core/settings.h"
+#include "core/settings_menu.h"
 
 #include <cstddef>
 #include <filesystem>
