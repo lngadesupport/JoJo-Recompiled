@@ -205,6 +205,12 @@ R3000aBusResult Ps1HardwareServices::read32(std::uint32_t physical) noexcept {
     if (physical == 0x1F801814u) {
         return {R3000aBusStatus::ok, gpu_.status()};
     }
+    if (physical == kInterruptStatusAddress) {
+        return {R3000aBusStatus::ok, interrupt_status_};
+    }
+    if (physical == kInterruptMaskAddress) {
+        return {R3000aBusStatus::ok, interrupt_mask_};
+    }
     if (physical == kDmaControlAddress) {
         return {R3000aBusStatus::ok, dma_control_};
     }
@@ -314,6 +320,16 @@ R3000aBusResult Ps1HardwareServices::write32(std::uint32_t physical,
     }
     if (physical == 0x1F801810u) return gpu_.write_gp0(value);
     if (physical == 0x1F801814u) return gpu_.write_gp1(value);
+    if (physical == kInterruptStatusAddress) {
+        return write16(
+            physical,
+            static_cast<std::uint16_t>(value & 0xFFFFu));
+    }
+    if (physical == kInterruptMaskAddress) {
+        return write16(
+            physical,
+            static_cast<std::uint16_t>(value & 0xFFFFu));
+    }
     if (physical == kDmaControlAddress) {
         dma_control_ = value;
         return {R3000aBusStatus::ok, 0u};
