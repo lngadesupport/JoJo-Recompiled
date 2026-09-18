@@ -1,0 +1,53 @@
+name: Phase 7 Final Gate
+
+on:
+  push:
+    branches:
+      - feature/ps1-gameplay-validation-phase7
+
+permissions:
+  contents: read
+
+jobs:
+  linux-release-full:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Guard direct-source architecture
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -DJOJO_SOURCE_DIR="$PWD" -P cmake/CheckPs1ActiveArchitecture.cmake
+          grep -q 'src/core/ps1_commercial_evidence.cpp' CMakeLists.txt
+          grep -q 'src/core/ps1_sio0.cpp' CMakeLists.txt
+          grep -q 'src/core/ps1_memory_card.cpp' CMakeLists.txt
+          grep -q 'src/core/ps1_timing.cpp' CMakeLists.txt
+          ! grep -q 'convert_image' src/app_win32/main.cpp
+          ! grep -q 'boot.psxexe' src/app_win32/main.cpp
+      - name: Configure Release
+        run: cmake -S . -B build-linux -DCMAKE_BUILD_TYPE=Release
+      - name: Build full graph
+        run: cmake --build build-linux -j2
+      - name: Run Phase 7 focus
+        run: >-
+          ctest --test-dir build-linux -R
+          "jojo_ps1_(cdrom|commercial_frontier|commercial_evidence|commercial_evidence_io|input_bridge|memory_card|sio0|timing|boot_runtime)_tests"
+          --output-on-failure
+      - name: Run full CTest
+        run: ctest --test-dir build-linux --output-on-failure
+
+  windows-x64-release-full:
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure Release x64
+        run: cmake -S . -B build-win -A x64
+      - name: Build full graph
+        run: cmake --build build-win --config Release
+      - name: Run Phase 7 focus
+        run: >-
+          ctest --test-dir build-win -C Release -R
+          "jojo_(ps1_(cdrom|commercial_frontier|commercial_evidence|commercial_evidence_io|input_bridge|memory_card|sio0|timing|boot_runtime)|win32_(input|audio|presentation|image_selection))_tests"
+          --output-on-failure
+      - name: Run full CTest
+        run: ctest --test-dir build-win -C Release --output-on-failure
