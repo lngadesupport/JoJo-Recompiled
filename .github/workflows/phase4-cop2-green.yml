@@ -1,9 +1,7 @@
 name: Phase 4 COP2 Green Gate
 
 on:
-  push:
-    branches:
-      - feature/ps1-gpu-gte-first-frame-phase4
+  workflow_dispatch:
 
 permissions:
   contents: read

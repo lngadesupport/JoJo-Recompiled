@@ -1,0 +1,34 @@
+name: Phase 4 Fast Gate
+
+on:
+  push:
+    branches:
+      - feature/ps1-gpu-gte-first-frame-phase4
+
+permissions:
+  contents: read
+
+jobs:
+  phase4-fast-linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure Release
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+      - name: Build Phase 4 focused targets
+        run: >-
+          cmake --build build --target
+          jojo_ps1_gte_tests
+          jojo_r3000a_cop2_tests
+          jojo_ps1_gpu_ingress_tests
+          jojo_ps1_gpu_vram_tests
+          jojo_ps1_display_frame_tests
+          jojo_ps1_boot_runtime_tests
+          jojo_ps1_commercial_evidence_tests
+          jojo_ps1_commercial_evidence_io_tests
+          -j2
+      - name: Run Phase 4 focused tests
+        run: >-
+          ctest --test-dir build -R
+          "jojo_(r3000a_cop2|ps1_(gte|gpu_ingress|gpu_vram|display_frame|boot_runtime|commercial_evidence.*))_tests"
+          --output-on-failure
