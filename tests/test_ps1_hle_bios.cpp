@@ -153,6 +153,16 @@ static void test_a0_44_flushcache_returns_without_mutating_result() {
     check_returned_through_ra(cpu);
 }
 
+
+static void test_b0_57_getb0table_returns_clean_room_table() {
+    jojo::Ps1HleBios bios{};
+    auto cpu = make_cpu();
+    CHECK(bios.dispatch(cpu, 0xB0u, 0x57u) ==
+          jojo::Ps1HleBiosDispatchStatus::handled);
+    CHECK(cpu.gpr[2] == jojo::kPs1HleB0TableAddress);
+    check_returned_through_ra(cpu);
+}
+
 static void test_b0_56_getc0table_returns_clean_room_table() {
     jojo::Ps1HleBios bios{};
     auto cpu = make_cpu();
@@ -367,6 +377,7 @@ int main() {
     test_stdout_write_aliases_return_requested_length();
     test_a0_44_flushcache_returns_without_mutating_result();
     test_b0_56_getc0table_returns_clean_room_table();
+    test_b0_57_getb0table_returns_clean_room_table();
     test_a0_39_initheap();
     test_a0_remove_iso9660_aliases();
     test_b0_18_resetentryint_clears_custom_hook();
