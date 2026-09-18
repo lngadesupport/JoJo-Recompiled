@@ -130,23 +130,13 @@ R3000aX64BlockCache::get_or_compile_instruction(
     }
 
     const auto decoded = decode_mips(raw_opcode);
-    if (!r3000a_op_is_x64_lowerable(decoded.op)) {
+    if (!r3000a_op_is_x64_direct_lowerable(decoded.op)) {
         return Result<const R3000aX64Code*>::failure(
             ErrorCode::backend_unavailable,
-            "R3000A instruction is not lowered by the x64 backend");
+            "R3000A instruction is not lowered by the direct x64 backend");
     }
 
-    R3000aIrBlock block{};
-    block.entry_pc = pc;
-    block.instructions.push_back(R3000aIrInstruction{
-        pc,
-        decoded,
-        false,
-    });
-    block.terminator = R3000aIrTerminatorKind::fallthrough;
-    block.fallthrough_target = pc + 4u;
-
-    auto emitted = emit_r3000a_x64_alu_block(block);
+    auto emitted = emit_r3000a_x64_instruction(pc, decoded);
     if (!emitted) {
         return Result<const R3000aX64Code*>::failure(
             emitted.error,
