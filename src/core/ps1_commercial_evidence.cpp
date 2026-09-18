@@ -58,6 +58,12 @@ Result<Ps1CommercialEvidenceRunner> Ps1CommercialEvidenceRunner::open(
     return Result<Ps1CommercialEvidenceRunner>::success(std::move(runner));
 }
 
+Ps1BootReport Ps1CommercialEvidenceRunner::run_segment(
+    const Ps1BootOptions& options) noexcept {
+    runtime_.bus().hardware_services().attach_disc(&disc_);
+    return runtime_.run(options);
+}
+
 Ps1CommercialEvidenceReport Ps1CommercialEvidenceRunner::run(
     const Ps1CommercialEvidenceOptions& options) noexcept {
     runtime_.bus().hardware_services().attach_disc(&disc_);
@@ -70,7 +76,7 @@ Ps1CommercialEvidenceReport Ps1CommercialEvidenceRunner::run(
     const auto max_execution_segments =
         options.max_execution_segments == 0u ? 1u : options.max_execution_segments;
     while (true) {
-        auto segment = runtime_.run(options.boot);
+        auto segment = run_segment(options.boot);
         ++execution_segments;
         report.execution_segments = execution_segments;
         report.total_instructions_retired += segment.instructions_retired;

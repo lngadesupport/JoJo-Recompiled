@@ -55,6 +55,8 @@ public:
 
     [[nodiscard]] Ps1CommercialEvidenceReport run(
         const Ps1CommercialEvidenceOptions& options) noexcept;
+    [[nodiscard]] Ps1BootReport run_segment(
+        const Ps1BootOptions& options) noexcept;
 
     [[nodiscard]] const Ps1DiscSession& disc_session() const noexcept;
     [[nodiscard]] Ps1DisplayFrame display_frame() const;

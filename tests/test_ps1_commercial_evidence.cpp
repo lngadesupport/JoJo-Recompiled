@@ -217,6 +217,35 @@ void test_runner_attaches_direct_disc_to_runtime_cdrom(const fs::path& temp) {
     CHECK(!report.boot.unsupported_access.has_value());
 }
 
+
+void test_runner_segment_api_preserves_runtime_state(const fs::path& temp) {
+    auto fixture = test_ps1::make_disc_fixture();
+    fixture.executable = test_ps1::make_psx_exe_from_words({
+        test_mips::j(0x02u, 0x80010000u >> 2),
+        0x00000000u,
+    });
+    const auto source = test_ps1::write_cooked_iso(temp / "segment-api.iso", fixture);
+
+    jojo::Ps1DiscOpenOptions open_options{};
+    open_options.revision_profiles.push_back(
+        test_ps1::make_revision_profile(fixture, "synthetic-segment-api"));
+
+    auto runner = jojo::Ps1CommercialEvidenceRunner::open(source, open_options);
+    CHECK(runner);
+    if (!runner) return;
+
+    jojo::Ps1BootOptions options{};
+    options.instruction_budget = 3u;
+    const auto first = runner.value.run_segment(options);
+    const auto second = runner.value.run_segment(options);
+
+    CHECK(first.stop_reason == jojo::Ps1BootStopReason::execution_budget_exhausted);
+    CHECK(second.stop_reason == jojo::Ps1BootStopReason::execution_budget_exhausted);
+    CHECK(first.instructions_retired == 3u);
+    CHECK(second.instructions_retired == 3u);
+    CHECK(first.last_pc != second.last_pc || first.last_opcode == second.last_opcode);
+}
+
 void test_bios_fallback_is_opt_in_and_recorded(const fs::path& temp) {
     auto fixture = test_ps1::make_disc_fixture();
     fixture.executable = test_ps1::make_psx_exe_from_words({
@@ -276,6 +305,7 @@ int main() {
     test_runner_continues_bounded_budget_until_real_frontier(temp);
     test_normal_mode_retains_disc_and_never_mutates_source(temp);
     test_runner_attaches_direct_disc_to_runtime_cdrom(temp);
+    test_runner_segment_api_preserves_runtime_state(temp);
     test_bios_fallback_is_opt_in_and_recorded(temp);
 
     fs::remove_all(temp, ec);
