@@ -102,6 +102,9 @@ std::string format_ps1_commercial_evidence_report(
     out << "total_instructions_retired=" << report.total_instructions_retired << '\n';
     out << "execution_segments=" << report.execution_segments << '\n';
     out << "completed_frames=" << report.completed_frames << '\n';
+    out << "observed_non_black_frames="
+        << report.observed_non_black_frames << '\n';
+    out << "frame_change_count=" << report.frame_change_count << '\n';
     out << "pad0_poll_count=" << report.pad_poll_count[0] << '\n';
     out << "pad1_poll_count=" << report.pad_poll_count[1] << '\n';
     out << "memory_card0_read_sector_count="
@@ -116,6 +119,8 @@ std::string format_ps1_commercial_evidence_report(
     out << "spu_nonzero_samples=" << report.spu_nonzero_samples << '\n';
     const auto validation = summarize_ps1_gameplay_validation(report);
     out << "validation_frame_observed=" << (validation.frame_observed ? 1 : 0) << '\n';
+    out << "validation_dynamic_video_observed="
+        << (validation.dynamic_video_observed ? 1 : 0) << '\n';
     out << "validation_controller_poll_observed="
         << (validation.controller_poll_observed ? 1 : 0) << '\n';
     out << "validation_audio_non_silent_observed="
