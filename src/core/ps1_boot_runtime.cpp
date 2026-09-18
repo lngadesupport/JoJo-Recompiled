@@ -303,7 +303,7 @@ Ps1BootReport Ps1BootRuntime::run(const Ps1BootOptions& options) noexcept {
                 ++instructions_since_progress;
                 bus_.hardware_services().step(1u);
                 cpu_.external_interrupt_pending =
-                    bus_.hardware_services().interrupt_pending() ? 1u : 0u;
+                    bus_.hardware_services().interrupt_pending() ? 0x04u : 0u;
                 if (options.stagnation_instruction_limit != 0u &&
                     instructions_since_progress >=
                         options.stagnation_instruction_limit) {
@@ -340,7 +340,7 @@ Ps1BootReport Ps1BootRuntime::run(const Ps1BootOptions& options) noexcept {
                     ++instructions_since_progress;
                     bus_.hardware_services().step(1u);
                     cpu_.external_interrupt_pending =
-                        bus_.hardware_services().interrupt_pending() ? 1u : 0u;
+                        bus_.hardware_services().interrupt_pending() ? 0x04u : 0u;
                     if (options.stagnation_instruction_limit != 0u &&
                         instructions_since_progress >=
                             options.stagnation_instruction_limit) {
@@ -362,7 +362,7 @@ Ps1BootReport Ps1BootRuntime::run(const Ps1BootOptions& options) noexcept {
             ++instructions_since_progress;
             bus_.hardware_services().step(1u);
             cpu_.external_interrupt_pending =
-                bus_.hardware_services().interrupt_pending() ? 1u : 0u;
+                bus_.hardware_services().interrupt_pending() ? 0x04u : 0u;
             if (const auto& probe = bus_.last_diagnostic_mmio_probe(); probe) {
                 ++report.speculative_mmio_count;
                 record_recent_mmio(report, Ps1MmioSummary{
@@ -391,7 +391,7 @@ Ps1BootReport Ps1BootRuntime::run(const Ps1BootOptions& options) noexcept {
             }
             bus_.hardware_services().step(1u);
             cpu_.external_interrupt_pending =
-                bus_.hardware_services().interrupt_pending() ? 1u : 0u;
+                bus_.hardware_services().interrupt_pending() ? 0x04u : 0u;
         }
 
         report.cpu_diagnostic = step.diagnostic;
@@ -442,7 +442,7 @@ Ps1BootReport Ps1BootRuntime::run(const Ps1BootOptions& options) noexcept {
 void Ps1BootRuntime::signal_vblank() noexcept {
     bus_.hardware_services().signal_vblank();
     cpu_.external_interrupt_pending =
-        bus_.hardware_services().interrupt_pending() ? 1u : 0u;
+        bus_.hardware_services().interrupt_pending() ? 0x04u : 0u;
 }
 
 bool Ps1BootRuntime::apply_diagnostic_bios_fallback(Ps1BiosFallback fallback) noexcept {
