@@ -18,12 +18,12 @@ namespace {
 
 constexpr float kUiWidth = 1024.0f;
 constexpr float kUiHeight = 768.0f;
-constexpr Gdiplus::Color kGold(255, 242, 195, 72);
-constexpr Gdiplus::Color kText(255, 242, 238, 229);
-constexpr Gdiplus::Color kMuted(255, 168, 166, 166);
-constexpr Gdiplus::Color kDisabled(255, 100, 103, 108);
-constexpr Gdiplus::Color kPanel(220, 7, 13, 20);
-constexpr Gdiplus::Color kPanelHighContrast(245, 0, 0, 0);
+const Gdiplus::Color kGold(255, 242, 195, 72);
+const Gdiplus::Color kText(255, 242, 238, 229);
+const Gdiplus::Color kMuted(255, 168, 166, 166);
+const Gdiplus::Color kDisabled(255, 100, 103, 108);
+const Gdiplus::Color kPanel(220, 7, 13, 20);
+const Gdiplus::Color kPanelHighContrast(245, 0, 0, 0);
 
 bool contains(const Gdiplus::RectF& rect, float x, float y) noexcept {
     return x >= rect.X && y >= rect.Y &&
@@ -664,7 +664,7 @@ LauncherUiAction LauncherUi::mouse_up(
         static_cast<float>(height);
 
     if (screen_ == Screen::main_menu) {
-        constexpr std::array<Gdiplus::RectF, 4> menu_rects{{
+        const std::array<Gdiplus::RectF, 4> menu_rects{{
             {725.0f, 230.0f, 275.0f, 70.0f},
             {725.0f, 300.0f, 275.0f, 70.0f},
             {725.0f, 370.0f, 275.0f, 70.0f},
