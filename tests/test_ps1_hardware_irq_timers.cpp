@@ -36,6 +36,18 @@ int main() {
     CHECK(hw.timer_mode(1u) == 0x0100u);
     CHECK(hw.timer_counter(1u) == 0u);
 
+    CHECK(hw.write32(0x1F801110u, 0x12345678u).status == jojo::R3000aBusStatus::ok);
+    CHECK(hw.timer_counter(1u) == 0x5678u);
+    CHECK(hw.read32(0x1F801110u).status == jojo::R3000aBusStatus::ok);
+    CHECK(hw.read32(0x1F801110u).value == 0x5678u);
+
+    CHECK(hw.write32(0x1F801118u, 0xABCD0020u).status == jojo::R3000aBusStatus::ok);
+    CHECK(hw.timer_target(1u) == 0x0020u);
+    CHECK(hw.read32(0x1F801118u).value == 0x0020u);
+
+    CHECK(hw.write32(0x1F801114u, 0x00000100u).status == jojo::R3000aBusStatus::ok);
+    CHECK(hw.read32(0x1F801114u).value == 0x0100u);
+
     CHECK(hw.vblank_count() == 0u);
     hw.signal_vblank();
     CHECK(hw.vblank_count() == 1u);
@@ -45,7 +57,7 @@ int main() {
     CHECK((hw.interrupt_status() & 0x0001u) == 0u);
 
     CHECK(hw.write16(0x1F801104u, 0x8000u).status == jojo::R3000aBusStatus::unsupported);
-    CHECK(hw.read32(0x1F801100u).status == jojo::R3000aBusStatus::unsupported);
+    CHECK(hw.read32(0x1F801100u).status == jojo::R3000aBusStatus::ok);
     CHECK(hw.read16(0x1F801180u).status == jojo::R3000aBusStatus::unsupported);
 
     return failures ? 1 : 0;
