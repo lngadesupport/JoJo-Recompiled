@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/ps1_commercial_evidence.h"
+#include "core/ps1_timing.h"
 #include "core/rollback.h"
 
 #include <cstddef>
@@ -39,6 +40,11 @@ public:
     }
 
 private:
+    struct SnapshotRecord {
+        Ps1BootRuntimeState runtime{};
+        Ps1VideoReferenceClockState timing{};
+    };
+
     [[nodiscard]] static std::vector<std::uint8_t> encode_snapshot_id(
         std::uint64_t id);
     [[nodiscard]] static Result<std::uint64_t> decode_snapshot_id(
@@ -48,8 +54,9 @@ private:
     Ps1CommercialEvidenceRunner& runner_;
     std::uint32_t local_player_port_{};
     std::size_t snapshot_capacity_{96u};
+    Ps1VideoReferenceClock timing_clock_{};
     mutable std::uint64_t next_snapshot_id_{1u};
-    mutable std::map<std::uint64_t, Ps1BootRuntimeState> snapshots_{};
+    mutable std::map<std::uint64_t, SnapshotRecord> snapshots_{};
     mutable std::deque<std::uint64_t> snapshot_order_{};
 };
 
