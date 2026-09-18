@@ -22,11 +22,11 @@ int main() {
     CHECK(gpu.write_gp0(0x00000000u).status == jojo::R3000aBusStatus::ok);
     CHECK(gpu.gp0_word_count() == 1u);
 
-    const auto unsupported = gpu.write_gp0(0x20000000u);
+    const auto unsupported = gpu.write_gp0(0x04000000u);
     CHECK(unsupported.status == jojo::R3000aBusStatus::unsupported);
     CHECK(gpu.last_unsupported_gp0_command().has_value());
     if (gpu.last_unsupported_gp0_command()) {
-        CHECK(*gpu.last_unsupported_gp0_command() == 0x20u);
+        CHECK(*gpu.last_unsupported_gp0_command() == 0x04u);
     }
 
     jojo::Ps1HardwareServices hw;

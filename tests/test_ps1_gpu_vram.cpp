@@ -54,10 +54,10 @@ int main() {
         CHECK(poly_gpu.write_gp0(0x25FFFFFFu).status == jojo::R3000aBusStatus::ok);
         CHECK(poly_gpu.write_gp0((20u << 16u) | 20u).status == jojo::R3000aBusStatus::ok);
         CHECK(poly_gpu.write_gp0(0x00000000u).status == jojo::R3000aBusStatus::ok);
-        CHECK(poly_gpu.write_gp0((20u << 16u) | 22u).status == jojo::R3000aBusStatus::ok);
+        CHECK(poly_gpu.write_gp0((20u << 16u) | 21u).status == jojo::R3000aBusStatus::ok);
         CHECK(poly_gpu.write_gp0((0x0101u << 16u) | 0x0001u).status ==
               jojo::R3000aBusStatus::ok);
-        CHECK(poly_gpu.write_gp0((22u << 16u) | 20u).status == jojo::R3000aBusStatus::ok);
+        CHECK(poly_gpu.write_gp0((21u << 16u) | 20u).status == jojo::R3000aBusStatus::ok);
         CHECK(poly_gpu.write_gp0(0x00000100u).status == jojo::R3000aBusStatus::ok);
 
         CHECK(poly_gpu.vram_pixel(20u, 20u) == 0x001Fu);
