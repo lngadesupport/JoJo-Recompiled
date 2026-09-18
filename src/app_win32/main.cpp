@@ -8,6 +8,7 @@
 #include "core/ps1_timing.h"
 #include "core/settings.h"
 #include "platform/windows/controller_win32.h"
+#include "launcher_ui.h"
 #include "presentation_host.h"
 #include "audio_host.h"
 #include <windows.h>
@@ -66,6 +67,7 @@ constexpr int ID_SELECT_SOURCE = 1002;
 constexpr int ID_VALIDATE_SOURCE = 1003;
 constexpr int ID_RUN_CHECKPOINT = 1006;
 constexpr UINT_PTR ID_GAME_TIMER = 2001u;
+constexpr UINT_PTR ID_UI_TIMER = 2002u;
 constexpr COLORREF BG=RGB(13,8,22), PANEL=RGB(35,21,53), TEXT=RGB(248,244,252), MUTED=RGB(185,169,198);
 constexpr COLORREF PURPLE=RGB(119,73,196), MAGENTA=RGB(220,64,166), GOLD=RGB(235,193,83);
 HWND win{}, source_box{}, source_btn{}, validate_btn{}, checkpoint_btn{}, game_window{};
@@ -97,6 +99,12 @@ std::wstring source;
 std::wstring status=L"Selecione a imagem da sua própria cópia do jogo.";
 std::deque<std::wstring> logs;
 bool validated=false;
+jojo::win32::LauncherUi launcher_ui{};
+bool binding_capture_active=false;
+std::size_t binding_capture_player=0u;
+jojo::GameAction binding_capture_action=jojo::GameAction::attack_light;
+jojo::InputFrame binding_capture_previous{};
+std::wstring binding_capture_status{};
 
 std::wstring wide(const std::string& s) {
     if (s.empty()) return {};
@@ -223,23 +231,15 @@ void fill_round(HDC dc,RECT r,COLORREF c,int radius=14){
 }
 
 void paint(HDC dc,RECT c){
-    HBRUSH b=CreateSolidBrush(BG); FillRect(dc,&c,b); DeleteObject(b);
-    POINT a[]={{c.right-390,0},{c.right,0},{c.right,210},{c.right-510,118}};
-    b=CreateSolidBrush(RGB(48,25,73)); auto old=SelectObject(dc,b); Polygon(dc,a,4); SelectObject(dc,old); DeleteObject(b);
-    for(int x=c.right-300;x<c.right;x+=38){ HPEN p=CreatePen(PS_SOLID,2,RGB(82,50,98)); auto op=SelectObject(dc,p); MoveToEx(dc,x,15,nullptr); LineTo(dc,x+120,145); SelectObject(dc,op); DeleteObject(p); }
-
-    draw_text(dc,L"JOJO RECOMPILED",{78,36,800,90},title_font,TEXT);
-    draw_text(dc,L"HERITAGE FOR THE FUTURE  •  RUNTIME PS1 DIRETO",{82,92,820,126},body_font,GOLD);
-    draw_text(dc,L"A imagem original é aberta somente para leitura. Nenhuma instalação extraída do jogo é criada.",{82,140,905,194},body_font,MUTED,DT_LEFT|DT_TOP|DT_WORDBREAK);
-
-    draw_text(dc,L"IMAGEM PS1 DA SUA CÓPIA",{82,211,500,241},body_font,TEXT);
-    draw_text(dc,status,{82,326,920,392},body_font,validated?GOLD:MUTED,DT_LEFT|DT_TOP|DT_WORDBREAK);
-
-    RECT card{80,420,920,610}; fill_round(dc,card,PANEL);
-    draw_text(dc,L"ATIVIDADE",{102,434,400,465},body_font,GOLD);
-    int y=470; for(const auto& l:logs){ draw_text(dc,l,{102,y,892,y+22},small_font,MUTED); y+=22; }
-
-    draw_text(dc,L"Fluxo direto: binding salvo → Data/ROM → seleção manual. Sem PREPARAR JOGO e sem pasta de instalação.",{80,762,920,815},small_font,RGB(144,128,155),DT_LEFT|DT_TOP|DT_WORDBREAK);
+    std::wstring label;
+    if(!source.empty()) label=fs::path(source).filename().wstring();
+    launcher_ui.paint(
+        dc,
+        c,
+        app_settings,
+        input_host?input_host->registry():jojo::InputDeviceRegistry{},
+        label,
+        binding_capture_status);
 }
 
 bool supported_image(const fs::path& image) {
@@ -740,6 +740,98 @@ void run_checkpoint(){
     InvalidateRect(win,nullptr,FALSE);
 }
 
+std::wstring capture_action_name(jojo::GameAction action){
+    switch(action){
+    case jojo::GameAction::up:return L"UP";
+    case jojo::GameAction::down:return L"DOWN";
+    case jojo::GameAction::left:return L"LEFT";
+    case jojo::GameAction::right:return L"RIGHT";
+    case jojo::GameAction::attack_light:return L"LIGHT ATTACK";
+    case jojo::GameAction::attack_medium:return L"MEDIUM ATTACK";
+    case jojo::GameAction::attack_heavy:return L"HEAVY ATTACK";
+    case jojo::GameAction::stand:return L"STAND";
+    case jojo::GameAction::start:return L"START";
+    case jojo::GameAction::coin:return L"COIN";
+    case jojo::GameAction::pause:return L"PAUSE";
+    }
+    return L"CONTROL";
+}
+
+void save_launcher_settings(){
+    const auto saved=jojo::save_settings_atomic(settings_path,app_settings);
+    if(!saved){
+        add_log(L"Falha ao salvar configurações: "+wide(saved.detail));
+    }
+}
+
+void poll_binding_capture(){
+    if(!binding_capture_active||!input_host)return;
+    const auto current=input_host->snapshot();
+    const auto& device_id=
+        app_settings.input.players[binding_capture_player].selected_device;
+    const auto captured=jojo::capture_binding(
+        device_id,
+        binding_capture_previous,
+        current,
+        0.5f);
+    if(captured){
+        app_settings.input.players[binding_capture_player]
+            .bindings[binding_capture_action]=captured.value;
+        save_launcher_settings();
+        binding_capture_active=false;
+        binding_capture_status=
+            L"BOUND "+capture_action_name(binding_capture_action)+
+            L" → "+wide(captured.value.code);
+        add_log(L"Controle remapeado: "+binding_capture_status);
+        if(win)InvalidateRect(win,nullptr,FALSE);
+        return;
+    }
+    binding_capture_previous=current;
+}
+
+void handle_launcher_action(jojo::win32::LauncherUiAction action){
+    switch(action){
+    case jojo::win32::LauncherUiAction::none:
+        break;
+    case jojo::win32::LauncherUiAction::select_disc:{
+        if(game_runner)break;
+        const auto picked=choose_image();
+        if(!picked.empty()&&usable_image(fs::path(picked))){
+            select_image(fs::path(picked));
+            validate_source();
+        }
+        break;
+    }
+    case jojo::win32::LauncherUiAction::start_game:{
+        if(game_runner)break;
+        if(source.empty()){
+            const auto picked=choose_image();
+            if(picked.empty()||!usable_image(fs::path(picked)))break;
+            select_image(fs::path(picked));
+        }
+        if(!validated)validate_source();
+        if(validated)run_checkpoint();
+        break;
+    }
+    case jojo::win32::LauncherUiAction::exit_app:
+        if(win)PostMessageW(win,WM_CLOSE,0,0);
+        break;
+    case jojo::win32::LauncherUiAction::settings_changed:
+        save_launcher_settings();
+        break;
+    case jojo::win32::LauncherUiAction::begin_binding_capture:
+        if(!input_host)break;
+        binding_capture_player=launcher_ui.selected_control_player();
+        binding_capture_action=launcher_ui.selected_control_action();
+        binding_capture_previous=input_host->snapshot();
+        binding_capture_active=true;
+        binding_capture_status=
+            L"PRESS A CONTROL FOR "+capture_action_name(binding_capture_action)+L"...";
+        break;
+    }
+    if(win)InvalidateRect(win,nullptr,FALSE);
+}
+
 void make_fonts(){
     title_font=CreateFontW(-42,0,0,0,FW_HEAVY,FALSE,FALSE,FALSE,DEFAULT_CHARSET,OUT_DEFAULT_PRECIS,CLIP_DEFAULT_PRECIS,CLEARTYPE_QUALITY,DEFAULT_PITCH,L"Segoe UI Black");
     body_font=CreateFontW(-19,0,0,0,FW_SEMIBOLD,FALSE,FALSE,FALSE,DEFAULT_CHARSET,OUT_DEFAULT_PRECIS,CLIP_DEFAULT_PRECIS,CLEARTYPE_QUALITY,DEFAULT_PITCH,L"Segoe UI");
@@ -748,12 +840,6 @@ void make_fonts(){
 }
 
 void create_controls(HWND parent){
-    const wchar_t* initial=source.empty()?L"Nenhuma imagem selecionada":source.c_str();
-    source_box=CreateWindowExW(0,L"EDIT",initial,WS_CHILD|WS_VISIBLE|ES_READONLY|ES_AUTOHSCROLL,82,249,616,42,parent,reinterpret_cast<HMENU>(static_cast<INT_PTR>(ID_SOURCE_PATH)),GetModuleHandleW(nullptr),nullptr);
-    source_btn=CreateWindowExW(0,L"BUTTON",L"SELECIONAR IMAGEM",WS_CHILD|WS_VISIBLE|BS_OWNERDRAW,712,249,208,42,parent,reinterpret_cast<HMENU>(static_cast<INT_PTR>(ID_SELECT_SOURCE)),GetModuleHandleW(nullptr),nullptr);
-    checkpoint_btn=CreateWindowExW(0,L"BUTTON",L"INICIAR JOGO",WS_CHILD|WS_VISIBLE|BS_OWNERDRAW,300,690,300,50,parent,reinterpret_cast<HMENU>(static_cast<INT_PTR>(ID_RUN_CHECKPOINT)),GetModuleHandleW(nullptr),nullptr);
-    validate_btn=CreateWindowExW(0,L"BUTTON",L"VALIDAR JOGO",WS_CHILD|WS_VISIBLE|BS_OWNERDRAW,620,690,300,50,parent,reinterpret_cast<HMENU>(static_cast<INT_PTR>(ID_VALIDATE_SOURCE)),GetModuleHandleW(nullptr),nullptr);
-    SendMessageW(source_box,WM_SETFONT,reinterpret_cast<WPARAM>(body_font),TRUE);
     DragAcceptFiles(parent,TRUE);
     refresh_actions();
 }
@@ -777,18 +863,24 @@ LRESULT CALLBACK proc(HWND h,UINT m,WPARAM w,LPARAM l){
             const auto registered=input_host->register_raw_input(h);
             if(!registered) add_log(L"Aviso: Raw Input indisponível: "+wide(registered.detail));
         }
+        if(!SetTimer(h,ID_UI_TIMER,16u,nullptr)){
+            add_log(L"Aviso: timer de UI indisponível.");
+        }
         if(!source.empty()){
             status=L"Imagem detectada automaticamente. Validando diretamente da fonte original...";
             validate_source();
         }
         return 0;
     case WM_INPUT:
-        if(input_host) input_host->handle_raw_input(reinterpret_cast<HRAWINPUT>(l));
+        if(input_host){
+            input_host->handle_raw_input(reinterpret_cast<HRAWINPUT>(l));
+            poll_binding_capture();
+        }
         return 0;
     case WM_INPUT_DEVICE_CHANGE:
         if(input_host){
             const auto changes=input_host->refresh_devices();
-            (void)changes;
+            if(!changes.empty())InvalidateRect(h,nullptr,FALSE);
         }
         return 0;
     case WM_TIMER:
@@ -796,7 +888,42 @@ LRESULT CALLBACK proc(HWND h,UINT m,WPARAM w,LPARAM l){
             game_tick();
             return 0;
         }
+        if(w==ID_UI_TIMER){
+            poll_binding_capture();
+            return 0;
+        }
         break;
+    case WM_KEYDOWN:
+        if(binding_capture_active&&w==VK_ESCAPE){
+            binding_capture_active=false;
+            binding_capture_status=L"Binding capture cancelled.";
+            InvalidateRect(h,nullptr,FALSE);
+            return 0;
+        }
+        if(!binding_capture_active){
+            handle_launcher_action(
+                launcher_ui.key_down(
+                    w,
+                    app_settings,
+                    input_host?input_host->registry():jojo::InputDeviceRegistry{}));
+        }
+        return 0;
+    case WM_LBUTTONUP:{
+        POINT point{
+            GET_X_LPARAM(l),
+            GET_Y_LPARAM(l)};
+        RECT client{};
+        GetClientRect(h,&client);
+        if(!binding_capture_active){
+            handle_launcher_action(
+                launcher_ui.mouse_up(
+                    point,
+                    client,
+                    app_settings,
+                    input_host?input_host->registry():jojo::InputDeviceRegistry{}));
+        }
+        return 0;
+    }
     case WM_COMMAND:
         if(LOWORD(w)==ID_SELECT_SOURCE){
             auto p=choose_image();
@@ -823,6 +950,7 @@ LRESULT CALLBACK proc(HWND h,UINT m,WPARAM w,LPARAM l){
         DestroyWindow(h);
         return 0;
     case WM_DESTROY:
+        KillTimer(h,ID_UI_TIMER);
         if(game_runner) stop_game_runtime();
         PostQuitMessage(0);
         return 0;
@@ -844,6 +972,10 @@ int WINAPI wWinMain(HINSTANCE inst,HINSTANCE,PWSTR,int show){
     if(app_settings.source_binding_path.empty()) app_settings.source_binding_path=utf8(binding_path.wstring());
     else binding_path=fs::path(wide(app_settings.source_binding_path));
 
+    const auto launcher_art=
+        executable_root/L"assets"/L"launcher"/L"jojo_launcher_main.jpg";
+    const bool launcher_art_ready=launcher_ui.initialize(launcher_art);
+
     const auto startup=jojo::win32::resolve_startup_source(executable_root,app_settings,open_options);
     if(startup && startup.value) source=startup.value->wstring();
     else if(!startup) status=L"Autodetecção de Data/ROM falhou: "+wide(startup.detail);
@@ -863,8 +995,31 @@ int WINAPI wWinMain(HINSTANCE inst,HINSTANCE,PWSTR,int show){
 
     WNDCLASSEXW c{};c.cbSize=sizeof(c);c.lpfnWndProc=proc;c.hInstance=inst;c.hCursor=LoadCursorW(nullptr,IDC_ARROW);c.hIcon=LoadIconW(nullptr,IDI_APPLICATION);c.lpszClassName=L"JOJORecompiledWindow";
     if(!RegisterClassExW(&c)){CoUninitialize();return 3;}
-    win=CreateWindowExW(0,c.lpszClassName,L"JOJO Recompiled",WS_OVERLAPPED|WS_CAPTION|WS_SYSMENU|WS_MINIMIZEBOX,CW_USEDEFAULT,CW_USEDEFAULT,1018,880,nullptr,nullptr,inst,nullptr);
+    constexpr DWORD launcher_style=WS_OVERLAPPEDWINDOW;
+    RECT launcher_rect{0,0,1024,768};
+    AdjustWindowRectExForDpi(
+        &launcher_rect,
+        launcher_style,
+        FALSE,
+        0,
+        96u);
+    win=CreateWindowExW(
+        0,
+        c.lpszClassName,
+        L"JOJO Recompiled",
+        launcher_style,
+        CW_USEDEFAULT,
+        CW_USEDEFAULT,
+        launcher_rect.right-launcher_rect.left,
+        launcher_rect.bottom-launcher_rect.top,
+        nullptr,
+        nullptr,
+        inst,
+        nullptr);
     if(!win){CoUninitialize();return 4;}
+    if(!launcher_art_ready){
+        add_log(L"Aviso: arte principal do launcher não foi carregada; usando fundo de fallback.");
+    }
     if(desktop_shortcut_ready) {
         add_log(L"Atalho do JoJo Recompiled disponível na Área de Trabalho.");
         InvalidateRect(win,nullptr,FALSE);
@@ -880,6 +1035,7 @@ int WINAPI wWinMain(HINSTANCE inst,HINSTANCE,PWSTR,int show){
     game_runner.reset();
     input_host.reset();
     game_frame={};
+    launcher_ui.shutdown();
     if(title_font)DeleteObject(title_font);if(body_font)DeleteObject(body_font);if(small_font)DeleteObject(small_font);if(edit_brush)DeleteObject(edit_brush);CoUninitialize();return static_cast<int>(msg.wParam);
 }
 #endif
