@@ -13,6 +13,8 @@ constexpr std::uint32_t kA0InitHeap = 0x00000039u;
 constexpr std::uint32_t kA0FlushCache = 0x00000044u;
 constexpr std::uint32_t kA0RemoveIso9660 = 0x00000056u;
 constexpr std::uint32_t kA0RemoveIso9660Alias = 0x00000072u;
+constexpr std::uint32_t kA0BuInit = 0x00000055u;
+constexpr std::uint32_t kA0BuInitAlias = 0x00000070u;
 constexpr std::uint32_t kB0ResetEntryInt = 0x00000018u;
 constexpr std::uint32_t kB0HookEntryInt = 0x00000019u;
 constexpr std::uint32_t kB0Write = 0x00000035u;
@@ -102,6 +104,13 @@ Ps1HleBiosDispatchStatus Ps1HleBios::dispatch(
     if (table_physical == kBiosA0 && selector == kA0FlushCache) {
         // Guest writes are immediately coherent in the HLE bus and the x64
         // cache fingerprints guest opcodes, so no host cache flush is needed.
+        return_from_bios_call(cpu);
+        return Ps1HleBiosDispatchStatus::handled;
+    }
+
+    if (table_physical == kBiosA0 &&
+        (selector == kA0BuInit || selector == kA0BuInitAlias)) {
+        backup_unit_initialized_ = true;
         return_from_bios_call(cpu);
         return Ps1HleBiosDispatchStatus::handled;
     }
@@ -223,6 +232,7 @@ std::uint64_t Ps1HleBios::diagnostic_state_hash() const noexcept {
     hash_bool(hash, card_initialized_);
     hash_bool(hash, card_started_);
     hash_bool(hash, card_pad_enabled_);
+    hash_bool(hash, backup_unit_initialized_);
     for (const auto& state : root_counter_auto_ack_enabled_) {
         hash_optional_bool(hash, state);
     }
@@ -252,6 +262,10 @@ bool Ps1HleBios::card_started() const noexcept {
 
 bool Ps1HleBios::card_pad_enabled() const noexcept {
     return card_pad_enabled_;
+}
+
+bool Ps1HleBios::backup_unit_initialized() const noexcept {
+    return backup_unit_initialized_;
 }
 
 std::optional<bool> Ps1HleBios::root_counter_auto_ack_enabled(
