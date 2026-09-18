@@ -49,6 +49,7 @@ add_library(jojo_core STATIC
   src/core/ps1_max3_report_io.cpp
   src/core/mips_decoder.cpp
   src/core/r3000a_ir.cpp
+  src/core/r3000a_cfg.cpp
   src/core/r3000a_reference_executor.cpp
   src/core/revision.cpp
   src/core/runtime.cpp
