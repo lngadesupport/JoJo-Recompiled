@@ -203,7 +203,7 @@ void inspect_application(DWORD ui_thread) {
     if (!check(wait_until([&] {
             window = thread_window(ui_thread, L"JOJORecompiledWindow");
             return window != nullptr;
-        }), "shipping entry point creates a visible application window")) {
+        }), "shipping entry point creates a visible launcher window")) {
         PostThreadMessageW(ui_thread, WM_QUIT, 1, 0);
         return;
     }
@@ -216,79 +216,45 @@ void inspect_application(DWORD ui_thread) {
               &game_class) != FALSE,
           "shipping app registers a dedicated PS1 game-output window class");
 
-    const auto source_box = GetDlgItem(window, ID_SOURCE_PATH);
-    const auto source_button = GetDlgItem(window, ID_SELECT_SOURCE);
-    const auto validate_button = GetDlgItem(window, ID_VALIDATE_SOURCE);
-    const auto checkpoint_button = GetDlgItem(window, ID_RUN_CHECKPOINT);
+    RECT client{};
+    GetClientRect(window, &client);
+    check(client.right - client.left >= 1024,
+          "launcher exposes the intended wide client surface");
+    check(client.bottom - client.top >= 720,
+          "launcher exposes the intended tall client surface");
 
-    check(usable_control(window, source_box), "source-image path field is visible and usable");
-    const bool can_select_source = check(usable_control(window, source_button),
-                                         "source-image chooser button is visible and usable");
-    check(usable_control(window, validate_button), "VALIDAR JOGO button is visible and usable");
-    check(window_text(validate_button) == L"VALIDAR JOGO",
-          "primary source action is VALIDAR JOGO, not PREPARAR JOGO");
-    check(GetDlgItem(window, ID_LEGACY_INSTALL_PATH) == nullptr,
-          "legacy install-root field no longer exists");
-    check(GetDlgItem(window, ID_LEGACY_SELECT_INSTALL) == nullptr,
-          "legacy install-root chooser no longer exists");
-
-    const bool checkpoint_exists = check(checkpoint_button != nullptr,
-                                         "checkpoint button control 1006 exists");
-    if (checkpoint_exists) {
-        check(GetParent(checkpoint_button) == window && IsWindowVisible(checkpoint_button),
-              "checkpoint button is visible");
-        check(window_text(checkpoint_button) == L"INICIAR JOGO",
-              "runtime button explicitly starts the game");
-        check(!IsWindowEnabled(checkpoint_button),
-              "runtime start is disabled until the selected original image validates");
+    // The production launcher is now custom-drawn. Legacy technical source
+    // widgets and checkpoint buttons must stay removed from the visible shell.
+    for (const int legacy_id : {
+             ID_SOURCE_PATH,
+             ID_SELECT_SOURCE,
+             ID_VALIDATE_SOURCE,
+             ID_LEGACY_INSTALL_PATH,
+             ID_LEGACY_SELECT_INSTALL,
+             ID_RUN_CHECKPOINT}) {
+        check(GetDlgItem(window, legacy_id) == nullptr,
+              "legacy technical launcher control remains removed");
     }
-    const bool can_drop = check((GetWindowLongPtrW(window, GWL_EXSTYLE) & WS_EX_ACCEPTFILES) != 0,
-                                "application accepts files dropped from Explorer");
+
+    check((GetWindowLongPtrW(window, GWL_EXSTYLE) & WS_EX_ACCEPTFILES) != 0,
+          "custom launcher still accepts owned PS1 images dropped from Explorer");
 
     const auto directory = fs::temp_directory_path() /
-        (L"jojo-image-selection-" + std::to_wstring(GetCurrentProcessId()));
-    fs::create_directories(directory);
-
-    if (can_drop && source_box) {
-        for (const auto* extension : {L".iso", L".cue", L".BIN"}) {
-            const auto image = directory / (std::wstring(L"JoJo teste ç") + extension);
-            { std::ofstream file(image, std::ios::binary); file.put('\0'); }
-            drop_files(window, {image});
-            check(window_text(source_box) == image.wstring(),
-                  "dropping a supported PS1 image selects its complete Unicode path");
-            check(IsWindowEnabled(validate_button),
-                  "selected source can be validated without preparing an installation");
-        }
-        const auto selected = window_text(source_box);
-        const auto gdi = directory / L"dreamcast.gdi";
-        { std::ofstream file(gdi); file.put('\0'); }
-        drop_files(window, {gdi});
-        check(window_text(source_box) == selected, ".gdi drops do not replace the PS1 source selection");
-
-        const auto archive = directory / L"image.zip";
-        { std::ofstream file(archive); file.put('\0'); }
-        drop_files(window, {archive});
-        check(window_text(source_box) == selected, "unsupported drops preserve selected source");
-        drop_files(window, {directory / L"missing.bin"});
-        check(window_text(source_box) == selected, "missing files preserve selected source");
-        const auto folder = directory / L"directory.bin";
-        fs::create_directory(folder);
-        drop_files(window, {folder});
-        check(window_text(source_box) == selected, "directories preserve selected source");
-    }
-
-    if (can_select_source) {
-        const auto before = window_text(source_box);
-        PostMessageW(source_button, BM_CLICK, 0, 0);
-        if (cancel_native_picker(ui_thread, window)) {
-            check(window_text(source_box) == before,
-                  "cancelling source picker preserves selected image");
-        }
-    }
-
+        (L"jojo-launcher-drop-" + std::to_wstring(GetCurrentProcessId()));
     std::error_code error;
+    fs::create_directories(directory, error);
+    const auto image = directory / L"JoJo teste ç.iso";
+    { std::ofstream file(image, std::ios::binary); file.put('\0'); }
+
+    drop_files(window, {image});
+    check(IsWindow(window) != FALSE,
+          "dropping a supported image keeps the custom launcher alive");
+    check(IsWindowVisible(window) != FALSE,
+          "custom launcher remains visible after source selection");
+
     fs::remove_all(directory, error);
     PostMessageW(window, WM_CLOSE, 0, 0);
+}
 }
 }
 
