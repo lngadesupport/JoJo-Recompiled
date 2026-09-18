@@ -195,6 +195,7 @@ Ps1CommercialEvidenceReport Ps1CommercialEvidenceRunner::run(
         auto segment = run_segment(options.boot);
         ++execution_segments;
         report.execution_segments = execution_segments;
+        report.total_execution_steps += segment.execution_steps;
         report.total_instructions_retired += segment.instructions_retired;
         report.total_native_x64_instructions_retired +=
             segment.native_x64_instructions_retired;
