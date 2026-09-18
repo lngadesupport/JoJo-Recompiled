@@ -40,6 +40,17 @@ int main() {
     CHECK((cd.read8(0x1F801800u).value & 0x03u) == 0x03u);
     CHECK(cd.write8(0x1F801800u, 0x00u).status == jojo::R3000aBusStatus::ok);
 
+    // Bank 0 register 3 is the CD request register. Clearing it is valid
+    // and is used by the JoJo commercial bootstrap.
+    CHECK(cd.write8(0x1F801803u, 0x00u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(cd.request_register() == 0x00u);
+    CHECK(cd.write8(0x1F801803u, 0x80u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(cd.request_register() == 0x80u);
+    CHECK(cd.write8(0x1F801803u, 0x00u).status ==
+          jojo::R3000aBusStatus::ok);
+
     // Getstat produces a bounded response byte.
     CHECK(cd.write8(0x1F801801u, 0x01u).status == jojo::R3000aBusStatus::ok);
     CHECK(cd.response_bytes_available() == 1u);
