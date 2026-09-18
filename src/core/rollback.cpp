@@ -35,7 +35,7 @@ bool RollbackSession::has_exact_remote(std::uint64_t frame) const noexcept {
 }
 
 std::string RollbackSession::hash_current_state() const {
-    const auto state = simulation_.save_state();
+    const auto state = simulation_.state_hash_material();
     const auto bytes = std::span<const std::uint8_t>(state.data(), state.size());
     return sha256_hex(sha256(bytes));
 }
