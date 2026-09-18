@@ -196,6 +196,18 @@ Ps1CommercialEvidenceReport Ps1CommercialEvidenceRunner::run(
         ++execution_segments;
         report.execution_segments = execution_segments;
         report.total_instructions_retired += segment.instructions_retired;
+        report.total_native_x64_instructions_retired +=
+            segment.native_x64_instructions_retired;
+        report.total_reference_instructions_retired +=
+            segment.reference_instructions_retired;
+        report.total_native_x64_cache_compilations +=
+            segment.native_x64_cache_compilations;
+        report.total_native_x64_cache_reuses +=
+            segment.native_x64_cache_reuses;
+        report.total_native_x64_cache_invalidations +=
+            segment.native_x64_cache_invalidations;
+        report.total_native_x64_cache_evictions +=
+            segment.native_x64_cache_evictions;
         report.boot = std::move(segment);
 
         const auto frame = runtime_.display_frame();
