@@ -14,7 +14,7 @@ namespace jojo {
 namespace {
 
 constexpr std::array<std::uint8_t, 8> kMagic{
-    'J','O','J','O','D','I','R','1'};
+    'J','O','J','O','D','I','R','2'};
 
 enum class MessageKind : std::uint8_t {
     publish_room = 1u,
