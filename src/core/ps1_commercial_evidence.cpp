@@ -169,6 +169,7 @@ Ps1CommercialEvidenceReport Ps1CommercialEvidenceRunner::run(
         report.session_vblank_count = counters.vblank_count;
         report.spu_sample_frames = counters.spu_sample_frames;
         report.spu_nonzero_samples = counters.spu_nonzero_samples;
+        report.boot.recent_cdrom_commands = recent_cdrom_commands();
         return report;
     };
 
@@ -260,6 +261,23 @@ Ps1CommercialEvidenceRunner::validation_counters() const noexcept {
     counters.spu_sample_frames = hardware.spu().generated_sample_frames();
     counters.spu_nonzero_samples = hardware.spu().nonzero_sample_count();
     return counters;
+}
+
+
+std::vector<Ps1CdromCommandSummary>
+Ps1CommercialEvidenceRunner::recent_cdrom_commands() const {
+    std::vector<Ps1CdromCommandSummary> out;
+    const auto& history =
+        runtime_.bus().hardware_services().cdrom().recent_commands();
+    out.reserve(history.size());
+    for (const auto& event : history) {
+        out.push_back(Ps1CdromCommandSummary{
+            event.command,
+            event.index,
+            event.status,
+        });
+    }
+    return out;
 }
 
 std::vector<std::int16_t> Ps1CommercialEvidenceRunner::drain_audio_samples() {
