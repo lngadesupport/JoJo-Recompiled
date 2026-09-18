@@ -111,6 +111,12 @@ struct Ps1CommercialEvidenceReport {
     std::uint64_t session_vblank_count{};
     std::uint64_t spu_sample_frames{};
     std::uint64_t spu_nonzero_samples{};
+    std::uint16_t interrupt_status{};
+    std::uint16_t interrupt_mask{};
+    std::uint32_t cpu_cop0_status{};
+    std::uint32_t cpu_cop0_cause{};
+    std::uint8_t cpu_external_interrupt_pending{};
+    std::optional<std::uint32_t> bios_interrupt_hook_address{};
     Ps1GpuDisplayState gpu_display{};
     std::uint64_t gpu_nonzero_vram_words{};
     std::uint64_t gpu_display_region_nonzero_words{};
