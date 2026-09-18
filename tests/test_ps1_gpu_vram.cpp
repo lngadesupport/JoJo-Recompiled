@@ -28,6 +28,29 @@ int main() {
     CHECK(gpu.write_gp0(0x00000000u).status == jojo::R3000aBusStatus::ok);
     CHECK(gpu.gp0_word_count() == 6u);
 
+    // GP0(C0h): VRAM -> CPU image store packs two 16-bit pixels per
+    // GPUREAD word and zero-pads the unused high halfword of the final read.
+    {
+        jojo::Ps1GpuIngress read_gpu;
+        CHECK(read_gpu.write_gp0(0xA0000000u).status == jojo::R3000aBusStatus::ok);
+        CHECK(read_gpu.write_gp0((12u << 16u) | 10u).status == jojo::R3000aBusStatus::ok);
+        CHECK(read_gpu.write_gp0((1u << 16u) | 3u).status == jojo::R3000aBusStatus::ok);
+        CHECK(read_gpu.write_gp0(0x22221111u).status == jojo::R3000aBusStatus::ok);
+        CHECK(read_gpu.write_gp0(0xBEEF3333u).status == jojo::R3000aBusStatus::ok);
+
+        CHECK(read_gpu.write_gp0(0xC0000000u).status == jojo::R3000aBusStatus::ok);
+        CHECK(read_gpu.write_gp0((12u << 16u) | 10u).status == jojo::R3000aBusStatus::ok);
+        CHECK(read_gpu.write_gp0((1u << 16u) | 3u).status == jojo::R3000aBusStatus::ok);
+
+        const auto first = read_gpu.read_gp0();
+        CHECK(first.status == jojo::R3000aBusStatus::ok);
+        CHECK(first.value == 0x22221111u);
+        const auto second = read_gpu.read_gp0();
+        CHECK(second.status == jojo::R3000aBusStatus::ok);
+        CHECK(second.value == 0x00003333u);
+        CHECK(read_gpu.read_gp0().status == jojo::R3000aBusStatus::unsupported);
+    }
+
     // GP0(20h): flat-shaded opaque triangle rasterizes into VRAM.
     {
         jojo::Ps1GpuIngress poly_gpu;

@@ -33,6 +33,18 @@ int main() {
     CHECK(hw.write32(0x1F801814u, 0x00000000u).status == jojo::R3000aBusStatus::ok);
     CHECK(hw.write32(0x1F801810u, 0x00000000u).status == jojo::R3000aBusStatus::ok);
     CHECK(hw.gpu_gp0_word_count() == 1u);
+
+    // GPUREAD is routed through the same hardware-services MMIO address.
+    CHECK(hw.write32(0x1F801810u, 0xA0000000u).status == jojo::R3000aBusStatus::ok);
+    CHECK(hw.write32(0x1F801810u, (5u << 16u) | 4u).status == jojo::R3000aBusStatus::ok);
+    CHECK(hw.write32(0x1F801810u, (1u << 16u) | 2u).status == jojo::R3000aBusStatus::ok);
+    CHECK(hw.write32(0x1F801810u, 0x56781234u).status == jojo::R3000aBusStatus::ok);
+    CHECK(hw.write32(0x1F801810u, 0xC0000000u).status == jojo::R3000aBusStatus::ok);
+    CHECK(hw.write32(0x1F801810u, (5u << 16u) | 4u).status == jojo::R3000aBusStatus::ok);
+    CHECK(hw.write32(0x1F801810u, (1u << 16u) | 2u).status == jojo::R3000aBusStatus::ok);
+    const auto gpuread = hw.read32(0x1F801810u);
+    CHECK(gpuread.status == jojo::R3000aBusStatus::ok);
+    CHECK(gpuread.value == 0x56781234u);
     CHECK(hw.gpu_gp1_command_count() == 1u);
 
     // DMA2 RAM -> GP0 must use the same ingress path.
