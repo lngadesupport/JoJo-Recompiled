@@ -41,6 +41,7 @@ public:
     [[nodiscard]] bool card_initialized() const noexcept;
     [[nodiscard]] bool card_started() const noexcept;
     [[nodiscard]] bool card_pad_enabled() const noexcept;
+    [[nodiscard]] bool backup_unit_initialized() const noexcept;
     [[nodiscard]] std::optional<bool> root_counter_auto_ack_enabled(
         std::uint32_t counter) const noexcept;
     [[nodiscard]] bool iso9660_removed() const noexcept;
@@ -52,6 +53,7 @@ private:
     bool card_initialized_{};
     bool card_started_{};
     bool card_pad_enabled_{};
+    bool backup_unit_initialized_{};
     std::array<std::optional<bool>, 4> root_counter_auto_ack_enabled_{};
     bool iso9660_removed_{};
 };
