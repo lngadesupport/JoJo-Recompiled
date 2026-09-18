@@ -39,6 +39,7 @@ struct OnlineRoomInfo {
     std::uint32_t max_players{2};
     bool password_required{false};
     bool available{true};
+    std::string connect_endpoint{};
 
     friend bool operator==(const OnlineRoomInfo&, const OnlineRoomInfo&) = default;
 };
