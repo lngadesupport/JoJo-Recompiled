@@ -203,7 +203,7 @@ Ps1CommercialEvidenceReport Ps1CommercialEvidenceRunner::run(
     std::size_t fallback_index = 0u;
     std::uint32_t execution_segments = 0u;
     Ps1VideoReferenceClock video_clock{
-        timing_mode_from_display(runtime_.gpu_display_state())};
+        timing_mode_from_display(gpu_display_state())};
     std::uint64_t frame_ticks_remaining =
         video_clock.next_frame_ticks();
     const auto max_execution_segments =
@@ -248,7 +248,7 @@ Ps1CommercialEvidenceReport Ps1CommercialEvidenceRunner::run(
                 ++report.completed_frames;
                 video_clock.set_mode(
                     timing_mode_from_display(
-                        runtime_.gpu_display_state()));
+                        gpu_display_state()));
                 frame_ticks_remaining =
                     video_clock.next_frame_ticks();
             }
