@@ -18,6 +18,7 @@ add_library(jojo_core STATIC
   src/core/settings_menu.cpp
   src/core/training.cpp
   src/core/rollback.cpp
+  src/core/ps1_rollback_runtime.cpp
   src/core/network_protocol.cpp
   src/core/online_session.cpp
   src/core/online_lobby.cpp
@@ -167,6 +168,7 @@ add_jojo_test(jojo_ps1_spu_dma_tests tests/test_ps1_spu_dma.cpp)
 add_jojo_test(jojo_ps1_sio0_tests tests/test_ps1_sio0.cpp)
 add_jojo_test(jojo_ps1_memory_card_tests tests/test_ps1_memory_card.cpp)
 add_jojo_test(jojo_ps1_input_bridge_tests tests/test_ps1_input_bridge.cpp)
+add_jojo_test(jojo_ps1_rollback_runtime_tests tests/test_ps1_rollback_runtime.cpp)
 add_jojo_test(jojo_ps1_timing_tests tests/test_ps1_timing.cpp)
 add_jojo_test(jojo_ps1_memory_bus_tests tests/test_ps1_memory_bus.cpp)
 add_jojo_test(jojo_ps1_executable_loader_tests tests/test_ps1_executable_loader.cpp)
