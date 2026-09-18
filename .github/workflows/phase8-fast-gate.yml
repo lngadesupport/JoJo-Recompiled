@@ -1,0 +1,32 @@
+name: Phase 8 Fast Gate
+
+on:
+  push:
+    branches:
+      - feature/ps1-native-x64-phase8-prep
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  phase8-fast-linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure Release
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+      - name: Build Phase 8 focused targets
+        run: >-
+          cmake --build build --target
+          jojo_mips_decoder_tests
+          jojo_r3000a_ir_tests
+          jojo_r3000a_integer_tests
+          jojo_r3000a_control_flow_tests
+          jojo_r3000a_memory_tests
+          -j2
+      - name: Run Phase 8 focused tests
+        run: >-
+          ctest --test-dir build -R
+          "jojo_(mips_decoder|r3000a_(ir|integer|control_flow|memory))_tests"
+          --output-on-failure
