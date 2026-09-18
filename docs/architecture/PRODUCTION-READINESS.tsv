@@ -1,7 +1,7 @@
 # workstream	status	evidence	blocker
 R2.1	verified	github-actions:run-35310276546	none
 R2.2	blocked-external-evidence	revision:jojo-usa-observed-b8b5dbf79cdb9fcf	fresh-current-commercial-source-validation-required
-R2.3	implemented-unverified	github-actions:run-35310276546	fresh-commercial-frontier-required-for-current-runtime
-R2.4	blocked-external-evidence	phase6-continuous-runtime	current-commercial-menu-fight-audio-input-save-validation-required
+R2.3	implemented-unverified	github-actions:run-35314104437	fresh-commercial-frontier-required-for-current-runtime
+R2.4	blocked-external-evidence	phase7-validation-artifact:run-35314104437	current-commercial-menu-fight-audio-input-save-validation-required
 R2.5	implemented-unverified	portable-online-host-tests	commercial-game-online-integration-pending
 R2.6	not-started	none	phase7-gameplay-validation-and-phase8-native-x64-release-pending
