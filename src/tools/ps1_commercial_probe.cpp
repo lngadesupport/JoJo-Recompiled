@@ -71,7 +71,7 @@ int main(int argc, char** argv) {
               << jojo::ps1_commercial_frontier_class_name(report.frontier)
               << "\n";
     std::cout << "stop_reason="
-              << jojo::ps1_boot_stop_reason_name(report.boot.stop_reason)
+              << static_cast<unsigned>(report.boot.stop_reason)
               << "\n";
     std::cout << "total_instructions_retired="
               << report.total_instructions_retired << "\n";
