@@ -37,6 +37,23 @@ std::uint64_t Ps1VideoReferenceClock::remainder() const noexcept {
     return remainder_;
 }
 
+Ps1VideoReferenceClockState
+Ps1VideoReferenceClock::save_state() const noexcept {
+    return {mode_, remainder_};
+}
+
+bool Ps1VideoReferenceClock::load_state(
+    Ps1VideoReferenceClockState state) noexcept {
+    const auto spec = ps1_video_timing_spec(state.mode);
+    if (spec.refresh_numerator == 0u ||
+        state.remainder >= spec.refresh_numerator) {
+        return false;
+    }
+    mode_ = state.mode;
+    remainder_ = state.remainder;
+    return true;
+}
+
 std::uint64_t Ps1FrameSliceBudget::begin_frame(
     Ps1VideoTimingMode mode) noexcept {
     clock_.set_mode(mode);
