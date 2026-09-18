@@ -6,6 +6,7 @@
 #include "core/ps1_disc_session.h"
 #include "core/result.h"
 
+#include <array>
 #include <cstdint>
 #include <filesystem>
 #include <optional>
@@ -35,12 +36,23 @@ struct Ps1CommercialEvidenceOptions {
     std::vector<Ps1BiosFallback> diagnostic_bios_fallbacks;
 };
 
+struct Ps1CommercialRuntimeCounters {
+    std::array<std::uint64_t, 2> pad_poll_count{};
+    std::array<std::uint64_t, 2> memory_card_read_sector_count{};
+    std::array<std::uint64_t, 2> memory_card_write_sector_count{};
+    std::uint64_t spu_sample_frames{};
+};
+
 struct Ps1CommercialEvidenceReport {
     GameSourceBinding source{};
     Ps1CommercialFrontierClass frontier{Ps1CommercialFrontierClass::none};
     Ps1BootReport boot{};
     std::uint64_t total_instructions_retired{};
     std::uint32_t execution_segments{};
+    std::array<std::uint64_t, 2> pad_poll_count{};
+    std::array<std::uint64_t, 2> memory_card_read_sector_count{};
+    std::array<std::uint64_t, 2> memory_card_write_sector_count{};
+    std::uint64_t spu_sample_frames{};
     std::optional<Ps1CommercialFrameEvidence> first_frame{};
     std::vector<Ps1CommercialDiagnosticDecision> diagnostic_decisions;
 };
@@ -62,6 +74,7 @@ public:
     [[nodiscard]] const Ps1DiscSession& disc_session() const noexcept;
     [[nodiscard]] Ps1DisplayFrame display_frame() const;
     [[nodiscard]] Ps1GpuDisplayState gpu_display_state() const noexcept;
+    [[nodiscard]] Ps1CommercialRuntimeCounters validation_counters() const noexcept;
     [[nodiscard]] std::vector<std::int16_t> drain_audio_samples();
     void set_pad_buttons(
         std::uint32_t port,
