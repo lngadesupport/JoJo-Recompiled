@@ -239,6 +239,13 @@ void draw_public_servers(Gdiplus::Graphics& g, const OnlineLobbyModel& model) {
 
     button(g, L"REFRESH", 1090.0f, 150.0f, 170.0f, 52.0f);
 
+    draw_text(g, L"DIRECT CONNECT", 1090.0f, 238.0f, 390.0f, 46.0f, 26.0f, kWhite, true);
+    draw_text(g, L"IP:PORT", 1090.0f, 288.0f, 110.0f, 44.0f, 20.0f, kMuted, true);
+    outline(g, 1195.0f, 288.0f, 285.0f, 44.0f, kWhite, 2.0f);
+    draw_text(g, widen(model.direct_connect_endpoint), 1205.0f, 288.0f, 265.0f, 44.0f, 19.0f, kWhite);
+    button(g, L"CONNECT DIRECT", 1090.0f, 350.0f, 390.0f, 58.0f, kBlue);
+    draw_text(g, L"HOST PORT: 27886", 1090.0f, 420.0f, 390.0f, 38.0f, 18.0f, kMuted, true);
+
     draw_text(g, L"LOBBY", 460.0f, 620.0f, 110.0f, 44.0f, 25.0f, kWhite, true);
     outline(g, 575.0f, 620.0f, 380.0f, 44.0f, kWhite, 2.0f);
     const std::wstring room_name =
@@ -258,7 +265,7 @@ void draw_public_servers(Gdiplus::Graphics& g, const OnlineLobbyModel& model) {
               Gdiplus::StringAlignmentCenter);
 
     if (!model.status.empty()) {
-        draw_text(g, widen(model.status), 1080.0f, 650.0f, 400.0f, 100.0f, 18.0f, kMuted);
+        draw_text(g, widen(model.status), 1090.0f, 475.0f, 390.0f, 120.0f, 18.0f, kMuted);
     }
 }
 
@@ -631,6 +638,13 @@ OnlineUiAction OnlineUi::mouse_up(
         if (inside(x, y, 1090, 150, 1260, 202)) {
             return OnlineUiAction::refresh_public_rooms;
         }
+        if (inside(x, y, 1195, 288, 1480, 332)) {
+            text_field_ = TextField::direct_endpoint;
+            return OnlineUiAction::none;
+        }
+        if (inside(x, y, 1090, 350, 1480, 408)) {
+            return OnlineUiAction::connect_direct;
+        }
         if (inside(x, y, 540, 748, 750, 820)) {
             online_open_create_lobby(model);
             text_field_ = TextField::lobby_name;
@@ -752,6 +766,14 @@ OnlineUiAction OnlineUi::key_down(
     if (model.screen == OnlineLobbyScreen::home) {
         if (key == VK_LEFT) cycle_region(model, -1);
         if (key == VK_RIGHT) cycle_region(model, 1);
+    } else if (model.screen == OnlineLobbyScreen::public_servers) {
+        if (key == 'D') {
+            text_field_ = TextField::direct_endpoint;
+            return OnlineUiAction::none;
+        }
+        if (key == VK_RETURN && text_field_ == TextField::direct_endpoint) {
+            return OnlineUiAction::connect_direct;
+        }
     } else if (model.screen == OnlineLobbyScreen::find_match) {
         if (key == VK_LEFT || key == VK_RIGHT) toggle_queue(model);
         if (key == VK_RETURN) return OnlineUiAction::begin_matchmaking;
@@ -798,6 +820,9 @@ void OnlineUi::char_input(
             break;
         case TextField::password:
             edit_string(model.create_room.password, 64u);
+            break;
+        case TextField::direct_endpoint:
+            edit_string(model.direct_connect_endpoint, 48u);
             break;
         case TextField::chat:
             if (ch == L'\b') {
