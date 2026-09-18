@@ -114,6 +114,7 @@ std::deque<std::pair<std::uint64_t,jojo::RollbackInput>>
     recent_online_local_inputs{};
 std::uint32_t online_game_packet_sequence{1u};
 bool online_lobby_sync_sent=false;
+bool lan_matchmaking_active=false;
 bool binding_capture_active=false;
 std::size_t binding_capture_player=0u;
 jojo::GameAction binding_capture_action=jojo::GameAction::attack_light;
@@ -928,6 +929,45 @@ void poll_lan_lobby_discovery(){
     }
 
     auto& model=launcher_ui.online_model();
+
+    if(lan_matchmaking_active &&
+       model.screen==jojo::OnlineLobbyScreen::searching){
+        for(std::size_t i=0u;i<polled.value.size();++i){
+            const auto& room=polled.value[i];
+            if(!room.available ||
+               room.game_revision.empty() ||
+               model.local_game_revision.empty() ||
+               room.game_revision!=model.local_game_revision){
+                continue;
+            }
+            const auto remote=
+                jojo::parse_direct_endpoint(room.connect_endpoint);
+            if(!remote){
+                continue;
+            }
+
+            model.rooms=polled.value;
+            model.selected_room=i;
+            online_session.reset();
+            online_lobby_sync_sent=false;
+            const auto joined=online_session.join(
+                jojo::NetworkEndpoint{{0u,0u,0u,0u},0u},
+                remote.value,
+                {},
+                online_now_ms());
+            if(!joined){
+                model.status="CASUAL LAN CONNECT FAILED: "+joined.detail;
+                continue;
+            }
+
+            lan_matchmaking_active=false;
+            jojo::online_set_connecting(
+                model,
+                "CASUAL LAN OPPONENT FOUND • CONNECTING...");
+            return;
+        }
+    }
+
     if(model.screen!=jojo::OnlineLobbyScreen::public_servers) return;
     if(model.rooms==polled.value) return;
 
@@ -1401,6 +1441,7 @@ void handle_launcher_action(jojo::win32::LauncherUiAction action){
             L"PRESS A CONTROL FOR "+capture_action_name(binding_capture_action)+L"...";
         break;
     case jojo::win32::LauncherUiAction::online_refresh_rooms:{
+        lan_matchmaking_active=false;
         refresh_lan_rooms();
         break;
     }
@@ -1495,17 +1536,35 @@ void handle_launcher_action(jojo::win32::LauncherUiAction action){
     }
     case jojo::win32::LauncherUiAction::online_begin_matchmaking:{
         auto& model=launcher_ui.online_model();
+        if(model.queue==jojo::OnlineMatchQueue::ranked){
+            lan_matchmaking_active=false;
+            model.status=
+                "RANKED REQUIRES THE GLOBAL DIRECTORY/RATING SERVICE.";
+            break;
+        }
+
         const auto searching=jojo::online_begin_match_search(model);
         if(!searching){
             model.status=searching.detail;
             break;
         }
-        model.status=
-            "MATCHMAKING SERVICE NOT CONFIGURED. "
-            "CASUAL/RANKED UI IS READY FOR THE DIRECTORY SERVICE.";
+
+        ensure_lan_lobby_discovery();
+        if(!lan_lobby_discovery){
+            model.status="CASUAL LAN MATCHMAKING IS UNAVAILABLE.";
+            break;
+        }
+        const auto requested=lan_lobby_discovery->request_scan();
+        if(!requested){
+            model.status="CASUAL LAN SEARCH FAILED: "+requested.detail;
+            break;
+        }
+        lan_matchmaking_active=true;
+        model.status="SEARCHING CASUAL LAN OPPONENT...";
         break;
     }
     case jojo::win32::LauncherUiAction::online_cancel_matchmaking:{
+        lan_matchmaking_active=false;
         auto& model=launcher_ui.online_model();
         online_session.reset();
         online_lobby_sync_sent=false;
@@ -1517,6 +1576,7 @@ void handle_launcher_action(jojo::win32::LauncherUiAction action){
         break;
     }
     case jojo::win32::LauncherUiAction::online_leave_lobby:{
+        lan_matchmaking_active=false;
         if(online_session.view().state==jojo::OnlineSessionState::connected){
             (void)online_session.disconnect(online_now_ms());
         }
