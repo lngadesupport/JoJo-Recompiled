@@ -19,6 +19,18 @@ int main() {
     CHECK(gpu.write_gp1(0x03000001u).status == jojo::R3000aBusStatus::ok);
     CHECK((gpu.status() & (1u << 23u)) != 0u);
 
+    CHECK(gpu.write_gp1(0x08000000u).status == jojo::R3000aBusStatus::ok);
+    auto display_mode = gpu.display_state();
+    CHECK(!display_mode.pal);
+    CHECK(!display_mode.interlaced);
+
+    CHECK(gpu.write_gp1(0x08000028u).status == jojo::R3000aBusStatus::ok);
+    display_mode = gpu.display_state();
+    CHECK(display_mode.pal);
+    CHECK(display_mode.interlaced);
+    CHECK((gpu.status() & (1u << 20u)) != 0u);
+    CHECK((gpu.status() & (1u << 22u)) != 0u);
+
     CHECK(gpu.write_gp0(0x00000000u).status == jojo::R3000aBusStatus::ok);
     CHECK(gpu.gp0_word_count() == 1u);
 

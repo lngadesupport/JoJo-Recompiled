@@ -78,7 +78,7 @@ std::unique_ptr<jojo::Ps1CommercialEvidenceRunner> game_runner{};
 jojo::Ps1DisplayFrame game_frame{};
 std::uint64_t game_total_instructions{};
 std::uint32_t game_execution_segments{};
-jojo::Ps1NtscReferenceClock game_reference_clock{};
+jojo::Ps1VideoReferenceClock game_reference_clock{};
 std::chrono::steady_clock::time_point next_game_tick{};
 fs::path settings_path, binding_path, executable_root;
 jojo::AppSettings app_settings{};
@@ -377,9 +377,19 @@ void service_game_audio(){
 void game_tick(){
     if(!game_runner) return;
 
+    const auto display_timing=game_runner->gpu_display_state();
+    const auto timing_mode=display_timing.pal
+        ? (display_timing.interlaced
+            ? jojo::Ps1VideoTimingMode::pal_interlaced
+            : jojo::Ps1VideoTimingMode::pal_non_interlaced)
+        : (display_timing.interlaced
+            ? jojo::Ps1VideoTimingMode::ntsc_interlaced
+            : jojo::Ps1VideoTimingMode::ntsc_non_interlaced);
+    game_reference_clock.set_mode(timing_mode);
+
     const auto now=std::chrono::steady_clock::now();
     const auto frame_period=std::chrono::duration_cast<std::chrono::steady_clock::duration>(
-        std::chrono::duration<double>(jojo::ps1_ntsc_frame_seconds()));
+        std::chrono::duration<double>(jojo::ps1_frame_seconds(timing_mode)));
     if(now<next_game_tick) return;
     if(now-next_game_tick>frame_period*4) next_game_tick=now;
     next_game_tick+=frame_period;
@@ -472,7 +482,7 @@ void run_checkpoint(){
     }
 
     if(checkpoint_btn) SetWindowTextW(checkpoint_btn,L"PARAR JOGO");
-    status=L"Jogo em execução • PS1 direto • 59,94 Hz.";
+    status=L"Jogo em execução • PS1 direto • timing de vídeo dinâmico.";
     add_log(L"Runtime contínuo iniciado; controles e áudio atualizam por frame.");
     refresh_actions();
     game_tick();

@@ -134,6 +134,10 @@ Ps1DisplayFrame Ps1CommercialEvidenceRunner::display_frame() const {
     return runtime_.display_frame();
 }
 
+Ps1GpuDisplayState Ps1CommercialEvidenceRunner::gpu_display_state() const noexcept {
+    return runtime_.bus().hardware_services().gpu().display_state();
+}
+
 std::vector<std::int16_t> Ps1CommercialEvidenceRunner::drain_audio_samples() {
     return runtime_.bus().hardware_services().spu().drain_audio_samples();
 }

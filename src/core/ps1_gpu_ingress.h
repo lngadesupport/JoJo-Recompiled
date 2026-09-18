@@ -12,6 +12,8 @@ namespace jojo {
 struct Ps1GpuDisplayState {
     bool enabled{};
     bool rgb24{};
+    bool pal{};
+    bool interlaced{};
     std::uint32_t start_x{};
     std::uint32_t start_y{};
     std::uint32_t width{256u};

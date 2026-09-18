@@ -7,34 +7,44 @@ static int failures = 0;
 #define CHECK(x) do { if (!(x)) { std::cerr << __FILE__ << ':' << __LINE__ << " CHECK failed: " #x "\n"; ++failures; } } while (0)
 
 int main() {
-    jojo::Ps1NtscReferenceClock clock;
+    using jojo::Ps1VideoTimingMode;
 
-    CHECK(jojo::Ps1NtscReferenceClock::nominal_cpu_hz == 33868800u);
-    CHECK(jojo::Ps1NtscReferenceClock::refresh_numerator == 60000u);
-    CHECK(jojo::Ps1NtscReferenceClock::refresh_denominator == 1001u);
+    jojo::Ps1VideoReferenceClock clock;
+    CHECK(jojo::Ps1VideoReferenceClock::nominal_cpu_hz == 33868800u);
+    CHECK(clock.mode() == Ps1VideoTimingMode::ntsc_non_interlaced);
 
-    std::uint64_t total = 0u;
-    std::uint64_t count_565044 = 0u;
-    std::uint64_t count_565045 = 0u;
-    for (std::uint64_t frame = 0u; frame < 125u; ++frame) {
-        const auto ticks = clock.next_frame_ticks();
-        CHECK(ticks == 565044u || ticks == 565045u);
-        if (ticks == 565044u) ++count_565044;
-        if (ticks == 565045u) ++count_565045;
-        total += ticks;
-    }
+    const auto ntsc_progressive = jojo::ps1_video_timing_spec(
+        Ps1VideoTimingMode::ntsc_non_interlaced);
+    CHECK(ntsc_progressive.refresh_numerator == 29913u);
+    CHECK(ntsc_progressive.refresh_denominator == 500u);
+    CHECK(clock.next_frame_ticks() == 566121u);
+    CHECK(clock.next_frame_ticks() == 566122u);
 
-    CHECK(count_565044 == 65u);
-    CHECK(count_565045 == 60u);
-    CHECK(total == 70630560u);
+    clock.set_mode(Ps1VideoTimingMode::ntsc_interlaced);
     CHECK(clock.remainder() == 0u);
+    CHECK(clock.next_frame_ticks() == 565045u);
+
+    clock.set_mode(Ps1VideoTimingMode::pal_non_interlaced);
+    CHECK(clock.next_frame_ticks() == 680629u);
+    CHECK(clock.next_frame_ticks() == 680629u);
+    CHECK(clock.next_frame_ticks() == 680630u);
+
+    clock.set_mode(Ps1VideoTimingMode::pal_interlaced);
+    CHECK(clock.next_frame_ticks() == 677376u);
+    CHECK(clock.next_frame_ticks() == 677376u);
+
+    CHECK(jojo::ps1_frame_seconds(
+              Ps1VideoTimingMode::ntsc_non_interlaced) > 0.01671);
+    CHECK(jojo::ps1_frame_seconds(
+              Ps1VideoTimingMode::ntsc_non_interlaced) < 0.01672);
+    CHECK(jojo::ps1_frame_seconds(
+              Ps1VideoTimingMode::ntsc_interlaced) > 0.01668);
+    CHECK(jojo::ps1_frame_seconds(
+              Ps1VideoTimingMode::ntsc_interlaced) < 0.01669);
+    CHECK(jojo::ps1_frame_seconds(
+              Ps1VideoTimingMode::pal_interlaced) == 0.02);
 
     clock.reset();
     CHECK(clock.remainder() == 0u);
-    CHECK(clock.next_frame_ticks() == 565044u);
-
-    const auto seconds = jojo::ps1_ntsc_frame_seconds();
-    CHECK(seconds > 0.01668 && seconds < 0.01669);
-
     return failures ? 1 : 0;
 }

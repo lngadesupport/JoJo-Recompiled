@@ -99,8 +99,9 @@ void Ps1GpuIngress::reset_display_state() noexcept {
 void Ps1GpuIngress::apply_display_mode(std::uint32_t parameter) noexcept {
     display_.width = display_width_from_mode(parameter);
     const bool vertical_480 = (parameter & (1u << 2u)) != 0u;
-    const bool interlaced = (parameter & (1u << 5u)) != 0u;
-    display_.height = vertical_480 && interlaced ? 480u : 240u;
+    display_.pal = (parameter & (1u << 3u)) != 0u;
+    display_.interlaced = (parameter & (1u << 5u)) != 0u;
+    display_.height = vertical_480 && display_.interlaced ? 480u : 240u;
     display_.rgb24 = (parameter & (1u << 4u)) != 0u;
 }
 
