@@ -356,6 +356,14 @@ bool r3000a_op_is_x64_direct_lowerable(MipsOp op) noexcept {
         case MipsOp::bgez:
         case MipsOp::bltzal:
         case MipsOp::bgezal:
+        case MipsOp::lb:
+        case MipsOp::lbu:
+        case MipsOp::lh:
+        case MipsOp::lhu:
+        case MipsOp::lw:
+        case MipsOp::sb:
+        case MipsOp::sh:
+        case MipsOp::sw:
             return true;
         default:
             return false;
@@ -389,6 +397,117 @@ Result<R3000aX64Code> emit_r3000a_x64_instruction(
     code.instruction_count = 1u;
     auto& out = code.bytes;
     out.reserve(128u);
+
+    const bool memory_op =
+        instruction.op == MipsOp::lb ||
+        instruction.op == MipsOp::lbu ||
+        instruction.op == MipsOp::lh ||
+        instruction.op == MipsOp::lhu ||
+        instruction.op == MipsOp::lw ||
+        instruction.op == MipsOp::sb ||
+        instruction.op == MipsOp::sh ||
+        instruction.op == MipsOp::sw;
+
+    if (memory_op) {
+        std::uint8_t width = 1u;
+        if (instruction.op == MipsOp::lh ||
+            instruction.op == MipsOp::lhu ||
+            instruction.op == MipsOp::sh) {
+            width = 2u;
+        } else if (instruction.op == MipsOp::lw ||
+                   instruction.op == MipsOp::sw) {
+            width = 4u;
+        }
+        const bool write =
+            instruction.op == MipsOp::sb ||
+            instruction.op == MipsOp::sh ||
+            instruction.op == MipsOp::sw;
+        code.memory_access = R3000aX64MemoryAccess{
+            instruction.op,
+            instruction.rs,
+            instruction.rt,
+            width,
+            instruction.immediate,
+            write,
+        };
+
+        emit_load_eax_gpr(out, instruction.rs);
+        emit_u8(out, 0x05u); // add eax, sign-extended immediate
+        emit_u32(out, sign_extend16(instruction.immediate));
+        emit_u8(out, 0x25u); // and eax, 0x1fffffff
+        emit_u32(out, 0x1FFFFFFFu);
+
+        if (!write) {
+            switch (instruction.op) {
+                case MipsOp::lb:
+                    emit_u8(out, 0x44u); emit_u8(out, 0x0Fu);
+                    emit_u8(out, 0xBEu); emit_u8(out, 0x04u); emit_u8(out, 0x02u);
+                    break;
+                case MipsOp::lbu:
+                    emit_u8(out, 0x44u); emit_u8(out, 0x0Fu);
+                    emit_u8(out, 0xB6u); emit_u8(out, 0x04u); emit_u8(out, 0x02u);
+                    break;
+                case MipsOp::lh:
+                    emit_u8(out, 0x44u); emit_u8(out, 0x0Fu);
+                    emit_u8(out, 0xBFu); emit_u8(out, 0x04u); emit_u8(out, 0x02u);
+                    break;
+                case MipsOp::lhu:
+                    emit_u8(out, 0x44u); emit_u8(out, 0x0Fu);
+                    emit_u8(out, 0xB7u); emit_u8(out, 0x04u); emit_u8(out, 0x02u);
+                    break;
+                case MipsOp::lw:
+                    emit_u8(out, 0x44u); emit_u8(out, 0x8Bu);
+                    emit_u8(out, 0x04u); emit_u8(out, 0x02u);
+                    break;
+                default:
+                    break;
+            }
+
+            if (instruction.rt != 0u) {
+                emit_mov_state_imm8(out, pending_valid_offset(), 1u);
+                emit_mov_state_imm8(
+                    out,
+                    pending_reg_offset(),
+                    instruction.rt);
+                emit_store_r8d_state(out, pending_value_offset());
+            }
+        } else {
+            emit_load_r8d_gpr(out, instruction.rt);
+            if (instruction.op == MipsOp::sb) {
+                emit_u8(out, 0x44u); emit_u8(out, 0x88u);
+                emit_u8(out, 0x04u); emit_u8(out, 0x02u);
+            } else if (instruction.op == MipsOp::sh) {
+                emit_u8(out, 0x66u); emit_u8(out, 0x44u); emit_u8(out, 0x89u);
+                emit_u8(out, 0x04u); emit_u8(out, 0x02u);
+            } else {
+                emit_u8(out, 0x44u); emit_u8(out, 0x89u);
+                emit_u8(out, 0x04u); emit_u8(out, 0x02u);
+            }
+        }
+
+        emit_mov_state_imm32(
+            out,
+            static_cast<std::uint32_t>(offsetof(R3000aState, gpr)),
+            0u);
+        emit_mov_state_imm32(
+            out,
+            static_cast<std::uint32_t>(offsetof(R3000aState, pc)),
+            pc + 4u);
+        emit_mov_state_imm32(
+            out,
+            static_cast<std::uint32_t>(offsetof(R3000aState, next_pc)),
+            pc + 8u);
+        emit_mov_eax_imm32(out, 1u);
+        emit_u8(out, 0xC3u);
+
+        const auto materialized = materialize_executable(code);
+        if (!materialized) {
+            return Result<R3000aX64Code>::failure(
+                materialized.error,
+                materialized.detail);
+        }
+        return Result<R3000aX64Code>::success(std::move(code));
+    }
 
     const auto emit_common_delay = [&](std::uint32_t target) {
         emit_mov_state_imm8(out, delay_active_offset(), 1u);
