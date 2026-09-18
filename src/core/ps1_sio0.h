@@ -43,6 +43,8 @@ public:
         std::uint32_t port) const noexcept;
     [[nodiscard]] std::uint64_t memory_card_write_sector_count(
         std::uint32_t port) const noexcept;
+    [[nodiscard]] std::uint64_t memory_card_changed_write_sector_count(
+        std::uint32_t port) const noexcept;
 
     [[nodiscard]] bool irq_pending() const noexcept;
     [[nodiscard]] std::uint64_t diagnostic_state_hash() const noexcept;
@@ -78,6 +80,7 @@ private:
     std::array<std::uint64_t, 2> digital_pad_pressed_poll_count_{};
     std::array<std::uint64_t, 2> memory_card_read_sector_count_{};
     std::array<std::uint64_t, 2> memory_card_write_sector_count_{};
+    std::array<std::uint64_t, 2> memory_card_changed_write_sector_count_{};
     std::deque<std::uint8_t> rx_fifo_{};
     TransactionState transaction_{TransactionState::idle};
     std::uint8_t memory_command_{};
