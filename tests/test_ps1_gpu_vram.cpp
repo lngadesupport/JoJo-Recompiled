@@ -28,6 +28,28 @@ int main() {
     CHECK(gpu.write_gp0(0x00000000u).status == jojo::R3000aBusStatus::ok);
     CHECK(gpu.gp0_word_count() == 6u);
 
+    // GP0(80h): VRAM -> VRAM copy. Source pixels are copied from a
+    // snapshot so overlapping rectangles do not self-feed while writing.
+    {
+        jojo::Ps1GpuIngress copy_gpu;
+        CHECK(copy_gpu.write_gp0(0xA0000000u).status == jojo::R3000aBusStatus::ok);
+        CHECK(copy_gpu.write_gp0((40u << 16u) | 20u).status == jojo::R3000aBusStatus::ok);
+        CHECK(copy_gpu.write_gp0((1u << 16u) | 3u).status == jojo::R3000aBusStatus::ok);
+        CHECK(copy_gpu.write_gp0(0x22221111u).status == jojo::R3000aBusStatus::ok);
+        CHECK(copy_gpu.write_gp0(0x00003333u).status == jojo::R3000aBusStatus::ok);
+
+        const auto before_copy_writes = copy_gpu.vram_write_count();
+        CHECK(copy_gpu.write_gp0(0x80000000u).status == jojo::R3000aBusStatus::ok);
+        CHECK(copy_gpu.write_gp0((40u << 16u) | 20u).status == jojo::R3000aBusStatus::ok);
+        CHECK(copy_gpu.write_gp0((42u << 16u) | 30u).status == jojo::R3000aBusStatus::ok);
+        CHECK(copy_gpu.write_gp0((1u << 16u) | 3u).status == jojo::R3000aBusStatus::ok);
+
+        CHECK(copy_gpu.vram_pixel(30u, 42u) == 0x1111u);
+        CHECK(copy_gpu.vram_pixel(31u, 42u) == 0x2222u);
+        CHECK(copy_gpu.vram_pixel(32u, 42u) == 0x3333u);
+        CHECK(copy_gpu.vram_write_count() == before_copy_writes + 3u);
+    }
+
     // GP0(02h): Fill Rectangle. Keep X/width aligned here so this test isolates
     // packet assembly, color conversion and deterministic in-bounds raster writes.
     {
