@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/r3000a_bus.h"
+#include "core/ps1_memory_card.h"
 
 #include <array>
 #include <cstdint>
@@ -32,6 +33,8 @@ public:
     void set_digital_pad_buttons(
         std::uint32_t port,
         std::uint16_t active_low_buttons) noexcept;
+    [[nodiscard]] Ps1MemoryCard& memory_card(std::uint32_t port) noexcept;
+    [[nodiscard]] const Ps1MemoryCard& memory_card(std::uint32_t port) const noexcept;
 
     [[nodiscard]] bool irq_pending() const noexcept;
     [[nodiscard]] std::uint64_t diagnostic_state_hash() const noexcept;
@@ -43,12 +46,18 @@ private:
         controller_id_high,
         controller_buttons_low,
         controller_buttons_high,
+        memory_command,
+        memory_transfer,
         done,
     };
 
     void reset_transaction() noexcept;
     void reset_registers() noexcept;
     void transfer_byte(std::uint8_t value) noexcept;
+    void transfer_memory_byte(
+        std::uint8_t value,
+        std::uint8_t& response,
+        bool& more_data) noexcept;
     [[nodiscard]] std::uint32_t status_value() const noexcept;
     [[nodiscard]] std::uint32_t selected_port() const noexcept;
 
@@ -56,8 +65,17 @@ private:
     std::uint16_t control_{};
     std::uint16_t baud_{};
     std::array<std::uint16_t, 2> pad_buttons_{0xFFFFu, 0xFFFFu};
+    std::array<Ps1MemoryCard, 2> memory_cards_{};
     std::deque<std::uint8_t> rx_fifo_{};
     TransactionState transaction_{TransactionState::idle};
+    std::uint8_t memory_command_{};
+    std::uint16_t memory_stage_{};
+    std::uint16_t memory_sector_{};
+    std::uint8_t memory_checksum_{};
+    std::uint8_t memory_previous_byte_{};
+    std::uint8_t memory_end_byte_{0x47u};
+    Ps1MemoryCard::Sector memory_write_buffer_{};
+    bool memory_sector_valid_{};
     bool dsr_{};
     bool irq_{};
 };
