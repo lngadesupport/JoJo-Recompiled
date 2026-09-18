@@ -74,9 +74,31 @@ static void test_spu_host_neutral_audio_clock_and_voice_mix() {
     CHECK((spu.endx_flags() & 1u) != 0u);
 }
 
+
+static void test_spu_adsr_advances_and_releases() {
+    jojo::Ps1Spu spu;
+    CHECK(spu.write16(0x1F801C08u, 0x0000u).status == jojo::R3000aBusStatus::ok);
+    CHECK(spu.write16(0x1F801C0Au, 0x0000u).status == jojo::R3000aBusStatus::ok);
+    CHECK(spu.write16(0x1F801C04u, 0x1000u).status == jojo::R3000aBusStatus::ok);
+    CHECK(spu.write16(0x1F801DAAu, 0xC000u).status == jojo::R3000aBusStatus::ok);
+    CHECK(spu.write16(0x1F801D88u, 0x0001u).status == jojo::R3000aBusStatus::ok);
+
+    CHECK(spu.voice(0u).adsr_volume == 0u);
+    spu.step(768u);
+    CHECK(spu.voice(0u).adsr_volume > 0u);
+
+    CHECK(spu.write16(0x1F801C0Cu, 0x7FFFu).status == jojo::R3000aBusStatus::ok);
+    CHECK(spu.write16(0x1F801D8Cu, 0x0001u).status == jojo::R3000aBusStatus::ok);
+    CHECK(spu.voice(0u).releasing);
+    spu.step(768u * 4u);
+    CHECK(spu.voice(0u).adsr_volume == 0u);
+    CHECK(!spu.voice(0u).releasing);
+}
+
 int main() {
     test_spu_adpcm_decode_contract();
     test_spu_host_neutral_audio_clock_and_voice_mix();
+    test_spu_adsr_advances_and_releases();
     jojo::Ps1Spu spu;
 
     CHECK(spu.write16(0x1F801C00u, 0x1234u).status == jojo::R3000aBusStatus::ok);
