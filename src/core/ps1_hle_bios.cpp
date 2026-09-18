@@ -238,7 +238,12 @@ Ps1HleBiosDispatchStatus Ps1HleBios::dispatch(
 
     if (table_physical == kBiosB0 && selector == kB0WaitEvent) {
         auto* event = decode_event(cpu.gpr[4]);
-        if (event && event->enabled && event->ready) {
+        if (!event || !event->enabled) {
+            cpu.gpr[2] = 0u;
+            return_from_bios_call(cpu);
+            return Ps1HleBiosDispatchStatus::handled;
+        }
+        if (event->ready) {
             cpu.gpr[2] = 1u;
             if (event->mode == kEventModeReady) {
                 event->ready = false;
@@ -246,26 +251,13 @@ Ps1HleBiosDispatchStatus Ps1HleBios::dispatch(
             return_from_bios_call(cpu);
             return Ps1HleBiosDispatchStatus::handled;
         }
+        // Enabled/busy ready-mode events block in the real BIOS. Keep the
+        // call as an explicit frontier unless hardware has delivered it.
         return Ps1HleBiosDispatchStatus::unimplemented;
     }
 
     if (table_physical == kBiosB0 && selector == kB0DeliverEvent) {
-        for (auto& event : events_) {
-            if (!event.allocated || !event.enabled ||
-                event.event_class != cpu.gpr[4] ||
-                event.spec != cpu.gpr[5]) {
-                continue;
-            }
-            if (event.mode == kEventModeReady) {
-                event.ready = true;
-            } else if (event.mode == kEventModeCallback) {
-                // Callback-mode delivery is intentionally conservative here.
-                // Preserve the registered callback address, but do not fake a
-                // callback transfer until interrupt/callback entry semantics
-                // are modeled by the runtime.
-                event.ready = false;
-            }
-        }
+        deliver_event(cpu.gpr[4], cpu.gpr[5]);
         cpu.gpr[2] = 1u;
         return_from_bios_call(cpu);
         return Ps1HleBiosDispatchStatus::handled;
@@ -467,6 +459,23 @@ Ps1HleBiosDispatchStatus Ps1HleBios::begin_interrupt_hook(
     cpu.delay_slot = {};
     cpu.gpr[0] = 0u;
     return Ps1HleBiosDispatchStatus::handled;
+}
+
+void Ps1HleBios::deliver_event(
+    std::uint32_t event_class,
+    std::uint32_t spec) noexcept {
+    for (auto& event : events_) {
+        if (!event.allocated || !event.enabled ||
+            event.event_class != event_class ||
+            event.spec != spec) {
+            continue;
+        }
+        if (event.mode == kEventModeReady) {
+            event.ready = true;
+        } else if (event.mode == kEventModeCallback) {
+            event.ready = false;
+        }
+    }
 }
 
 Ps1HleBiosDispatchStatus Ps1HleBios::dispatch_syscall(
