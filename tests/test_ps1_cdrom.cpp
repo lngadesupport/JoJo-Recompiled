@@ -154,6 +154,35 @@ int main() {
     CHECK(cd.write8(0x1F801800u, 0x00u).status ==
           jojo::R3000aBusStatus::ok);
 
+    // CD host audio matrix uses banked ATV0-ATV3 registers and only
+    // changes the active mix when ADPCTL.CHNGATV is written.
+    CHECK(cd.write8(0x1F801800u, 0x02u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(cd.write8(0x1F801802u, 0x70u).status ==
+          jojo::R3000aBusStatus::ok); // ATV0 L->L
+    CHECK(cd.write8(0x1F801803u, 0x10u).status ==
+          jojo::R3000aBusStatus::ok); // ATV1 L->R
+    CHECK(cd.write8(0x1F801800u, 0x03u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(cd.write8(0x1F801801u, 0x60u).status ==
+          jojo::R3000aBusStatus::ok); // ATV2 R->R
+    CHECK(cd.write8(0x1F801802u, 0x20u).status ==
+          jojo::R3000aBusStatus::ok); // ATV3 R->L
+    CHECK(cd.pending_audio_matrix() ==
+          std::array<std::uint8_t, 4>{0x70u,0x10u,0x60u,0x20u});
+    CHECK(cd.active_audio_matrix() ==
+          std::array<std::uint8_t, 4>{0x80u,0x00u,0x80u,0x00u});
+
+    CHECK(cd.write8(0x1F801803u, 0x21u).status ==
+          jojo::R3000aBusStatus::ok); // ADPMUTE + CHNGATV
+    CHECK(cd.adpcm_muted());
+    CHECK(cd.active_audio_matrix() == cd.pending_audio_matrix());
+    CHECK(cd.write8(0x1F801803u, 0x20u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(!cd.adpcm_muted());
+    CHECK(cd.write8(0x1F801800u, 0x00u).status ==
+          jojo::R3000aBusStatus::ok);
+
     // Mute/Demute are single-phase INT3 commands and preserve
     // deterministic CD audio state.
     CHECK(cd.write8(0x1F801801u, 0x0Bu).status ==
