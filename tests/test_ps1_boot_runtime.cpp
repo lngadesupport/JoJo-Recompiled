@@ -287,6 +287,30 @@ static void test_boot_report_captures_segment_gpu_activity() {
     CHECK(second.vram_write_count == 0u);
 }
 
+
+static void test_cdrom_command_frontier_records_command_evidence() {
+    const std::vector<std::uint32_t> words{
+        test_mips::i(0x0Fu, 0u, 8u, 0x1F80u),
+        test_mips::i(0x0Du, 8u, 8u, 0x1801u),
+        test_mips::i(0x09u, 0u, 9u, 0x007Fu),
+        test_mips::i(0x28u, 8u, 9u, 0x0000u),
+    };
+    auto runtime = make_runtime(words);
+    const auto report = runtime.run({16u});
+
+    CHECK(report.stop_reason == jojo::Ps1BootStopReason::device_command_unimplemented);
+    CHECK(report.instructions_retired == 3u);
+    CHECK(report.recent_cdrom_commands.size() == 1u);
+    if (!report.recent_cdrom_commands.empty()) {
+        CHECK(report.recent_cdrom_commands.back().command == 0x7Fu);
+        CHECK(report.recent_cdrom_commands.back().index == 0u);
+    }
+    CHECK(report.unsupported_access.has_value());
+    if (report.unsupported_access) {
+        CHECK(report.unsupported_access->physical_address == 0x1F801801u);
+    }
+}
+
 static void test_gpu_frontier_records_unsupported_gp0_command() {
     const std::vector<std::uint32_t> words{
         test_mips::i(0x0Fu, 0u, 8u, 0x1F80u),
@@ -408,6 +432,7 @@ int main() {
     test_mmio_access_stops_with_structured_evidence();
     test_mega_probe_continues_through_unknown_mmio_and_records_events();
     test_boot_report_captures_segment_gpu_activity();
+    test_cdrom_command_frontier_records_command_evidence();
     test_gpu_frontier_records_unsupported_gp0_command();
     test_runtime_exposes_host_neutral_gpu_display_frame();
     test_retired_instruction_advances_hardware_once();
