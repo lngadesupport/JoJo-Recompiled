@@ -66,6 +66,7 @@ int main() {
     CHECK((bus.hardware_services().interrupt_status() & 0x0080u) == 0u);
     bus.hardware_services().step(1u);
     CHECK((bus.hardware_services().interrupt_status() & 0x0080u) == 0u);
+    CHECK(bus.write16(0x1F80104Au, 0x1001u).status == jojo::R3000aBusStatus::ok);
     CHECK(bus.write16(0x1F80104Au, 0x1011u).status == jojo::R3000aBusStatus::ok);
     CHECK(bus.write16(0x1F80104Au, 0x1003u).status == jojo::R3000aBusStatus::ok);
     CHECK(bus.write8(0x1F801040u, 0x01u).status == jojo::R3000aBusStatus::ok);
