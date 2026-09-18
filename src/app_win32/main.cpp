@@ -348,6 +348,7 @@ jojo::Ps1CommercialEvidenceReport make_game_session_report(
     report.frame_change_count=game_frame_change_count;
     const auto validation=game_runner->validation_counters();
     report.pad_poll_count=validation.pad_poll_count;
+    report.pad_pressed_poll_count=validation.pad_pressed_poll_count;
     report.memory_card_read_sector_count=
         validation.memory_card_read_sector_count;
     report.memory_card_write_sector_count=
