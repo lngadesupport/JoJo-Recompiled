@@ -358,27 +358,25 @@ static void test_runtime_exposes_host_neutral_gpu_display_frame() {
 
 
 
-static void test_syscall_exception_enters_vector_and_runtime_continues() {
+static void test_entercriticalsection_syscall_is_hle_without_vector_walk() {
     const std::vector<std::uint32_t> words{
-        0x0000000Cu, // SYSCALL
+        test_mips::i(0x09u, 0u, 4u, 1u), // a0 = SYS EnterCriticalSection
+        0x0000000Cu,                     // SYSCALL
+        test_mips::i(0x09u, 0u, 8u, 7u),
         0x00000000u,
     };
     auto runtime = make_runtime(words);
-    CHECK(runtime.bus().write32(
-              0x80000080u,
-              test_mips::i(0x09u, 0u, 8u, 1u)).status ==
-          jojo::R3000aBusStatus::ok);
 
-    const auto report = runtime.run({2u});
+    const auto report = runtime.run({3u});
     CHECK(report.stop_reason ==
           jojo::Ps1BootStopReason::execution_budget_exhausted);
-    CHECK(report.execution_steps == 2u);
-    CHECK(report.instructions_retired == 1u);
-    CHECK(report.reference_instructions_retired == 1u);
-    CHECK(runtime.cpu_state().gpr[8] == 1u);
-    CHECK(runtime.cpu_state().cop0.epc == 0x80010000u);
-    CHECK(((runtime.cpu_state().cop0.cause >> 2u) & 0x1Fu) == 8u);
-    CHECK(runtime.cpu_state().pc == 0x80000084u);
+    CHECK(report.execution_steps == 3u);
+    CHECK(report.instructions_retired == 2u);
+    CHECK(report.reference_instructions_retired == 2u);
+    CHECK(runtime.cpu_state().gpr[8] == 7u);
+    CHECK(runtime.cpu_state().pc == 0x8001000Cu);
+    CHECK(runtime.cpu_state().cop0.epc == 0u);
+    CHECK(((runtime.cpu_state().cop0.cause >> 2u) & 0x1Fu) == 0u);
 }
 
 static void test_retired_instruction_advances_hardware_once() {
@@ -459,7 +457,7 @@ int main() {
     test_cdrom_command_frontier_records_command_evidence();
     test_gpu_frontier_records_unsupported_gp0_command();
     test_runtime_exposes_host_neutral_gpu_display_frame();
-    test_syscall_exception_enters_vector_and_runtime_continues();
+    test_entercriticalsection_syscall_is_hle_without_vector_walk();
     test_retired_instruction_advances_hardware_once();
     test_deterministic_replay_matches_full_m3a_state();
     return failures ? 1 : 0;
