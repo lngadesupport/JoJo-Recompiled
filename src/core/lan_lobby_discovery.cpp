@@ -77,6 +77,7 @@ encode_lan_lobby_advertisement(
     bytes.reserve(
         kMagic.size() + 16u +
         advertisement.name.size() +
+        advertisement.owner.size() +
         advertisement.region.size() +
         advertisement.game_revision.size());
     bytes.push_back(kDiscoveryAdvertisement);
@@ -89,8 +90,12 @@ encode_lan_lobby_advertisement(
     bytes.push_back(
         static_cast<std::uint8_t>(
             advertisement.password_required ? 1u : 0u));
+    bytes.push_back(
+        static_cast<std::uint8_t>(
+            advertisement.in_game ? 1u : 0u));
 
     if (!append_text(bytes, advertisement.name, 40u) ||
+        !append_text(bytes, advertisement.owner, 24u) ||
         !append_text(bytes, advertisement.region, 48u) ||
         !append_text(bytes, advertisement.game_revision, 64u)) {
         return Result<std::vector<std::uint8_t>>::failure(
@@ -111,7 +116,7 @@ decode_lan_lobby_advertisement(
     }
 
     std::size_t offset = kMagic.size() + 1u;
-    if (offset + 5u > bytes.size()) {
+    if (offset + 6u > bytes.size()) {
         return Result<LanLobbyAdvertisement>::failure(
             ErrorCode::invalid_argument,
             "LAN lobby advertisement is truncated");
@@ -125,8 +130,10 @@ decode_lan_lobby_advertisement(
     advertisement.players = bytes[offset++];
     advertisement.max_players = bytes[offset++];
     advertisement.password_required = bytes[offset++] != 0u;
+    advertisement.in_game = bytes[offset++] != 0u;
 
     if (!read_text(bytes, offset, advertisement.name, 40u) ||
+        !read_text(bytes, offset, advertisement.owner, 24u) ||
         !read_text(bytes, offset, advertisement.region, 48u) ||
         !read_text(bytes, offset, advertisement.game_revision, 64u) ||
         offset != bytes.size()) {
@@ -262,13 +269,20 @@ Result<std::vector<OnlineRoomInfo>> LanLobbyDiscovery::poll() {
         OnlineRoomInfo room{};
         room.id = "lan:" + connect_endpoint;
         room.name = parsed.value.name;
+        room.owner = parsed.value.owner;
         room.region = parsed.value.region;
         room.players = parsed.value.players;
         room.max_players = parsed.value.max_players;
         room.password_required =
             parsed.value.password_required;
+        room.lan = true;
+        room.status = parsed.value.in_game
+            ? OnlineRoomStatus::in_game
+            : (room.players >= room.max_players
+                ? OnlineRoomStatus::full
+                : OnlineRoomStatus::wait);
         room.available =
-            room.players < room.max_players;
+            room.status == OnlineRoomStatus::wait;
         room.connect_endpoint = connect_endpoint;
         room.game_revision = parsed.value.game_revision;
         discovered_rooms_[room.id] = std::move(room);
