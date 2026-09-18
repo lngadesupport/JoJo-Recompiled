@@ -287,6 +287,23 @@ static void test_boot_report_captures_segment_gpu_activity() {
     CHECK(second.vram_write_count == 0u);
 }
 
+static void test_gpu_frontier_records_unsupported_gp0_command() {
+    const std::vector<std::uint32_t> words{
+        test_mips::i(0x0Fu, 0u, 8u, 0x1F80u),
+        test_mips::i(0x0Fu, 0u, 9u, 0xFE00u),
+        test_mips::i(0x2Bu, 8u, 9u, 0x1810u),
+    };
+    auto runtime = make_runtime(words);
+    const auto report = runtime.run({16u});
+
+    CHECK(report.stop_reason == jojo::Ps1BootStopReason::gpu_command_unimplemented);
+    CHECK(report.unsupported_gpu_gp0_command.has_value());
+    if (report.unsupported_gpu_gp0_command) {
+        CHECK(*report.unsupported_gpu_gp0_command == 0xFEu);
+    }
+    CHECK(!report.unsupported_gpu_gp1_command.has_value());
+}
+
 static void test_runtime_exposes_host_neutral_gpu_display_frame() {
     const std::vector<std::uint32_t> words{
         test_mips::j(0x02u, 0x80010000u >> 2),
@@ -378,6 +395,7 @@ int main() {
     test_mmio_access_stops_with_structured_evidence();
     test_mega_probe_continues_through_unknown_mmio_and_records_events();
     test_boot_report_captures_segment_gpu_activity();
+    test_gpu_frontier_records_unsupported_gp0_command();
     test_runtime_exposes_host_neutral_gpu_display_frame();
     test_deterministic_replay_matches_full_m3a_state();
     return failures ? 1 : 0;
