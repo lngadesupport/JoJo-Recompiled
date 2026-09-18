@@ -371,6 +371,12 @@ void Ps1HardwareServices::step(std::uint32_t cpu_cycles) noexcept {
     }
 }
 
+void Ps1HardwareServices::signal_vblank() noexcept {
+    interrupt_status_ = static_cast<std::uint16_t>(
+        interrupt_status_ | 0x0001u);
+    ++vblank_count_;
+}
+
 std::uint16_t Ps1HardwareServices::interrupt_status() const noexcept {
     return interrupt_status_;
 }
@@ -509,6 +515,10 @@ std::uint64_t Ps1HardwareServices::completed_dma_transfer_count() const noexcept
     return completed_dma_transfer_count_;
 }
 
+std::uint64_t Ps1HardwareServices::vblank_count() const noexcept {
+    return vblank_count_;
+}
+
 std::uint32_t Ps1HardwareServices::gpu_status() const noexcept {
     return gpu_.status();
 }
@@ -570,6 +580,7 @@ std::uint64_t Ps1HardwareServices::diagnostic_state_hash() const noexcept {
         hash_bool(hash, pending_dma_transfer_->from_ram);
     }
     hash_u64(hash, completed_dma_transfer_count_);
+    hash_u64(hash, vblank_count_);
     hash_u64(hash, spu_.diagnostic_state_hash());
     hash_u64(hash, sio0_.diagnostic_state_hash());
     hash_bool(hash, sio0_irq_line_);
