@@ -73,6 +73,8 @@ int main() {
     CHECK(cd.write8(0x1F801800u, 0x01u).status ==
           jojo::R3000aBusStatus::ok);
     CHECK((cd.read8(0x1F801803u).value & 0x07u) == 0x03u);
+    CHECK(cd.read8(0x1F801801u).status ==
+          jojo::R3000aBusStatus::ok);
     CHECK(cd.write8(0x1F801803u, 0x07u).status ==
           jojo::R3000aBusStatus::ok);
     CHECK(cd.write8(0x1F801800u, 0x00u).status ==
@@ -83,6 +85,8 @@ int main() {
     CHECK(cd.write8(0x1F801800u, 0x01u).status ==
           jojo::R3000aBusStatus::ok);
     CHECK((cd.read8(0x1F801803u).value & 0x07u) == 0x02u);
+    CHECK(cd.read8(0x1F801801u).status ==
+          jojo::R3000aBusStatus::ok);
     CHECK(cd.write8(0x1F801803u, 0x07u).status ==
           jojo::R3000aBusStatus::ok);
     CHECK(cd.write8(0x1F801800u, 0x00u).status ==
@@ -94,6 +98,12 @@ int main() {
     CHECK(cd.response_bytes_available() == 1u);
     CHECK(cd.read8(0x1F801801u).status == jojo::R3000aBusStatus::ok);
     CHECK(cd.response_bytes_available() == 0u);
+    CHECK(cd.write8(0x1F801800u, 0x01u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(cd.write8(0x1F801803u, 0x07u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(cd.write8(0x1F801800u, 0x00u).status ==
+          jojo::R3000aBusStatus::ok);
 
     // Setloc to logical sector 25: absolute MSF is 00:02:25 (150-frame lead-in + 25).
     CHECK(cd.write8(0x1F801802u, 0x00u).status == jojo::R3000aBusStatus::ok);
@@ -101,18 +111,30 @@ int main() {
     CHECK(cd.write8(0x1F801802u, 0x25u).status == jojo::R3000aBusStatus::ok);
     CHECK(cd.write8(0x1F801801u, 0x02u).status == jojo::R3000aBusStatus::ok);
     CHECK(cd.current_lba() == 25u);
+    CHECK(cd.read8(0x1F801801u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(cd.write8(0x1F801800u, 0x01u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(cd.write8(0x1F801803u, 0x07u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(cd.write8(0x1F801800u, 0x00u).status ==
+          jojo::R3000aBusStatus::ok);
 
     // ReadN acknowledges with INT3, then produces INT1 plus one sector.
     CHECK(cd.write8(0x1F801801u, 0x06u).status == jojo::R3000aBusStatus::ok);
     CHECK(cd.data_bytes_available() == 0u);
     CHECK(cd.write8(0x1F801800u, 0x01u).status == jojo::R3000aBusStatus::ok);
     CHECK((cd.read8(0x1F801803u).value & 0x07u) == 0x03u);
+    CHECK(cd.read8(0x1F801801u).status ==
+          jojo::R3000aBusStatus::ok);
     CHECK(cd.write8(0x1F801803u, 0x07u).status == jojo::R3000aBusStatus::ok);
     CHECK(cd.write8(0x1F801800u, 0x00u).status == jojo::R3000aBusStatus::ok);
     cd.step(451584u);
     CHECK(cd.data_bytes_available() == 2048u);
     CHECK(cd.write8(0x1F801800u, 0x01u).status == jojo::R3000aBusStatus::ok);
     CHECK((cd.read8(0x1F801803u).value & 0x07u) == 0x01u);
+    CHECK(cd.read8(0x1F801801u).status ==
+          jojo::R3000aBusStatus::ok);
     CHECK(cd.write8(0x1F801803u, 0x07u).status == jojo::R3000aBusStatus::ok);
     CHECK(cd.write8(0x1F801800u, 0x00u).status == jojo::R3000aBusStatus::ok);
     std::vector<std::uint32_t> words(512u, 0u);
