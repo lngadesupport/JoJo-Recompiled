@@ -32,7 +32,26 @@ bool inside(float x, float y, float l, float t, float r, float b) noexcept {
 }
 
 std::wstring widen(std::string_view value) {
-    return std::wstring(value.begin(), value.end());
+    if (value.empty()) return {};
+    const int required = MultiByteToWideChar(
+        CP_UTF8,
+        MB_ERR_INVALID_CHARS,
+        value.data(),
+        static_cast<int>(value.size()),
+        nullptr,
+        0);
+    if (required <= 0) {
+        return std::wstring(value.begin(), value.end());
+    }
+    std::wstring result(static_cast<std::size_t>(required), L'\0');
+    MultiByteToWideChar(
+        CP_UTF8,
+        MB_ERR_INVALID_CHARS,
+        value.data(),
+        static_cast<int>(value.size()),
+        result.data(),
+        required);
+    return result;
 }
 
 void draw_text(
