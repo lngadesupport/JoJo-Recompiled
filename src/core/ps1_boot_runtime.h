@@ -6,6 +6,7 @@
 #include "core/ps1_hle_bios.h"
 #include "core/ps1_memory_bus.h"
 #include "core/r3000a_state.h"
+#include "core/r3000a_x64_cache.h"
 #include "core/result.h"
 
 #include <cstdint>
@@ -28,6 +29,8 @@ public:
         const Ps1Executable& executable);
 
     [[nodiscard]] Ps1BootReport run(const Ps1BootOptions& options) noexcept;
+    void set_native_x64_enabled(bool enabled) noexcept;
+    [[nodiscard]] bool native_x64_enabled() const noexcept;
     void signal_vblank() noexcept;
     [[nodiscard]] bool apply_diagnostic_bios_fallback(Ps1BiosFallback fallback) noexcept;
     [[nodiscard]] std::uint64_t diagnostic_state_hash() const noexcept;
@@ -47,6 +50,10 @@ private:
     Ps1MemoryBus bus_{};
     R3000aState cpu_{};
     Ps1HleBios bios_{};
+    R3000aX64BlockCache native_x64_cache_{};
+    std::uint32_t native_text_begin_{};
+    std::uint32_t native_text_end_{};
+    bool native_x64_enabled_{};
     bool diagnostic_bios_frontier_pending_{};
 };
 
