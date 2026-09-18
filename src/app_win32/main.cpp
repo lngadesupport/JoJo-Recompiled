@@ -353,6 +353,12 @@ jojo::Ps1CommercialEvidenceReport make_game_session_report(
         validation.memory_card_read_sector_count;
     report.memory_card_write_sector_count=
         validation.memory_card_write_sector_count;
+    report.session_dma_transfer_count=validation.dma_transfer_count;
+    report.session_cdrom_command_count=validation.cdrom_command_count;
+    report.session_gpu_gp0_word_count=validation.gpu_gp0_word_count;
+    report.session_gpu_gp1_command_count=validation.gpu_gp1_command_count;
+    report.session_vram_write_count=validation.vram_write_count;
+    report.session_vblank_count=validation.vblank_count;
     report.spu_sample_frames=validation.spu_sample_frames;
     report.spu_nonzero_samples=validation.spu_nonzero_samples;
     report.first_frame=jojo::make_ps1_commercial_frame_evidence(
