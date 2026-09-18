@@ -74,6 +74,7 @@ public:
     void show_main() noexcept;
 
     [[nodiscard]] bool settings_open() const noexcept;
+    [[nodiscard]] bool online_open() const noexcept;
     [[nodiscard]] std::size_t selected_control_player() const noexcept;
     [[nodiscard]] GameAction selected_control_action() const noexcept;
     [[nodiscard]] OnlineLobbyModel& online_model() noexcept { return online_model_; }
