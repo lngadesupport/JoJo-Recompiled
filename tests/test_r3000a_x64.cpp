@@ -1,3 +1,4 @@
+#include "core/ps1_memory_bus.h"
 #include "core/r3000a_reference_executor.h"
 #include "core/r3000a_x64.h"
 #include "mips_test_encode.h"
@@ -22,6 +23,118 @@ void test_direct_branch_instruction_is_lowerable() {
     if (code) CHECK(code.value.instruction_count == 1u);
 }
 
+
+
+#if defined(_WIN32) && defined(_M_X64)
+void test_x64_direct_lw_main_ram_matches_reference_load_delay() {
+    const auto raw = test_mips::i(0x23u, 8u, 9u, 0u); // LW $9,0($8)
+    const auto decoded = jojo::decode_mips(raw);
+    const auto code =
+        jojo::emit_r3000a_x64_instruction(0x80010000u, decoded);
+    CHECK(code);
+    if (!code) return;
+
+    jojo::R3000aState native{};
+    native.pc = 0x80010000u;
+    native.next_pc = 0x80010004u;
+    native.gpr[8] = 0x80000100u;
+    auto reference = native;
+
+    jojo::Ps1MemoryBus native_bus;
+    jojo::Ps1MemoryBus reference_bus;
+    CHECK(native_bus.write32(0x00000100u, 0x12345678u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(reference_bus.write32(0x00000100u, 0x12345678u).status ==
+          jojo::R3000aBusStatus::ok);
+    reference_bus.write32(0x80010000u, raw);
+
+    const auto executed = jojo::execute_r3000a_x64_block(
+        code.value,
+        native,
+        native_bus.main_ram_data());
+    CHECK(executed.status == jojo::R3000aX64ExecutionStatus::executed);
+    CHECK(executed.instructions_retired == 1u);
+    CHECK(jojo::step_r3000a(reference, reference_bus).status ==
+          jojo::R3000aStepStatus::retired);
+
+    CHECK(native.gpr == reference.gpr);
+    CHECK(native.pending_load.valid == reference.pending_load.valid);
+    CHECK(native.pending_load.reg == reference.pending_load.reg);
+    CHECK(native.pending_load.value == reference.pending_load.value);
+    CHECK(native.pc == reference.pc);
+    CHECK(native.next_pc == reference.next_pc);
+}
+
+void test_x64_direct_sw_main_ram_alias_matches_reference() {
+    const auto raw = test_mips::i(0x2Bu, 8u, 9u, 0u); // SW $9,0($8)
+    const auto decoded = jojo::decode_mips(raw);
+    const auto code =
+        jojo::emit_r3000a_x64_instruction(0x80010000u, decoded);
+    CHECK(code);
+    if (!code) return;
+
+    jojo::R3000aState native{};
+    native.pc = 0x80010000u;
+    native.next_pc = 0x80010004u;
+    native.gpr[8] = 0xA0000100u;
+    native.gpr[9] = 0xCAFEBABEu;
+    auto reference = native;
+
+    jojo::Ps1MemoryBus native_bus;
+    jojo::Ps1MemoryBus reference_bus;
+    reference_bus.write32(0x80010000u, raw);
+
+    CHECK(jojo::execute_r3000a_x64_block(
+              code.value,
+              native,
+              native_bus.main_ram_data()).status ==
+          jojo::R3000aX64ExecutionStatus::executed);
+    CHECK(jojo::step_r3000a(reference, reference_bus).status ==
+          jojo::R3000aStepStatus::retired);
+
+    CHECK(native_bus.read32(0x00000100u).value ==
+          reference_bus.read32(0x00000100u).value);
+    CHECK(native.gpr == reference.gpr);
+    CHECK(native.pc == reference.pc);
+    CHECK(native.next_pc == reference.next_pc);
+}
+
+void test_x64_memory_falls_back_before_mmio_or_misaligned_access() {
+    const auto raw = test_mips::i(0x23u, 8u, 9u, 0u);
+    const auto decoded = jojo::decode_mips(raw);
+    const auto code =
+        jojo::emit_r3000a_x64_instruction(0x80010000u, decoded);
+    CHECK(code);
+    if (!code) return;
+
+    jojo::Ps1MemoryBus bus;
+    jojo::R3000aState state{};
+    state.pc = 0x80010000u;
+    state.next_pc = 0x80010004u;
+    state.gpr[8] = 0x1F801070u;
+    const auto before_mmio = state;
+    const auto mmio = jojo::execute_r3000a_x64_block(
+        code.value,
+        state,
+        bus.main_ram_data());
+    CHECK(mmio.status == jojo::R3000aX64ExecutionStatus::reference_required);
+    CHECK(state.gpr == before_mmio.gpr);
+    CHECK(state.pc == before_mmio.pc);
+    CHECK(state.next_pc == before_mmio.next_pc);
+
+    state.gpr[8] = 0x80000101u;
+    const auto before_unaligned = state;
+    const auto unaligned = jojo::execute_r3000a_x64_block(
+        code.value,
+        state,
+        bus.main_ram_data());
+    CHECK(unaligned.status ==
+          jojo::R3000aX64ExecutionStatus::reference_required);
+    CHECK(state.gpr == before_unaligned.gpr);
+    CHECK(state.pc == before_unaligned.pc);
+    CHECK(state.next_pc == before_unaligned.next_pc);
+}
+#endif
 
 #if defined(_WIN32) && defined(_M_X64)
 void test_x64_direct_branch_not_taken_matches_reference() {
@@ -339,6 +452,9 @@ int main() {
     test_direct_branch_instruction_is_lowerable();
     test_x64_emitter_accepts_only_v0_safe_subset();
 #if defined(_WIN32) && defined(_M_X64)
+    test_x64_direct_lw_main_ram_matches_reference_load_delay();
+    test_x64_direct_sw_main_ram_alias_matches_reference();
+    test_x64_memory_falls_back_before_mmio_or_misaligned_access();
     test_x64_direct_branch_not_taken_matches_reference();
     test_x64_direct_jal_matches_reference();
     test_x64_direct_branch_matches_reference();
