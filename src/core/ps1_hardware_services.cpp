@@ -138,6 +138,9 @@ R3000aBusResult Ps1HardwareServices::read16(std::uint32_t physical) noexcept {
 }
 
 R3000aBusResult Ps1HardwareServices::read32(std::uint32_t physical) noexcept {
+    if (physical == 0x1F801810u) {
+        return gpu_.read_gp0();
+    }
     if (physical == 0x1F801814u) {
         return {R3000aBusStatus::ok, gpu_.status()};
     }

@@ -462,6 +462,30 @@ void Ps1GpuIngress::copy_vram_rectangle(
     }
 }
 
+R3000aBusResult Ps1GpuIngress::read_gp0() noexcept {
+    if (readback_pixels_remaining_ == 0u || readback_width_ == 0u) {
+        return {R3000aBusStatus::unsupported, 0u};
+    }
+
+    const auto read_pixel = [&]() noexcept -> std::uint16_t {
+        if (readback_pixels_remaining_ == 0u) return 0u;
+        const auto local_x = readback_pixel_index_ % readback_width_;
+        const auto local_y = readback_pixel_index_ / readback_width_;
+        const auto x = (readback_x_ + local_x) & (vram_width - 1u);
+        const auto y = (readback_y_ + local_y) & (vram_height - 1u);
+        const auto pixel = vram_[static_cast<std::size_t>(y) * vram_width + x];
+        ++readback_pixel_index_;
+        --readback_pixels_remaining_;
+        return pixel;
+    };
+
+    const auto low = static_cast<std::uint32_t>(read_pixel());
+    const auto high = readback_pixels_remaining_ != 0u
+        ? static_cast<std::uint32_t>(read_pixel())
+        : 0u;
+    return {R3000aBusStatus::ok, low | (high << 16u)};
+}
+
 R3000aBusResult Ps1GpuIngress::write_gp0(std::uint32_t value) noexcept {
     last_unsupported_gp0_command_.reset();
 
@@ -560,6 +584,20 @@ R3000aBusResult Ps1GpuIngress::write_gp0(std::uint32_t value) noexcept {
             reset_command_buffer();
             return {R3000aBusStatus::ok, 0u};
         }
+        case Gp0Mode::vram_to_cpu_source:
+            ++gp0_word_count_;
+            readback_x_ = value & 0x3FFu;
+            readback_y_ = (value >> 16u) & 0x1FFu;
+            gp0_mode_ = Gp0Mode::vram_to_cpu_size;
+            return {R3000aBusStatus::ok, 0u};
+        case Gp0Mode::vram_to_cpu_size:
+            ++gp0_word_count_;
+            readback_width_ = normalize_transfer_width(value & 0xFFFFu);
+            readback_height_ = normalize_transfer_height((value >> 16u) & 0xFFFFu);
+            readback_pixel_index_ = 0u;
+            readback_pixels_remaining_ = readback_width_ * readback_height_;
+            gp0_mode_ = Gp0Mode::command;
+            return {R3000aBusStatus::ok, 0u};
         case Gp0Mode::cpu_to_vram_destination:
             ++gp0_word_count_;
             transfer_x_ = value & 0x3FFu;
@@ -688,6 +726,12 @@ R3000aBusResult Ps1GpuIngress::write_gp0(std::uint32_t value) noexcept {
             ++gp0_word_count_;
             gp0_mode_ = Gp0Mode::cpu_to_vram_destination;
             return {R3000aBusStatus::ok, 0u};
+        case 0xC0u: // VRAM -> CPU image store
+            ++gp0_word_count_;
+            readback_pixel_index_ = 0u;
+            readback_pixels_remaining_ = 0u;
+            gp0_mode_ = Gp0Mode::vram_to_cpu_source;
+            return {R3000aBusStatus::ok, 0u};
         default:
             last_unsupported_gp0_command_ = command;
             return {R3000aBusStatus::unsupported, 0u};
@@ -704,6 +748,12 @@ R3000aBusResult Ps1GpuIngress::write_gp1(std::uint32_t value) noexcept {
             status_ = reset_status;
             reset_command_buffer();
             reset_display_state();
+            readback_x_ = 0u;
+            readback_y_ = 0u;
+            readback_width_ = 0u;
+            readback_height_ = 0u;
+            readback_pixel_index_ = 0u;
+            readback_pixels_remaining_ = 0u;
             ++gp1_command_count_;
             return {R3000aBusStatus::ok, 0u};
         case 0x01u: // Reset command buffer

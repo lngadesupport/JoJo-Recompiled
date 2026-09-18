@@ -23,6 +23,7 @@ public:
     static constexpr std::uint32_t vram_width = 1024u;
     static constexpr std::uint32_t vram_height = 512u;
 
+    [[nodiscard]] R3000aBusResult read_gp0() noexcept;
     [[nodiscard]] R3000aBusResult write_gp0(std::uint32_t value) noexcept;
     [[nodiscard]] R3000aBusResult write_gp1(std::uint32_t value) noexcept;
 
@@ -51,6 +52,8 @@ private:
         vram_copy_source,
         vram_copy_destination,
         vram_copy_size,
+        vram_to_cpu_source,
+        vram_to_cpu_size,
         cpu_to_vram_destination,
         cpu_to_vram_size,
         cpu_to_vram_payload,
@@ -137,6 +140,12 @@ private:
     std::uint32_t transfer_height_{};
     std::uint32_t transfer_pixel_index_{};
     std::uint32_t transfer_pixels_remaining_{};
+    std::uint32_t readback_x_{};
+    std::uint32_t readback_y_{};
+    std::uint32_t readback_width_{};
+    std::uint32_t readback_height_{};
+    std::uint32_t readback_pixel_index_{};
+    std::uint32_t readback_pixels_remaining_{};
 
     std::optional<std::uint8_t> last_unsupported_gp0_command_{};
     std::optional<std::uint8_t> last_unsupported_gp1_command_{};
