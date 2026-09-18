@@ -50,6 +50,10 @@ public:
         const R3000aState& resume_state,
         R3000aBus& bus) noexcept;
 
+    void deliver_event(
+        std::uint32_t event_class,
+        std::uint32_t spec) noexcept;
+
     [[nodiscard]] std::uint64_t diagnostic_state_hash() const noexcept;
 
     [[nodiscard]] const std::optional<Ps1BiosHeapState>& heap_state() const noexcept;
