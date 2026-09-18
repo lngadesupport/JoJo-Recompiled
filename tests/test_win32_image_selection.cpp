@@ -208,6 +208,14 @@ void inspect_application(DWORD ui_thread) {
         return;
     }
 
+    WNDCLASSEXW game_class{};
+    game_class.cbSize = sizeof(game_class);
+    check(GetClassInfoExW(
+              GetModuleHandleW(nullptr),
+              L"JOJORecompiledGameWindow",
+              &game_class) != FALSE,
+          "shipping app registers a dedicated PS1 game-output window class");
+
     const auto source_box = GetDlgItem(window, ID_SOURCE_PATH);
     const auto source_button = GetDlgItem(window, ID_SELECT_SOURCE);
     const auto validate_button = GetDlgItem(window, ID_VALIDATE_SOURCE);
