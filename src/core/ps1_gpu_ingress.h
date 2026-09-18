@@ -35,6 +35,7 @@ public:
     [[nodiscard]] std::uint16_t vram_pixel(std::uint32_t x, std::uint32_t y) const noexcept;
     [[nodiscard]] std::uint64_t vram_write_count() const noexcept;
     [[nodiscard]] Ps1GpuDisplayState display_state() const noexcept;
+    [[nodiscard]] std::uint64_t diagnostic_state_hash() const noexcept;
     [[nodiscard]] const std::optional<std::uint8_t>& last_unsupported_gp0_command() const noexcept;
     [[nodiscard]] const std::optional<std::uint8_t>& last_unsupported_gp1_command() const noexcept;
 
