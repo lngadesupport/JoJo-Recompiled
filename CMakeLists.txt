@@ -82,6 +82,9 @@ target_link_libraries(jojo_ps1_commercial_probe PRIVATE jojo_core)
 
 add_executable(jojo_online_directory_server src/tools/online_directory_server.cpp)
 target_link_libraries(jojo_online_directory_server PRIVATE jojo_core)
+if(WIN32)
+  target_link_libraries(jojo_online_directory_server PRIVATE ws2_32)
+endif()
 
 if(WIN32)
   add_library(jojo_win32_input_host STATIC src/platform/windows/controller_win32.cpp)
