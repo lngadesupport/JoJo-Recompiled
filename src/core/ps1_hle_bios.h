@@ -4,6 +4,7 @@
 #include "core/r3000a_state.h"
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 
