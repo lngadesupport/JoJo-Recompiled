@@ -136,6 +136,44 @@ static void test_bios_event_lifecycle_and_ready_delivery() {
     CHECK(!bios.events()[0].allocated);
 }
 
+static void test_ready_event_can_be_delivered_by_hardware_pump() {
+    jojo::Ps1HleBios bios{};
+
+    auto open = make_cpu();
+    open.gpr[4] = 0xF0000009u;
+    open.gpr[5] = 0x20u;
+    open.gpr[6] = 0x2000u;
+    open.gpr[7] = 0u;
+    CHECK(bios.dispatch(open, 0xB0u, 0x08u) ==
+          jojo::Ps1HleBiosDispatchStatus::handled);
+
+    auto enable = make_cpu();
+    enable.gpr[4] = open.gpr[2];
+    CHECK(bios.dispatch(enable, 0xB0u, 0x0Cu) ==
+          jojo::Ps1HleBiosDispatchStatus::handled);
+
+    bios.deliver_event(0xF0000009u, 0x20u);
+    CHECK(bios.events()[0].ready);
+
+    auto wait = make_cpu();
+    wait.gpr[4] = open.gpr[2];
+    CHECK(bios.dispatch(wait, 0xB0u, 0x0Au) ==
+          jojo::Ps1HleBiosDispatchStatus::handled);
+    CHECK(wait.gpr[2] == 1u);
+    CHECK(!bios.events()[0].ready);
+
+    auto disable = make_cpu();
+    disable.gpr[4] = open.gpr[2];
+    CHECK(bios.dispatch(disable, 0xB0u, 0x0Du) ==
+          jojo::Ps1HleBiosDispatchStatus::handled);
+
+    auto disabled_wait = make_cpu();
+    disabled_wait.gpr[4] = open.gpr[2];
+    CHECK(bios.dispatch(disabled_wait, 0xB0u, 0x0Au) ==
+          jojo::Ps1HleBiosDispatchStatus::handled);
+    CHECK(disabled_wait.gpr[2] == 0u);
+}
+
 static void test_callback_event_preserves_callback_without_fake_delivery() {
     jojo::Ps1HleBios bios{};
     auto open = make_cpu();
@@ -610,6 +648,7 @@ int main() {
     test_sys_02_exitcriticalsection();
     test_unknown_syscall_is_non_mutating();
     test_bios_event_lifecycle_and_ready_delivery();
+    test_ready_event_can_be_delivered_by_hardware_pump();
     test_callback_event_preserves_callback_without_fake_delivery();
     test_backup_unit_init_aliases_mark_card_filesystem_ready();
     test_card2_lifecycle_tracks_pad_enable_and_start_stop();
