@@ -290,6 +290,11 @@ R3000aX64ExecutionResult execute_r3000a_x64_block(
         return {R3000aX64ExecutionStatus::reference_required, 0u};
     }
 
+    state.cop0.cause =
+        (state.cop0.cause & ~0x0000FC00u) |
+        (static_cast<std::uint32_t>(
+             state.external_interrupt_pending & 0xFCu) << 8u);
+
 #if defined(_WIN32) && defined(_M_X64)
     void* memory = VirtualAlloc(
         nullptr,
