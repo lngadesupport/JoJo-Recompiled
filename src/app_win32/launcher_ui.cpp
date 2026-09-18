@@ -205,6 +205,10 @@ bool LauncherUi::settings_open() const noexcept {
     return screen_ == Screen::settings;
 }
 
+bool LauncherUi::online_open() const noexcept {
+    return screen_ == Screen::online;
+}
+
 std::size_t LauncherUi::selected_control_player() const noexcept {
     return control_player_;
 }
