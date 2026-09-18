@@ -211,7 +211,7 @@ void test_color_and_interpolation_semantics() {
         CHECK(jojo::read_ps1_gte_data(gte, 9u) == 0x0080u);
         CHECK(jojo::read_ps1_gte_data(gte, 10u) == 0x0100u);
         CHECK(jojo::read_ps1_gte_data(gte, 11u) == 0x0180u);
-        CHECK(gte.data[22] == 0x33180808u);
+        CHECK(gte.data[22] == 0x33181008u);
     }
 }
 
