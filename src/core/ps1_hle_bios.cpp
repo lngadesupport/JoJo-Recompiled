@@ -20,6 +20,7 @@ constexpr std::uint32_t kB0InitCard2 = 0x0000004Au;
 constexpr std::uint32_t kB0StartCard2 = 0x0000004Bu;
 constexpr std::uint32_t kB0StopCard2 = 0x0000004Cu;
 constexpr std::uint32_t kB0GetC0Table = 0x00000056u;
+constexpr std::uint32_t kB0GetB0Table = 0x00000057u;
 constexpr std::uint32_t kB0ChangeClearPad = 0x0000005Bu;
 constexpr std::uint32_t kC0ChangeClearRCnt = 0x0000000Au;
 constexpr std::uint32_t kSysEnterCriticalSection = 0x00000001u;
@@ -154,6 +155,12 @@ Ps1HleBiosDispatchStatus Ps1HleBios::dispatch(
 
     if (table_physical == kBiosB0 && selector == kB0GetC0Table) {
         cpu.gpr[2] = kPs1HleC0TableAddress;
+        return_from_bios_call(cpu);
+        return Ps1HleBiosDispatchStatus::handled;
+    }
+
+    if (table_physical == kBiosB0 && selector == kB0GetB0Table) {
+        cpu.gpr[2] = kPs1HleB0TableAddress;
         return_from_bios_call(cpu);
         return Ps1HleBiosDispatchStatus::handled;
     }
