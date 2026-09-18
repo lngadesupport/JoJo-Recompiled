@@ -20,12 +20,15 @@ enum class OnlineUiAction {
     begin_matchmaking,
     cancel_matchmaking,
     leave_lobby,
+    ready_changed,
+    send_chat_message,
     start_lobby_game,
 };
 
 class OnlineUi {
 public:
     void show_home() noexcept;
+    [[nodiscard]] std::string take_chat_message();
 
     void paint(
         HDC dc,
