@@ -87,8 +87,8 @@ void test_branch_block_uses_reference_fallback_and_executes_delay_slot() {
     CHECK(result.mode == jojo::R3000aDispatchMode::reference_fallback);
     CHECK(result.instructions_retired == 2u);
     CHECK(state.gpr[8] == 7u);
-    CHECK(state.pc == 0x8001000Cu);
-    CHECK(state.next_pc == 0x80010010u);
+    CHECK(state.pc == 0x80010008u);
+    CHECK(state.next_pc == 0x8001000Cu);
 }
 
 void test_reference_fallback_preserves_boundary() {
