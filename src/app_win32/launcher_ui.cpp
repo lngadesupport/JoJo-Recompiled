@@ -138,6 +138,8 @@ LauncherUiAction map_online_action(OnlineUiAction action) noexcept {
             return LauncherUiAction::online_host_room;
         case OnlineUiAction::connect_selected_room:
             return LauncherUiAction::online_connect_room;
+        case OnlineUiAction::connect_direct:
+            return LauncherUiAction::online_connect_direct;
         case OnlineUiAction::begin_matchmaking:
             return LauncherUiAction::online_begin_matchmaking;
         case OnlineUiAction::cancel_matchmaking:
