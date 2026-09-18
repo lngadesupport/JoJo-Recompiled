@@ -22,6 +22,64 @@ static void check_returned_through_ra(const jojo::R3000aState& cpu) {
     CHECK(cpu.gpr[0] == 0u);
 }
 
+
+static jojo::R3000aState make_syscall_cpu() {
+    jojo::R3000aState cpu{};
+    cpu.pc = 0x80010004u;
+    cpu.next_pc = 0x80010008u;
+    return cpu;
+}
+
+static void test_sys_01_entercriticalsection() {
+    jojo::Ps1HleBios bios{};
+    auto cpu = make_syscall_cpu();
+    cpu.cop0.status = (1u << 0u) | (1u << 10u) | (1u << 22u);
+    cpu.pending_load = {true, 8u, 0x12345678u};
+
+    CHECK(bios.dispatch_syscall(cpu, 1u) ==
+          jojo::Ps1HleBiosDispatchStatus::handled);
+    CHECK(cpu.gpr[2] == 1u);
+    CHECK(cpu.gpr[8] == 0x12345678u);
+    CHECK(!cpu.pending_load.valid);
+    CHECK((cpu.cop0.status & ((1u << 0u) | (1u << 10u))) == 0u);
+    CHECK((cpu.cop0.status & (1u << 22u)) != 0u);
+    CHECK(cpu.pc == 0x80010008u);
+    CHECK(cpu.next_pc == 0x8001000Cu);
+
+    auto already_disabled = make_syscall_cpu();
+    already_disabled.cop0.status = 1u << 10u;
+    CHECK(bios.dispatch_syscall(already_disabled, 1u) ==
+          jojo::Ps1HleBiosDispatchStatus::handled);
+    CHECK(already_disabled.gpr[2] == 0u);
+}
+
+static void test_sys_02_exitcriticalsection() {
+    jojo::Ps1HleBios bios{};
+    auto cpu = make_syscall_cpu();
+    cpu.gpr[2] = 0xA5A5A5A5u;
+
+    CHECK(bios.dispatch_syscall(cpu, 2u) ==
+          jojo::Ps1HleBiosDispatchStatus::handled);
+    CHECK((cpu.cop0.status & ((1u << 0u) | (1u << 10u))) ==
+          ((1u << 0u) | (1u << 10u)));
+    CHECK(cpu.gpr[2] == 0xA5A5A5A5u);
+    CHECK(cpu.pc == 0x80010008u);
+    CHECK(cpu.next_pc == 0x8001000Cu);
+}
+
+static void test_unknown_syscall_is_non_mutating() {
+    jojo::Ps1HleBios bios{};
+    auto cpu = make_syscall_cpu();
+    cpu.gpr[2] = 0x12345678u;
+    const auto before = cpu;
+    CHECK(bios.dispatch_syscall(cpu, 3u) ==
+          jojo::Ps1HleBiosDispatchStatus::unimplemented);
+    CHECK(cpu.gpr == before.gpr);
+    CHECK(cpu.pc == before.pc);
+    CHECK(cpu.next_pc == before.next_pc);
+    CHECK(cpu.cop0.status == before.cop0.status);
+}
+
 static void test_a0_39_initheap() {
     jojo::Ps1HleBios bios{};
     auto cpu = make_cpu();
@@ -220,6 +278,9 @@ static void test_hash_is_deterministic_and_tracks_all_hle_state() {
 }
 
 int main() {
+    test_sys_01_entercriticalsection();
+    test_sys_02_exitcriticalsection();
+    test_unknown_syscall_is_non_mutating();
     test_a0_39_initheap();
     test_a0_remove_iso9660_aliases();
     test_b0_18_resetentryint_clears_custom_hook();
