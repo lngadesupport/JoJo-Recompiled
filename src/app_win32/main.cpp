@@ -629,6 +629,18 @@ void service_game_audio(){
         }
     }
 
+    const bool muted_for_focus =
+        app_settings.audio.mute_when_unfocused &&
+        game_window &&
+        GetForegroundWindow()!=game_window;
+    const float gain = muted_for_focus
+        ? 0.0f
+        : jojo::xaudio2_gain_from_percent(app_settings.audio.master_volume);
+    const auto volume=game_audio_host->set_volume(gain);
+    if(!volume){
+        add_log(L"Aviso: volume XAudio2 falhou: "+wide(volume.detail));
+    }
+
     const auto submitted=game_audio_host->submit(audio_samples);
     if(!submitted){
         add_log(L"Aviso: envio de áudio falhou: "+wide(submitted.detail));
