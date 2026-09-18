@@ -12,10 +12,7 @@
 #include <memory>
 #include <string_view>
 #include <windows.h>
-
-namespace Gdiplus {
-class Image;
-}
+#include <gdiplus.h>
 
 namespace jojo::win32 {
 
