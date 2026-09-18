@@ -52,6 +52,30 @@ int main() {
     CHECK(exchange(sio, 0x00u) == 0xF7u);
     CHECK(exchange(sio, 0x00u) == 0xFFu);
 
+
+    // JOY_DATA wide reads preview the RX FIFO with hardware-specific pop rules.
+    CHECK(sio.write16(0x1F80104Au, 0x1001u).status == jojo::R3000aBusStatus::ok);
+    CHECK(sio.write16(0x1F80104Au, 0x1003u).status == jojo::R3000aBusStatus::ok);
+    CHECK(sio.write8(0x1F801040u, 0x01u).status == jojo::R3000aBusStatus::ok);
+    CHECK(sio.write8(0x1F801040u, 0x42u).status == jojo::R3000aBusStatus::ok);
+    CHECK(sio.write8(0x1F801040u, 0x00u).status == jojo::R3000aBusStatus::ok);
+    const auto wide16 = sio.read16(0x1F801040u);
+    CHECK(wide16.status == jojo::R3000aBusStatus::ok);
+    CHECK(wide16.value == 0x41FFu);
+    CHECK(sio.read8(0x1F801040u).value == 0x41u);
+    CHECK(sio.read8(0x1F801040u).value == 0x5Au);
+
+    CHECK(sio.write16(0x1F80104Au, 0x1001u).status == jojo::R3000aBusStatus::ok);
+    CHECK(sio.write16(0x1F80104Au, 0x1003u).status == jojo::R3000aBusStatus::ok);
+    CHECK(sio.write8(0x1F801040u, 0x01u).status == jojo::R3000aBusStatus::ok);
+    CHECK(sio.write8(0x1F801040u, 0x42u).status == jojo::R3000aBusStatus::ok);
+    CHECK(sio.write8(0x1F801040u, 0x00u).status == jojo::R3000aBusStatus::ok);
+    CHECK(sio.write8(0x1F801040u, 0x00u).status == jojo::R3000aBusStatus::ok);
+    const auto wide32 = sio.read32(0x1F801040u);
+    CHECK(wide32.status == jojo::R3000aBusStatus::ok);
+    CHECK(wide32.value == 0xEFFF5A41u || wide32.value == 0xEF5A41FFu);
+    CHECK((sio.read32(0x1F801044u).value & (1u << 1u)) == 0u);
+
     jojo::Ps1MemoryBus bus;
     bus.hardware_services().sio0().set_digital_pad_buttons(0u, 0xFFEFu);
     CHECK(bus.write16(0x1F80104Au, 0x1003u).status == jojo::R3000aBusStatus::ok);
