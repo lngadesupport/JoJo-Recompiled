@@ -107,6 +107,8 @@ jojo::OnlineSessionController online_session{};
 std::unique_ptr<jojo::Ps1RollbackSimulation> online_rollback_simulation{};
 std::unique_ptr<jojo::RollbackSession> online_rollback_session{};
 std::deque<jojo::NetworkPacket> pending_online_gameplay_packets{};
+std::deque<std::pair<std::uint64_t,jojo::RollbackInput>>
+    recent_online_local_inputs{};
 std::uint32_t online_game_packet_sequence{1u};
 bool online_lobby_sync_sent=false;
 bool binding_capture_active=false;
@@ -586,6 +588,7 @@ void stop_game_runtime(const jojo::Ps1BootReport* final_boot){
     online_rollback_session.reset();
     online_rollback_simulation.reset();
     pending_online_gameplay_packets.clear();
+    recent_online_local_inputs.clear();
     online_game_packet_sequence=1u;
     game_runner.reset();
     game_audio_host.reset();
@@ -917,6 +920,7 @@ bool start_online_game_runtime(){
         std::make_unique<jojo::RollbackSession>(
             *online_rollback_simulation,8u);
     online_game_packet_sequence=1u;
+    recent_online_local_inputs.clear();
     next_game_tick=std::chrono::steady_clock::now();
     model.start_requested=true;
 
@@ -970,17 +974,24 @@ void online_game_tick(){
     const auto frame_id=online_rollback_session->current_frame();
     const auto local_input=current_online_local_input();
 
-    jojo::NetworkPacket input_packet{};
-    input_packet.kind=jojo::NetworkPacketKind::input;
-    input_packet.sequence=online_game_packet_sequence++;
-    input_packet.frame=frame_id;
-    input_packet.timestamp_ms=online_now_ms();
-    input_packet.input=local_input;
-    const auto input_sent=
-        online_session.send(input_packet,input_packet.timestamp_ms);
-    if(!input_sent){
-        model.status="ONLINE INPUT SEND FAILED: "+input_sent.detail;
-        return;
+    recent_online_local_inputs.emplace_back(frame_id,local_input);
+    while(recent_online_local_inputs.size()>4u){
+        recent_online_local_inputs.pop_front();
+    }
+
+    for(const auto& [input_frame,input_value]:recent_online_local_inputs){
+        jojo::NetworkPacket input_packet{};
+        input_packet.kind=jojo::NetworkPacketKind::input;
+        input_packet.sequence=online_game_packet_sequence++;
+        input_packet.frame=input_frame;
+        input_packet.timestamp_ms=online_now_ms();
+        input_packet.input=input_value;
+        const auto input_sent=
+            online_session.send(input_packet,input_packet.timestamp_ms);
+        if(!input_sent){
+            model.status="ONLINE INPUT SEND FAILED: "+input_sent.detail;
+            return;
+        }
     }
 
     const auto advanced=online_rollback_session->advance(local_input);
@@ -990,7 +1001,11 @@ void online_game_tick(){
         return;
     }
 
-    const auto hash=online_rollback_session->state_hash(frame_id);
+    const auto hash=
+        (frame_id%30u)==0u
+        ?online_rollback_session->state_hash(frame_id)
+        :jojo::Result<std::string>::failure(
+            jojo::ErrorCode::file_not_found,"hash cadence");
     if(hash){
         jojo::NetworkPacket hash_packet{};
         hash_packet.kind=jojo::NetworkPacketKind::state_hash;
