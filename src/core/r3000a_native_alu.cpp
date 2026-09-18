@@ -146,6 +146,23 @@ R3000aNativeAluResult execute_r3000a_native_alu_block(
             case MipsOp::mtlo:
                 state.lo = rs;
                 break;
+            case MipsOp::mult: {
+                const auto product =
+                    static_cast<std::int64_t>(signed_view(rs)) *
+                    static_cast<std::int64_t>(signed_view(rt));
+                const auto bits = static_cast<std::uint64_t>(product);
+                state.lo = static_cast<std::uint32_t>(bits);
+                state.hi = static_cast<std::uint32_t>(bits >> 32u);
+                break;
+            }
+            case MipsOp::multu: {
+                const auto product =
+                    static_cast<std::uint64_t>(rs) *
+                    static_cast<std::uint64_t>(rt);
+                state.lo = static_cast<std::uint32_t>(product);
+                state.hi = static_cast<std::uint32_t>(product >> 32u);
+                break;
+            }
             case MipsOp::addu:
                 queue_write(instruction.rd, rs + rt);
                 break;
