@@ -141,6 +141,45 @@ int main() {
         CHECK(indexed_gpu.vram_write_count() == writes_before_sprite + 3u);
     }
 
+    // Raw-textured rectangle with 4-bit CLUT sampling.
+    {
+        jojo::Ps1GpuIngress clut_gpu;
+
+        // CLUT at VRAM (0,60): index 1=red, 2=green, 3=blue, 4=white.
+        CHECK(clut_gpu.write_gp0(0xA0000000u).status == jojo::R3000aBusStatus::ok);
+        CHECK(clut_gpu.write_gp0((60u << 16u) | 0u).status == jojo::R3000aBusStatus::ok);
+        CHECK(clut_gpu.write_gp0((1u << 16u) | 16u).status == jojo::R3000aBusStatus::ok);
+        CHECK(clut_gpu.write_gp0(0x001F0000u).status == jojo::R3000aBusStatus::ok);
+        CHECK(clut_gpu.write_gp0(0x7C0003E0u).status == jojo::R3000aBusStatus::ok);
+        CHECK(clut_gpu.write_gp0(0x00007FFFu).status == jojo::R3000aBusStatus::ok);
+        for (int i = 0; i < 5; ++i) {
+            CHECK(clut_gpu.write_gp0(0u).status == jojo::R3000aBusStatus::ok);
+        }
+
+        // Four 4-bit texel indices packed into one VRAM word: 1,2,3,4.
+        CHECK(clut_gpu.write_gp0(0xA0000000u).status == jojo::R3000aBusStatus::ok);
+        CHECK(clut_gpu.write_gp0((100u << 16u) | 0u).status == jojo::R3000aBusStatus::ok);
+        CHECK(clut_gpu.write_gp0((1u << 16u) | 1u).status == jojo::R3000aBusStatus::ok);
+        CHECK(clut_gpu.write_gp0(0x00004321u).status == jojo::R3000aBusStatus::ok);
+
+        CHECK(clut_gpu.write_gp0(0xE1000000u).status == jojo::R3000aBusStatus::ok); // 4-bit
+        CHECK(clut_gpu.write_gp0(0xE3000000u).status == jojo::R3000aBusStatus::ok);
+        CHECK(clut_gpu.write_gp0(0xE4000000u | 1023u | (511u << 10u)).status ==
+              jojo::R3000aBusStatus::ok);
+
+        const std::uint32_t clut_id = 60u << 6u;
+        CHECK(clut_gpu.write_gp0(0x65FFFFFFu).status == jojo::R3000aBusStatus::ok);
+        CHECK(clut_gpu.write_gp0((40u << 16u) | 20u).status == jojo::R3000aBusStatus::ok);
+        CHECK(clut_gpu.write_gp0((clut_id << 16u) | (100u << 8u)).status ==
+              jojo::R3000aBusStatus::ok);
+        CHECK(clut_gpu.write_gp0((1u << 16u) | 4u).status == jojo::R3000aBusStatus::ok);
+
+        CHECK(clut_gpu.vram_pixel(20u, 40u) == 0x001Fu);
+        CHECK(clut_gpu.vram_pixel(21u, 40u) == 0x03E0u);
+        CHECK(clut_gpu.vram_pixel(22u, 40u) == 0x7C00u);
+        CHECK(clut_gpu.vram_pixel(23u, 40u) == 0x7FFFu);
+    }
+
     // GP0(02h): Fill Rectangle. Keep X/width aligned here so this test isolates
     // packet assembly, color conversion and deterministic in-bounds raster writes.
     {
