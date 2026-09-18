@@ -17,7 +17,11 @@ enum class NetworkPacketKind : std::uint8_t {
     pong,
     session_hello,
     session_accept,
-    disconnect
+    disconnect,
+    lobby_profile,
+    lobby_ready,
+    lobby_chat,
+    lobby_start
 };
 
 struct NetworkPacket {
@@ -32,6 +36,7 @@ struct NetworkPacket {
 };
 
 [[nodiscard]] bool is_reliable_control(NetworkPacketKind kind) noexcept;
+[[nodiscard]] bool is_application_control(NetworkPacketKind kind) noexcept;
 [[nodiscard]] Result<std::vector<std::uint8_t>> serialize_network_packet(const NetworkPacket& packet);
 [[nodiscard]] Result<NetworkPacket> parse_network_packet(std::span<const std::uint8_t> bytes);
 
