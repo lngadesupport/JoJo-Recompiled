@@ -16,6 +16,9 @@ constexpr std::uint32_t kA0RemoveIso9660Alias = 0x00000072u;
 constexpr std::uint32_t kB0ResetEntryInt = 0x00000018u;
 constexpr std::uint32_t kB0HookEntryInt = 0x00000019u;
 constexpr std::uint32_t kB0Write = 0x00000035u;
+constexpr std::uint32_t kB0InitCard2 = 0x0000004Au;
+constexpr std::uint32_t kB0StartCard2 = 0x0000004Bu;
+constexpr std::uint32_t kB0StopCard2 = 0x0000004Cu;
 constexpr std::uint32_t kB0GetC0Table = 0x00000056u;
 constexpr std::uint32_t kB0ChangeClearPad = 0x0000005Bu;
 constexpr std::uint32_t kC0ChangeClearRCnt = 0x0000000Au;
@@ -123,6 +126,32 @@ Ps1HleBiosDispatchStatus Ps1HleBios::dispatch(
         return Ps1HleBiosDispatchStatus::handled;
     }
 
+    if (table_physical == kBiosB0 && selector == kB0InitCard2) {
+        card_initialized_ = true;
+        card_started_ = false;
+        card_pad_enabled_ = cpu.gpr[4] != 0u;
+        return_from_bios_call(cpu);
+        return Ps1HleBiosDispatchStatus::handled;
+    }
+
+    if (table_physical == kBiosB0 && selector == kB0StartCard2) {
+        if (!card_initialized_) {
+            return Ps1HleBiosDispatchStatus::unimplemented;
+        }
+        card_started_ = true;
+        return_from_bios_call(cpu);
+        return Ps1HleBiosDispatchStatus::handled;
+    }
+
+    if (table_physical == kBiosB0 && selector == kB0StopCard2) {
+        if (!card_initialized_) {
+            return Ps1HleBiosDispatchStatus::unimplemented;
+        }
+        card_started_ = false;
+        return_from_bios_call(cpu);
+        return Ps1HleBiosDispatchStatus::handled;
+    }
+
     if (table_physical == kBiosB0 && selector == kB0GetC0Table) {
         cpu.gpr[2] = kPs1HleC0TableAddress;
         return_from_bios_call(cpu);
@@ -184,6 +213,9 @@ std::uint64_t Ps1HleBios::diagnostic_state_hash() const noexcept {
     }
     hash_optional_u32(hash, interrupt_hook_address_);
     hash_optional_bool(hash, pad_card_auto_ack_enabled_);
+    hash_bool(hash, card_initialized_);
+    hash_bool(hash, card_started_);
+    hash_bool(hash, card_pad_enabled_);
     for (const auto& state : root_counter_auto_ack_enabled_) {
         hash_optional_bool(hash, state);
     }
@@ -201,6 +233,18 @@ const std::optional<std::uint32_t>& Ps1HleBios::interrupt_hook_address() const n
 
 const std::optional<bool>& Ps1HleBios::pad_card_auto_ack_enabled() const noexcept {
     return pad_card_auto_ack_enabled_;
+}
+
+bool Ps1HleBios::card_initialized() const noexcept {
+    return card_initialized_;
+}
+
+bool Ps1HleBios::card_started() const noexcept {
+    return card_started_;
+}
+
+bool Ps1HleBios::card_pad_enabled() const noexcept {
+    return card_pad_enabled_;
 }
 
 std::optional<bool> Ps1HleBios::root_counter_auto_ack_enabled(
