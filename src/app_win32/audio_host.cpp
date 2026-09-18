@@ -8,6 +8,12 @@
 
 namespace jojo {
 
+float xaudio2_gain_from_percent(int percent) noexcept {
+    if (percent <= 0) return 0.0f;
+    if (percent >= 100) return 1.0f;
+    return static_cast<float>(percent) / 100.0f;
+}
+
 Result<XAudio2PcmPlan> make_xaudio2_pcm_plan(
     std::span<const std::int16_t> interleaved_stereo) noexcept {
     if (interleaved_stereo.empty()) {
@@ -179,6 +185,26 @@ Result<void> XAudio2Ps1AudioHost::submit(
     }
 
     submitted_frames_ += plan.value.frame_count;
+    return Result<void>::success();
+}
+
+Result<void> XAudio2Ps1AudioHost::set_volume(float gain) noexcept {
+    if (!source_voice_) {
+        return Result<void>::failure(
+            ErrorCode::backend_unavailable,
+            "XAudio2 source voice is unavailable");
+    }
+    if (!(gain >= 0.0f && gain <= 1.0f)) {
+        return Result<void>::failure(
+            ErrorCode::invalid_argument,
+            "XAudio2 gain must be between 0.0 and 1.0");
+    }
+    const auto hr = source_voice_->SetVolume(gain, XAUDIO2_COMMIT_NOW);
+    if (FAILED(hr)) {
+        return Result<void>::failure(
+            ErrorCode::backend_unavailable,
+            "XAudio2 source voice volume update failed");
+    }
     return Result<void>::success();
 }
 
