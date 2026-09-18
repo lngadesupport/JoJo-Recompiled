@@ -54,6 +54,7 @@ struct AccessibilitySettings {
 
 struct AppSettings {
     std::string source_binding_path{};
+    std::string online_directory_endpoint{};
     GraphicsSettings graphics{};
     AudioSettings audio{};
     AccessibilitySettings accessibility{};

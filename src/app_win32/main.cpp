@@ -8,6 +8,7 @@
 #include "core/ps1_rollback_runtime.h"
 #include "core/ps1_timing.h"
 #include "core/online_session.h"
+#include "core/online_directory.h"
 #include "core/lan_lobby_discovery.h"
 #include "core/settings.h"
 #include "platform/windows/controller_win32.h"
@@ -106,6 +107,7 @@ std::deque<std::wstring> logs;
 bool validated=false;
 jojo::win32::LauncherUi launcher_ui{};
 jojo::OnlineSessionController online_session{};
+std::optional<jojo::OnlineDirectoryClient> online_directory_client{};
 std::optional<jojo::LanLobbyDiscovery> lan_lobby_discovery{};
 std::unique_ptr<jojo::Ps1RollbackSimulation> online_rollback_simulation{};
 std::unique_ptr<jojo::RollbackSession> online_rollback_session{};
@@ -114,7 +116,9 @@ std::deque<std::pair<std::uint64_t,jojo::RollbackInput>>
     recent_online_local_inputs{};
 std::uint32_t online_game_packet_sequence{1u};
 bool online_lobby_sync_sent=false;
+bool directory_matchmaking_active=false;
 bool lan_matchmaking_active=false;
+std::uint64_t next_online_directory_publish_ms{};
 bool binding_capture_active=false;
 std::size_t binding_capture_player=0u;
 jojo::GameAction binding_capture_action=jojo::GameAction::attack_light;
@@ -853,6 +857,168 @@ std::uint64_t online_now_ms(){
             std::chrono::steady_clock::now().time_since_epoch()).count());
 }
 
+void refresh_lan_rooms();
+
+bool ensure_online_directory(){
+    if(online_directory_client) return true;
+    if(app_settings.online_directory_endpoint.empty()) return false;
+
+    const auto endpoint=jojo::parse_direct_endpoint(
+        app_settings.online_directory_endpoint);
+    if(!endpoint){
+        add_log(L"Aviso: endpoint do diretório online inválido: "+
+            wide(endpoint.detail));
+        return false;
+    }
+
+    auto created=jojo::OnlineDirectoryClient::create(endpoint.value);
+    if(!created){
+        add_log(L"Aviso: diretório online indisponível: "+
+            wide(created.detail));
+        return false;
+    }
+    online_directory_client=std::move(created.value);
+    next_online_directory_publish_ms=0u;
+    return true;
+}
+
+void refresh_online_rooms(){
+    auto& model=launcher_ui.online_model();
+    if(ensure_online_directory()){
+        const auto requested=online_directory_client->request_rooms(
+            model.region,
+            model.local_game_revision);
+        if(requested){
+            jojo::online_set_rooms(model,{});
+            model.status="SEARCHING GLOBAL DIRECTORY...";
+            return;
+        }
+        model.status="GLOBAL DIRECTORY ERROR: "+requested.detail+
+            " • FALLING BACK TO LAN";
+    }
+    refresh_lan_rooms();
+}
+
+void poll_online_directory(){
+    if(!ensure_online_directory()) return;
+
+    auto& model=launcher_ui.online_model();
+    const auto now=online_now_ms();
+    const bool should_publish=
+        model.local_player_is_host &&
+        model.screen==jojo::OnlineLobbyScreen::lobby &&
+        model.create_room.privacy==
+            jojo::OnlineRoomPrivacy::public_room;
+
+    if(should_publish &&
+       now>=next_online_directory_publish_ms){
+        const auto players=
+            online_session.view().state==
+                jojo::OnlineSessionState::connected
+            ?2u:1u;
+        const auto published=online_directory_client->publish_room(
+            model.create_room.name,
+            model.player_name,
+            model.region,
+            model.local_game_revision,
+            27886u,
+            static_cast<std::uint8_t>(players),
+            static_cast<std::uint8_t>(
+                std::clamp<std::uint32_t>(
+                    model.create_room.max_players,2u,8u)),
+            model.start_requested);
+        if(!published){
+            model.status="GLOBAL DIRECTORY PUBLISH ERROR: "+
+                published.detail;
+        }
+        next_online_directory_publish_ms=now+1000u;
+    }
+
+    const auto polled=online_directory_client->poll();
+    if(!polled){
+        if(model.screen==jojo::OnlineLobbyScreen::public_servers ||
+           model.screen==jojo::OnlineLobbyScreen::searching){
+            model.status="GLOBAL DIRECTORY ERROR: "+polled.detail;
+        }
+        return;
+    }
+
+    if(polled.value.room_list_complete){
+        std::vector<jojo::OnlineRoomInfo> rooms;
+        rooms.reserve(polled.value.rooms.size());
+        for(const auto& remote:polled.value.rooms){
+            jojo::OnlineRoomInfo room{};
+            room.id="global:"+remote.id;
+            room.name=remote.name;
+            room.owner=remote.owner;
+            room.region=remote.region;
+            room.players=remote.players;
+            room.max_players=remote.max_players;
+            room.password_required=false;
+            room.lan=false;
+            room.ping_ms=remote.directory_ping_ms;
+            room.status=
+                remote.game_revision!=model.local_game_revision
+                    ?jojo::OnlineRoomStatus::version_mismatch
+                    :(remote.in_game
+                        ?jojo::OnlineRoomStatus::in_game
+                        :(remote.players>=remote.max_players
+                            ?jojo::OnlineRoomStatus::full
+                            :jojo::OnlineRoomStatus::wait));
+            room.available=
+                room.status==jojo::OnlineRoomStatus::wait;
+            room.connect_endpoint=
+                jojo::format_direct_endpoint(
+                    remote.gameplay_endpoint);
+            room.game_revision=remote.game_revision;
+            rooms.push_back(std::move(room));
+        }
+        jojo::online_set_rooms(model,std::move(rooms));
+        model.status=model.rooms.empty()
+            ?"NO GLOBAL LOBBIES FOUND"
+            :"GLOBAL LOBBIES FOUND: "+
+                std::to_string(model.rooms.size());
+    }
+
+    if(!polled.value.match) return;
+    const auto match=*polled.value.match;
+    directory_matchmaking_active=false;
+    online_session.reset();
+    online_lobby_sync_sent=false;
+
+    if(match.local_is_host){
+        const auto hosted=online_session.host(
+            jojo::NetworkEndpoint{{0u,0u,0u,0u},27886u});
+        if(!hosted){
+            model.status="MATCH HOST FAILED: "+hosted.detail;
+            return;
+        }
+        model.screen=jojo::OnlineLobbyScreen::lobby;
+        model.local_player_is_host=true;
+        model.ready=false;
+        jojo::online_reset_peer_state(model);
+        model.status="MATCH FOUND • HOSTING FOR "+
+            match.remote_player_name;
+        return;
+    }
+
+    const auto joined=online_session.join(
+        jojo::NetworkEndpoint{{0u,0u,0u,0u},0u},
+        match.remote_endpoint,
+        {},
+        now);
+    if(!joined){
+        model.status="MATCH CONNECT FAILED: "+joined.detail;
+        return;
+    }
+    model.selected_room.reset();
+    model.local_player_is_host=false;
+    jojo::online_set_connecting(
+        model,
+        "MATCH FOUND • CONNECTING TO "+
+            match.remote_player_name+"...");
+}
+
 void ensure_lan_lobby_discovery(){
     if(lan_lobby_discovery) return;
     auto created=jojo::LanLobbyDiscovery::create();
@@ -878,6 +1044,7 @@ void update_lan_host_advertisement(){
 
     jojo::LanLobbyAdvertisement advertisement{};
     advertisement.name=model.create_room.name;
+    advertisement.owner=model.player_name;
     advertisement.region=model.region;
     advertisement.game_revision=model.local_game_revision;
     advertisement.gameplay_port=27886u;
@@ -890,6 +1057,7 @@ void update_lan_host_advertisement(){
                 model.create_room.max_players,2u,8u));
     advertisement.password_required=
         model.create_room.privacy==jojo::OnlineRoomPrivacy::private_room;
+    advertisement.in_game=model.start_requested;
 
     const auto advertised=
         lan_lobby_discovery->set_host(advertisement);
@@ -1441,8 +1609,9 @@ void handle_launcher_action(jojo::win32::LauncherUiAction action){
             L"PRESS A CONTROL FOR "+capture_action_name(binding_capture_action)+L"...";
         break;
     case jojo::win32::LauncherUiAction::online_refresh_rooms:{
+        directory_matchmaking_active=false;
         lan_matchmaking_active=false;
-        refresh_lan_rooms();
+        refresh_online_rooms();
         break;
     }
     case jojo::win32::LauncherUiAction::online_host_room:{
@@ -1536,16 +1705,36 @@ void handle_launcher_action(jojo::win32::LauncherUiAction action){
     }
     case jojo::win32::LauncherUiAction::online_begin_matchmaking:{
         auto& model=launcher_ui.online_model();
-        if(model.queue==jojo::OnlineMatchQueue::ranked){
-            lan_matchmaking_active=false;
-            model.status=
-                "RANKED REQUIRES THE GLOBAL DIRECTORY/RATING SERVICE.";
-            break;
-        }
-
         const auto searching=jojo::online_begin_match_search(model);
         if(!searching){
             model.status=searching.detail;
+            break;
+        }
+
+        if(ensure_online_directory()){
+            const auto requested=online_directory_client->request_match(
+                model.queue,
+                model.player_name,
+                model.region,
+                model.local_game_revision,
+                27886u);
+            if(requested){
+                directory_matchmaking_active=true;
+                lan_matchmaking_active=false;
+                model.status=model.queue==jojo::OnlineMatchQueue::ranked
+                    ?"SEARCHING GLOBAL RANKED OPPONENT..."
+                    :"SEARCHING GLOBAL CASUAL OPPONENT...";
+                break;
+            }
+            model.status="GLOBAL MATCHMAKING ERROR: "+
+                requested.detail;
+        }
+
+        if(model.queue==jojo::OnlineMatchQueue::ranked){
+            directory_matchmaking_active=false;
+            lan_matchmaking_active=false;
+            model.status=
+                "RANKED REQUIRES A CONFIGURED GLOBAL DIRECTORY.";
             break;
         }
 
@@ -1559,11 +1748,13 @@ void handle_launcher_action(jojo::win32::LauncherUiAction action){
             model.status="CASUAL LAN SEARCH FAILED: "+requested.detail;
             break;
         }
+        directory_matchmaking_active=false;
         lan_matchmaking_active=true;
         model.status="SEARCHING CASUAL LAN OPPONENT...";
         break;
     }
     case jojo::win32::LauncherUiAction::online_cancel_matchmaking:{
+        directory_matchmaking_active=false;
         lan_matchmaking_active=false;
         auto& model=launcher_ui.online_model();
         online_session.reset();
@@ -1576,6 +1767,7 @@ void handle_launcher_action(jojo::win32::LauncherUiAction action){
         break;
     }
     case jojo::win32::LauncherUiAction::online_leave_lobby:{
+        directory_matchmaking_active=false;
         lan_matchmaking_active=false;
         if(online_session.view().state==jojo::OnlineSessionState::connected){
             (void)online_session.disconnect(online_now_ms());
@@ -1743,6 +1935,7 @@ LRESULT CALLBACK proc(HWND h,UINT m,WPARAM w,LPARAM l){
         if(w==ID_UI_TIMER){
             poll_binding_capture();
             poll_online_session();
+            poll_online_directory();
             poll_lan_lobby_discovery();
             poll_launcher_controller();
             if(launcher_ui.online_open()){
@@ -1813,6 +2006,7 @@ LRESULT CALLBACK proc(HWND h,UINT m,WPARAM w,LPARAM l){
     case WM_PAINT:{PAINTSTRUCT ps{};HDC dc=BeginPaint(h,&ps);RECT c{};GetClientRect(h,&c);paint(dc,c);EndPaint(h,&ps);return 0;}
     case WM_CLOSE:
         online_session.reset();
+        online_directory_client.reset();
         lan_lobby_discovery.reset();
         if(game_runner) stop_game_runtime();
         DestroyWindow(h);

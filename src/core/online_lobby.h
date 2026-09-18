@@ -31,14 +31,25 @@ enum class OnlineRoomPrivacy {
     private_room,
 };
 
+enum class OnlineRoomStatus {
+    wait,
+    full,
+    in_game,
+    version_mismatch,
+};
+
 struct OnlineRoomInfo {
     std::string id{};
     std::string name{};
+    std::string owner{};
     std::string region{};
     std::uint32_t players{0};
     std::uint32_t max_players{2};
     bool password_required{false};
     bool available{true};
+    bool lan{};
+    OnlineRoomStatus status{OnlineRoomStatus::wait};
+    std::optional<std::uint32_t> ping_ms{};
     std::string connect_endpoint{};
     std::string game_revision{};
 
@@ -83,6 +94,8 @@ struct OnlineLobbyModel {
 
 [[nodiscard]] bool valid_online_player_name(std::string_view value) noexcept;
 [[nodiscard]] bool valid_online_room_name(std::string_view value) noexcept;
+[[nodiscard]] std::string_view online_room_status_name(
+    OnlineRoomStatus status) noexcept;
 [[nodiscard]] Result<void> set_online_player_name(
     OnlineLobbyModel& model,
     std::string name);

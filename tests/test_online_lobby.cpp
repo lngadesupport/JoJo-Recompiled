@@ -44,6 +44,46 @@ void test_public_room_selection_and_join() {
     CHECK(!jojo::online_select_room(model, 1u));
 }
 
+void test_united_style_room_status_labels_and_joinability() {
+    CHECK(jojo::online_room_status_name(
+              jojo::OnlineRoomStatus::wait) == "WAIT");
+    CHECK(jojo::online_room_status_name(
+              jojo::OnlineRoomStatus::full) == "FULL");
+    CHECK(jojo::online_room_status_name(
+              jojo::OnlineRoomStatus::in_game) == "IN GAME");
+    CHECK(jojo::online_room_status_name(
+              jojo::OnlineRoomStatus::version_mismatch) == "VER");
+
+    jojo::OnlineLobbyModel model{};
+    model.rooms = {
+        jojo::OnlineRoomInfo{
+            .id="wait", .name="A", .owner="JOTARO",
+            .players=1u, .max_players=2u,
+            .available=true,
+            .status=jojo::OnlineRoomStatus::wait},
+        jojo::OnlineRoomInfo{
+            .id="full", .name="B", .owner="DIO",
+            .players=2u, .max_players=2u,
+            .available=false,
+            .status=jojo::OnlineRoomStatus::full},
+        jojo::OnlineRoomInfo{
+            .id="game", .name="C", .owner="KAKYOIN",
+            .players=2u, .max_players=2u,
+            .available=false,
+            .status=jojo::OnlineRoomStatus::in_game},
+        jojo::OnlineRoomInfo{
+            .id="ver", .name="D", .owner="POLNAREFF",
+            .players=1u, .max_players=2u,
+            .available=false,
+            .status=jojo::OnlineRoomStatus::version_mismatch},
+    };
+
+    CHECK(jojo::online_select_room(model, 0u));
+    CHECK(!jojo::online_select_room(model, 1u));
+    CHECK(!jojo::online_select_room(model, 2u));
+    CHECK(!jojo::online_select_room(model, 3u));
+}
+
 void test_direct_lobby_entry_does_not_require_public_room() {
     jojo::OnlineLobbyModel model{};
     model.remote_player_name = "STALE";
@@ -140,6 +180,7 @@ void test_invalid_fields_are_rejected() {
 int main() {
     test_home_and_matchmaking_flow();
     test_public_room_selection_and_join();
+    test_united_style_room_status_labels_and_joinability();
     test_direct_lobby_entry_does_not_require_public_room();
     test_game_revision_requires_exact_nonempty_match();
     test_create_lobby_validation_and_host_flow();

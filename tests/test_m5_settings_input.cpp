@@ -73,6 +73,23 @@ static void test_audio_settings_validate_and_round_trip() {
     fs::remove(path, ec);
 }
 
+static void test_online_directory_endpoint_round_trip() {
+    const auto path = temp_file("online-directory.ini");
+    jojo::AppSettings settings{};
+    settings.online_directory_endpoint = "203.0.113.25:27888";
+    CHECK(jojo::save_settings_atomic(path, settings));
+
+    const auto loaded = jojo::load_settings(path);
+    CHECK(loaded);
+    if (loaded) {
+        CHECK(loaded.value.online_directory_endpoint ==
+              settings.online_directory_endpoint);
+    }
+
+    std::error_code ec;
+    fs::remove(path, ec);
+}
+
 static void test_two_player_bindings_round_trip() {
     const auto path = temp_file("players.ini");
     jojo::AppSettings settings{};
@@ -233,6 +250,7 @@ static void test_settings_menu_uses_draft_commit_and_discard() {
 int main() {
     test_video_and_accessibility_settings_validate_and_round_trip();
     test_audio_settings_validate_and_round_trip();
+    test_online_directory_endpoint_round_trip();
     test_two_player_bindings_round_trip();
     test_legacy_player_one_keys_still_load();
     test_device_registry_reports_hotplug_changes();
