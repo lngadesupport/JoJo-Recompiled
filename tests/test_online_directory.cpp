@@ -34,11 +34,13 @@ void test_publish_list_and_expiry() {
 
     CHECK(host.value.publish_room(
         "DIO'S MANSION",
+        "DIO",
         "SOUTH AMERICA",
         "SLUS_010.60",
         27886u,
         1u,
-        2u));
+        2u,
+        false));
     CHECK(server.value.poll(100u));
     CHECK(server.value.room_count() == 1u);
 
@@ -60,7 +62,10 @@ void test_publish_list_and_expiry() {
     CHECK(result.rooms.size() == 1u);
     if (!result.rooms.empty()) {
         CHECK(result.rooms[0].name == "DIO'S MANSION");
+        CHECK(result.rooms[0].owner == "DIO");
         CHECK(result.rooms[0].region == "SOUTH AMERICA");
+        CHECK(!result.rooms[0].in_game);
+        CHECK(result.rooms[0].directory_ping_ms.has_value());
         CHECK(result.rooms[0].game_revision == "SLUS_010.60");
         const std::array<std::uint8_t, 4> loopback{
             127u, 0u, 0u, 1u};
