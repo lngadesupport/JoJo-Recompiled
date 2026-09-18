@@ -28,6 +28,16 @@ struct Win32WindowPlan {
     std::uint32_t dpi{96u};
 };
 
+struct D3d11PresentationQuality {
+    D3D11_FILTER sampler_filter{D3D11_FILTER_MIN_MAG_MIP_POINT};
+    UINT max_anisotropy{1u};
+    UINT aa_samples{1u};
+};
+
+[[nodiscard]] D3d11PresentationQuality make_d3d11_presentation_quality(
+    TextureFilter texture_filter,
+    Msaa anti_aliasing) noexcept;
+
 struct D3d11FrameUploadPlan {
     std::uint32_t width{};
     std::uint32_t height{};
@@ -70,7 +80,9 @@ public:
     [[nodiscard]] static Result<D3d11Ps1Presenter> create(HWND window);
     [[nodiscard]] Result<void> present(
         const Ps1DisplayFrame& frame,
-        bool vsync = false);
+        bool vsync = false,
+        TextureFilter texture_filter = TextureFilter::off,
+        Msaa anti_aliasing = Msaa::off);
 
     [[nodiscard]] std::uint32_t back_buffer_width() const noexcept;
     [[nodiscard]] std::uint32_t back_buffer_height() const noexcept;
@@ -78,12 +90,33 @@ public:
 private:
     [[nodiscard]] Result<void> recreate_render_target();
     [[nodiscard]] Result<void> resize_to_client();
+    [[nodiscard]] Result<void> initialize_pipeline();
+    [[nodiscard]] Result<void> ensure_source_texture(
+        std::uint32_t width,
+        std::uint32_t height);
+    [[nodiscard]] Result<void> update_source_texture(
+        const Ps1DisplayFrame& frame);
+    [[nodiscard]] Result<void> update_sampler(TextureFilter texture_filter);
+    [[nodiscard]] Result<void> draw_frame(
+        const Ps1DisplayFrame& frame,
+        TextureFilter texture_filter,
+        Msaa anti_aliasing);
 
     HWND window_{};
     Microsoft::WRL::ComPtr<ID3D11Device> device_{};
     Microsoft::WRL::ComPtr<ID3D11DeviceContext> context_{};
     Microsoft::WRL::ComPtr<IDXGISwapChain> swap_chain_{};
     Microsoft::WRL::ComPtr<ID3D11RenderTargetView> render_target_{};
+    Microsoft::WRL::ComPtr<ID3D11Texture2D> source_texture_{};
+    Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> source_srv_{};
+    Microsoft::WRL::ComPtr<ID3D11VertexShader> vertex_shader_{};
+    Microsoft::WRL::ComPtr<ID3D11PixelShader> pixel_shader_{};
+    Microsoft::WRL::ComPtr<ID3D11SamplerState> sampler_{};
+    Microsoft::WRL::ComPtr<ID3D11Buffer> pixel_constants_{};
+    TextureFilter active_texture_filter_{TextureFilter::off};
+    bool sampler_initialized_{};
+    std::uint32_t source_width_{};
+    std::uint32_t source_height_{};
     std::uint32_t back_buffer_width_{};
     std::uint32_t back_buffer_height_{};
 };
