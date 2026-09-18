@@ -79,6 +79,23 @@ void test_create_lobby_validation_and_host_flow() {
     CHECK(model.ready);
 }
 
+void test_game_revision_requires_exact_nonempty_match() {
+    jojo::OnlineLobbyModel model{};
+    CHECK(!jojo::online_game_revision_matches(model));
+
+    CHECK(jojo::online_set_local_game_revision(model, "SLUS_010.60"));
+    CHECK(!jojo::online_game_revision_matches(model));
+
+    CHECK(jojo::online_set_remote_game_revision(model, "SLUS_010.60"));
+    CHECK(jojo::online_game_revision_matches(model));
+
+    CHECK(jojo::online_set_remote_game_revision(model, "OTHER_REVISION"));
+    CHECK(!jojo::online_game_revision_matches(model));
+
+    CHECK(jojo::online_set_remote_game_revision(model, ""));
+    CHECK(!jojo::online_game_revision_matches(model));
+}
+
 void test_peer_state_chat_and_start_are_synchronized_in_model() {
     jojo::OnlineLobbyModel model{};
     CHECK(jojo::online_set_remote_player_name(model, "RIVAL"));
@@ -124,6 +141,7 @@ int main() {
     test_home_and_matchmaking_flow();
     test_public_room_selection_and_join();
     test_direct_lobby_entry_does_not_require_public_room();
+    test_game_revision_requires_exact_nonempty_match();
     test_create_lobby_validation_and_host_flow();
     test_peer_state_chat_and_start_are_synchronized_in_model();
     test_invalid_fields_are_rejected();
