@@ -66,8 +66,12 @@ Ps1CommercialEvidenceReport Ps1CommercialEvidenceRunner::run(
     report.source = disc_.binding();
 
     std::size_t fallback_index = 0u;
+    std::uint32_t execution_segments = 0u;
+    const auto max_execution_segments =
+        options.max_execution_segments == 0u ? 1u : options.max_execution_segments;
     while (true) {
         auto segment = runtime_.run(options.boot);
+        ++execution_segments;
         report.total_instructions_retired += segment.instructions_retired;
         report.boot = std::move(segment);
 
@@ -81,6 +85,11 @@ Ps1CommercialEvidenceReport Ps1CommercialEvidenceRunner::run(
         }
 
         report.frontier = classify_ps1_commercial_frontier(report.boot);
+
+        if (report.frontier == Ps1CommercialFrontierClass::execution_budget &&
+            execution_segments < max_execution_segments) {
+            continue;
+        }
 
         if (report.frontier != Ps1CommercialFrontierClass::bios_call) {
             return report;

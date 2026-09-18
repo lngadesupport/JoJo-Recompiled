@@ -31,6 +31,7 @@ struct Ps1CommercialDiagnosticDecision {
 
 struct Ps1CommercialEvidenceOptions {
     Ps1BootOptions boot{};
+    std::uint32_t max_execution_segments{1u};
     std::vector<Ps1BiosFallback> diagnostic_bios_fallbacks;
 };
 
