@@ -103,6 +103,7 @@ std::deque<std::wstring> logs;
 bool validated=false;
 jojo::win32::LauncherUi launcher_ui{};
 jojo::OnlineSessionController online_session{};
+bool online_lobby_sync_sent=false;
 bool binding_capture_active=false;
 std::size_t binding_capture_player=0u;
 jojo::GameAction binding_capture_action=jojo::GameAction::attack_light;
@@ -795,6 +796,40 @@ std::uint64_t online_now_ms(){
             std::chrono::steady_clock::now().time_since_epoch()).count());
 }
 
+std::vector<std::uint8_t> online_text_payload(std::string_view text){
+    return std::vector<std::uint8_t>(text.begin(),text.end());
+}
+
+std::string online_payload_text(const jojo::NetworkPacket& packet){
+    return std::string(packet.payload.begin(),packet.payload.end());
+}
+
+bool send_online_control(
+    jojo::NetworkPacketKind kind,
+    const std::vector<std::uint8_t>& payload){
+    auto& model=launcher_ui.online_model();
+    const auto sent=online_session.send_control(kind,payload,online_now_ms());
+    if(!sent){
+        model.status="NETWORK SEND ERROR: "+sent.detail;
+        return false;
+    }
+    return true;
+}
+
+bool send_online_profile_and_ready(){
+    auto& model=launcher_ui.online_model();
+    const auto profile=online_text_payload(model.player_name);
+    if(!send_online_control(jojo::NetworkPacketKind::lobby_profile,profile)){
+        return false;
+    }
+    const std::vector<std::uint8_t> ready{
+        static_cast<std::uint8_t>(model.ready?1u:0u)};
+    if(!send_online_control(jojo::NetworkPacketKind::lobby_ready,ready)){
+        return false;
+    }
+    return true;
+}
+
 void poll_online_session(){
     auto& model=launcher_ui.online_model();
     const auto state=online_session.view().state;
@@ -820,12 +855,52 @@ void poll_online_session(){
                 model.screen=jojo::OnlineLobbyScreen::lobby;
                 model.local_player_is_host=false;
             }
+            online_lobby_sync_sent=false;
         }
-        model.status=
-            "CONNECTED • RTT "+std::to_string(static_cast<int>(view.rtt_ms))+
-            " ms • LOSS "+std::to_string(static_cast<int>(view.packet_loss_percent))+"%";
+
+        if(!online_lobby_sync_sent){
+            online_lobby_sync_sent=send_online_profile_and_ready();
+        }
+
+        for(const auto& packet:polled.value){
+            switch(packet.kind){
+            case jojo::NetworkPacketKind::lobby_profile:{
+                const auto name=online_payload_text(packet);
+                const auto applied=jojo::online_set_remote_player_name(model,name);
+                if(!applied) model.status="INVALID PEER PROFILE";
+                break;
+            }
+            case jojo::NetworkPacketKind::lobby_ready:
+                if(packet.payload.size()==1u){
+                    jojo::online_set_remote_ready(model,packet.payload[0]!=0u);
+                }
+                break;
+            case jojo::NetworkPacketKind::lobby_chat:{
+                const auto message=online_payload_text(packet);
+                const auto appended=jojo::online_append_chat(
+                    model,model.remote_player_name,message);
+                if(!appended) model.status="INVALID PEER CHAT MESSAGE";
+                break;
+            }
+            case jojo::NetworkPacketKind::lobby_start:
+                if(!model.local_player_is_host){
+                    jojo::online_request_start(model);
+                    model.status="HOST STARTED MATCH • PREPARING ROLLBACK HANDOFF";
+                }
+                break;
+            default:
+                break;
+            }
+        }
+
+        if(!model.start_requested){
+            model.status=
+                "CONNECTED • RTT "+std::to_string(static_cast<int>(view.rtt_ms))+
+                " ms • LOSS "+std::to_string(static_cast<int>(view.packet_loss_percent))+"%";
+        }
     }else if(view.state==jojo::OnlineSessionState::reconnecting){
         jojo::online_set_connecting(model,"RECONNECTING...");
+        online_lobby_sync_sent=false;
     }else if(view.state==jojo::OnlineSessionState::connecting){
         jojo::online_set_connecting(model,"CONNECTING...");
     }else if(view.state==jojo::OnlineSessionState::waiting_for_peer){
@@ -938,6 +1013,7 @@ void handle_launcher_action(jojo::win32::LauncherUiAction action){
             break;
         }
         online_session.reset();
+        online_lobby_sync_sent=false;
         const auto hosted=online_session.host(
             jojo::NetworkEndpoint{{0u,0u,0u,0u},0u});
         if(!hosted){
@@ -977,6 +1053,7 @@ void handle_launcher_action(jojo::win32::LauncherUiAction action){
             break;
         }
         online_session.reset();
+        online_lobby_sync_sent=false;
         const auto joined=online_session.join(
             jojo::NetworkEndpoint{{0u,0u,0u,0u},0u},
             remote.value,
@@ -1006,6 +1083,7 @@ void handle_launcher_action(jojo::win32::LauncherUiAction action){
     case jojo::win32::LauncherUiAction::online_cancel_matchmaking:{
         auto& model=launcher_ui.online_model();
         online_session.reset();
+        online_lobby_sync_sent=false;
         if(model.selected_room &&
            model.screen==jojo::OnlineLobbyScreen::connecting){
             jojo::online_open_public_servers(model);
@@ -1019,7 +1097,39 @@ void handle_launcher_action(jojo::win32::LauncherUiAction action){
             (void)online_session.disconnect(online_now_ms());
         }
         online_session.reset();
+        online_lobby_sync_sent=false;
         jojo::online_open_home(launcher_ui.online_model());
+        break;
+    }
+    case jojo::win32::LauncherUiAction::online_ready_changed:{
+        auto& model=launcher_ui.online_model();
+        if(online_session.view().state!=jojo::OnlineSessionState::connected){
+            model.status="READY REQUIRES A CONNECTED PEER.";
+            break;
+        }
+        const std::vector<std::uint8_t> payload{
+            static_cast<std::uint8_t>(model.ready?1u:0u)};
+        (void)send_online_control(
+            jojo::NetworkPacketKind::lobby_ready,payload);
+        break;
+    }
+    case jojo::win32::LauncherUiAction::online_send_chat:{
+        auto& model=launcher_ui.online_model();
+        if(online_session.view().state!=jojo::OnlineSessionState::connected){
+            model.status="CHAT REQUIRES A CONNECTED PEER.";
+            break;
+        }
+        const auto message=launcher_ui.take_online_chat_message();
+        if(message.empty()) break;
+        const auto appended=jojo::online_append_chat(
+            model,model.player_name,message);
+        if(!appended){
+            model.status=appended.detail;
+            break;
+        }
+        (void)send_online_control(
+            jojo::NetworkPacketKind::lobby_chat,
+            online_text_payload(message));
         break;
     }
     case jojo::win32::LauncherUiAction::online_start_lobby_game:{
@@ -1028,9 +1138,15 @@ void handle_launcher_action(jojo::win32::LauncherUiAction action){
             model.status="A PEER MUST BE CONNECTED BEFORE STARTING.";
             break;
         }
-        model.status=
-            "PEER CONNECTED. GAMEPLAY ROLLBACK HANDOFF IS NOT YET WIRED "
-            "TO THE COMMERCIAL RUNTIME.";
+        if(!model.local_player_is_host || !model.ready || !model.remote_ready){
+            model.status="BOTH PLAYERS MUST BE READY.";
+            break;
+        }
+        const std::vector<std::uint8_t> empty{};
+        if(send_online_control(jojo::NetworkPacketKind::lobby_start,empty)){
+            jojo::online_request_start(model);
+            model.status="START SYNCHRONIZED • PREPARING ROLLBACK HANDOFF";
+        }
         break;
     }
     }
