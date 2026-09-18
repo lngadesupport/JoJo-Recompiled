@@ -125,6 +125,12 @@ Ps1CommercialEvidenceReport Ps1CommercialEvidenceRunner::run(
             counters.memory_card_read_sector_count;
         report.memory_card_write_sector_count =
             counters.memory_card_write_sector_count;
+        report.session_dma_transfer_count = counters.dma_transfer_count;
+        report.session_cdrom_command_count = counters.cdrom_command_count;
+        report.session_gpu_gp0_word_count = counters.gpu_gp0_word_count;
+        report.session_gpu_gp1_command_count = counters.gpu_gp1_command_count;
+        report.session_vram_write_count = counters.vram_write_count;
+        report.session_vblank_count = counters.vblank_count;
         report.spu_sample_frames = counters.spu_sample_frames;
         report.spu_nonzero_samples = counters.spu_nonzero_samples;
         return report;
@@ -208,6 +214,13 @@ Ps1CommercialEvidenceRunner::validation_counters() const noexcept {
         counters.memory_card_write_sector_count[port] =
             sio0.memory_card_write_sector_count(port);
     }
+    counters.dma_transfer_count =
+        hardware.completed_dma_transfer_count();
+    counters.cdrom_command_count = hardware.cdrom().command_count();
+    counters.gpu_gp0_word_count = hardware.gpu_gp0_word_count();
+    counters.gpu_gp1_command_count = hardware.gpu_gp1_command_count();
+    counters.vram_write_count = hardware.gpu_vram_write_count();
+    counters.vblank_count = hardware.vblank_count();
     counters.spu_sample_frames = hardware.spu().generated_sample_frames();
     counters.spu_nonzero_samples = hardware.spu().nonzero_sample_count();
     return counters;
