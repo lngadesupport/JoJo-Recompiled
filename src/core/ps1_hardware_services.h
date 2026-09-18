@@ -47,6 +47,7 @@ public:
     [[nodiscard]] R3000aBusResult write32(std::uint32_t physical, std::uint32_t value) noexcept;
 
     void step(std::uint32_t cpu_cycles) noexcept;
+    void signal_vblank() noexcept;
 
     [[nodiscard]] std::uint16_t interrupt_status() const noexcept;
     [[nodiscard]] std::uint16_t interrupt_mask() const noexcept;
@@ -63,6 +64,7 @@ public:
     [[nodiscard]] bool complete_dma_transfer(std::uint32_t channel) noexcept;
     void cancel_pending_dma_transfer() noexcept;
     [[nodiscard]] std::uint64_t completed_dma_transfer_count() const noexcept;
+    [[nodiscard]] std::uint64_t vblank_count() const noexcept;
 
     [[nodiscard]] std::uint32_t gpu_status() const noexcept;
     [[nodiscard]] std::uint64_t gpu_gp0_word_count() const noexcept;
@@ -89,6 +91,7 @@ private:
     std::uint32_t dma_interrupt_{};
     std::optional<Ps1DmaTransferRequest> pending_dma_transfer_{};
     std::uint64_t completed_dma_transfer_count_{};
+    std::uint64_t vblank_count_{};
     Ps1CdromController cdrom_{};
     Ps1GpuIngress gpu_{};
     Ps1Spu spu_{};
