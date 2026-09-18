@@ -36,6 +36,14 @@ void set_identity_rotation(jojo::R3000aGte& gte) {
     gte.control[4] = 0x00001000u;
 }
 
+void set_identity_matrix(jojo::R3000aGte& gte, unsigned base) {
+    gte.control[base + 0u] = pack_s16(0x1000, 0);
+    gte.control[base + 1u] = pack_s16(0, 0);
+    gte.control[base + 2u] = pack_s16(0x1000, 0);
+    gte.control[base + 3u] = pack_s16(0, 0);
+    gte.control[base + 4u] = 0x00001000u;
+}
+
 void test_register_side_effects() {
     jojo::R3000aGte gte{};
 
@@ -140,6 +148,73 @@ void test_rtps_identity_projection() {
     CHECK(gte.data[8] == 0u);
 }
 
+void test_remaining_real_gte_opcodes_are_supported() {
+    constexpr std::uint8_t opcodes[]{
+        0x10u, 0x11u, 0x13u, 0x14u, 0x16u, 0x1Bu, 0x1Cu,
+        0x1Eu, 0x20u, 0x29u, 0x2Au, 0x3Du, 0x3Eu, 0x3Fu,
+    };
+    for (const auto opcode : opcodes) {
+        jojo::R3000aGte gte{};
+        set_identity_matrix(gte, 8u);
+        set_identity_matrix(gte, 16u);
+        gte.data[6] = 0x2C808080u;
+        gte.data[8] = 0x0800u;
+        gte.data[0] = pack_s16(0x0100, 0x0200);
+        gte.data[1] = 0x0300u;
+        gte.data[2] = gte.data[0];
+        gte.data[3] = gte.data[1];
+        gte.data[4] = gte.data[0];
+        gte.data[5] = gte.data[1];
+        CHECK(jojo::execute_ps1_gte_command(gte, command(opcode, true, true)) ==
+              jojo::Ps1GteCommandStatus::ok);
+    }
+}
+
+void test_color_and_interpolation_semantics() {
+    // NCS: identity light + color matrices preserve the normal into IR,
+    // then the color FIFO receives MAC/16 and the RGBC code byte.
+    {
+        jojo::R3000aGte gte{};
+        set_identity_matrix(gte, 8u);
+        set_identity_matrix(gte, 16u);
+        gte.data[0] = pack_s16(0x0100, 0x0200);
+        gte.data[1] = 0x0300u;
+        gte.data[6] = 0x2C000000u;
+        CHECK(jojo::execute_ps1_gte_command(gte, command(0x1Eu, true, true)) ==
+              jojo::Ps1GteCommandStatus::ok);
+        CHECK(jojo::read_ps1_gte_data(gte, 9u) == 0x0100u);
+        CHECK(jojo::read_ps1_gte_data(gte, 10u) == 0x0200u);
+        CHECK(jojo::read_ps1_gte_data(gte, 11u) == 0x0300u);
+        CHECK(gte.data[22] == 0x2C302010u);
+    }
+
+    // DPCS with IR0=0 preserves the primary color in the output FIFO.
+    {
+        jojo::R3000aGte gte{};
+        gte.data[6] = 0x5A302010u;
+        gte.data[8] = 0u;
+        CHECK(jojo::execute_ps1_gte_command(gte, command(0x10u, true, false)) ==
+              jojo::Ps1GteCommandStatus::ok);
+        CHECK(gte.data[22] == 0x5A302010u);
+    }
+
+    // GPF multiplies IR by IR0 and writes both MAC/IR and color FIFO.
+    {
+        jojo::R3000aGte gte{};
+        gte.data[6] = 0x33000000u;
+        gte.data[8] = 0x0800u;
+        jojo::write_ps1_gte_data(gte, 9u, 0x0100u);
+        jojo::write_ps1_gte_data(gte, 10u, 0x0200u);
+        jojo::write_ps1_gte_data(gte, 11u, 0x0300u);
+        CHECK(jojo::execute_ps1_gte_command(gte, command(0x3Du, true, false)) ==
+              jojo::Ps1GteCommandStatus::ok);
+        CHECK(jojo::read_ps1_gte_data(gte, 9u) == 0x0080u);
+        CHECK(jojo::read_ps1_gte_data(gte, 10u) == 0x0100u);
+        CHECK(jojo::read_ps1_gte_data(gte, 11u) == 0x0180u);
+        CHECK(gte.data[22] == 0x33180808u);
+    }
+}
+
 void test_unknown_command_remains_explicit() {
     jojo::R3000aGte gte{};
     CHECK(jojo::execute_ps1_gte_command(gte, command(0x02u)) ==
@@ -152,6 +227,8 @@ int main() {
     test_nclip_and_average_z();
     test_sqr_op_and_mvmva();
     test_rtps_identity_projection();
+    test_remaining_real_gte_opcodes_are_supported();
+    test_color_and_interpolation_semantics();
     test_unknown_command_remains_explicit();
     return failures ? 1 : 0;
 }
