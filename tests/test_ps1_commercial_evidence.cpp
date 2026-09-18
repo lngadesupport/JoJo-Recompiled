@@ -261,6 +261,11 @@ void test_runner_attaches_direct_disc_to_runtime_cdrom(const fs::path& temp) {
     CHECK(report.boot.stop_reason == jojo::Ps1BootStopReason::execution_budget_exhausted);
     CHECK(report.boot.instructions_retired == 20u);
     CHECK(report.session_cdrom_command_count >= 2u);
+    const auto recent_cdrom = runner.value.recent_cdrom_commands();
+    CHECK(recent_cdrom.size() >= 2u);
+    if (!recent_cdrom.empty()) {
+        CHECK(recent_cdrom.back().command == 0x06u);
+    }
     CHECK(!report.boot.unsupported_access.has_value());
 }
 
