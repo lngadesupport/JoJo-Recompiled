@@ -84,6 +84,28 @@ void test_invalid_monitor_or_dpi_is_rejected() {
     CHECK(result.error == jojo::ErrorCode::invalid_argument);
 }
 
+void test_presentation_quality_maps_filter_and_aa_settings() {
+    const auto off = jojo::make_d3d11_presentation_quality(
+        jojo::TextureFilter::off,
+        jojo::Msaa::off);
+    CHECK(off.sampler_filter == D3D11_FILTER_MIN_MAG_MIP_POINT);
+    CHECK(off.max_anisotropy == 1u);
+    CHECK(off.aa_samples == 1u);
+
+    const auto high = jojo::make_d3d11_presentation_quality(
+        jojo::TextureFilter::x16,
+        jojo::Msaa::x16);
+    CHECK(high.sampler_filter == D3D11_FILTER_ANISOTROPIC);
+    CHECK(high.max_anisotropy == 16u);
+    CHECK(high.aa_samples == 16u);
+
+    const auto middle = jojo::make_d3d11_presentation_quality(
+        jojo::TextureFilter::x4,
+        jojo::Msaa::x8);
+    CHECK(middle.max_anisotropy == 4u);
+    CHECK(middle.aa_samples == 8u);
+}
+
 void test_d3d11_probe_reports_real_device_quality_capabilities() {
     const auto probed = jojo::probe_d3d11_renderer_capabilities();
     CHECK(probed);
@@ -392,6 +414,7 @@ int main() {
     test_borderless_plan_covers_monitor_without_switching_display_mode();
     test_exclusive_plan_requests_display_switch_and_popup_surface();
     test_invalid_monitor_or_dpi_is_rejected();
+    test_presentation_quality_maps_filter_and_aa_settings();
     test_d3d11_probe_reports_real_device_quality_capabilities();
     test_d3d11_ps1_frame_upload_plan_is_tightly_packed_rgba8();
     test_d3d11_ps1_frame_upload_plan_rejects_malformed_storage();
