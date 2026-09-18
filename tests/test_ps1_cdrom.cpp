@@ -75,6 +75,15 @@ int main() {
     CHECK(((words[0] >> 16u) & 0xFFu) == static_cast<std::uint32_t>('S'));
     CHECK(((words[0] >> 24u) & 0xFFu) == static_cast<std::uint32_t>('E'));
 
+    const auto cd_hash_before = cd.diagnostic_state_hash();
+    CHECK(cd.write8(0x1F801800u, 0x01u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(cd.write8(0x1F801802u, 0x1Fu).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(cd.diagnostic_state_hash() != cd_hash_before);
+    CHECK(cd.write8(0x1F801800u, 0x00u).status ==
+          jojo::R3000aBusStatus::ok);
+
     // Unknown commands remain explicit; they are never guessed successful.
     const auto commands_before_unknown = cd.command_count();
     CHECK(cd.write8(0x1F801801u, 0x7Fu).status == jojo::R3000aBusStatus::unsupported);
