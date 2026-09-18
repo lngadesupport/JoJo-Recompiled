@@ -123,7 +123,9 @@ Ps1BootReport Ps1BootRuntime::run(const Ps1BootOptions& options) noexcept {
     Ps1BootReport report{};
     report.last_pc = cpu_.pc;
     report.diagnostic_probe_mode = options.diagnostic_mmio_probe;
+    report.native_x64_enabled = native_x64_enabled_;
     bus_.set_diagnostic_mmio_probe_enabled(options.diagnostic_mmio_probe);
+    const auto native_cache_at_start = native_x64_cache_.stats();
 
     const auto& hardware_at_start = bus_.hardware_services();
     const auto dma_transfer_count_at_start = hardware_at_start.completed_dma_transfer_count();
@@ -169,6 +171,15 @@ Ps1BootReport Ps1BootRuntime::run(const Ps1BootOptions& options) noexcept {
             hardware.gpu().last_unsupported_gp1_command();
         report.vram_write_count =
             hardware.gpu_vram_write_count() - vram_write_count_at_start;
+        const auto native_cache = native_x64_cache_.stats();
+        report.native_x64_cache_compilations =
+            native_cache.compilations - native_cache_at_start.compilations;
+        report.native_x64_cache_reuses =
+            native_cache.reuses - native_cache_at_start.reuses;
+        report.native_x64_cache_invalidations =
+            native_cache.invalidations - native_cache_at_start.invalidations;
+        report.native_x64_cache_evictions =
+            native_cache.evictions - native_cache_at_start.evictions;
         return report;
     };
 
