@@ -29,6 +29,19 @@ void test_conditional_branch_includes_delay_slot() {
     CHECK(block.value.has_delay_slot);
 }
 
+
+void test_backward_branch_target_is_sign_extended() {
+    const std::array<std::uint32_t, 2> words{
+        test_mips::i(0x05u, 8u, 0u, 0xFFFEu),
+        0x00000000u,
+    };
+    const auto block = jojo::lift_r3000a_basic_block(0x80010010u, words);
+    CHECK(block);
+    if (!block) return;
+    CHECK(block.value.taken_target == 0x8001000Cu);
+    CHECK(block.value.fallthrough_target == 0x80010018u);
+}
+
 void test_direct_jump_target_and_delay_slot() {
     const std::array<std::uint32_t, 3> words{
         test_mips::j(0x02u, 0x00012000u >> 2u),
@@ -83,6 +96,7 @@ void test_reserved_instruction_is_rejected() {
 
 int main() {
     test_conditional_branch_includes_delay_slot();
+    test_backward_branch_target_is_sign_extended();
     test_direct_jump_target_and_delay_slot();
     test_indirect_jump_is_explicit();
     test_non_control_block_falls_through();
