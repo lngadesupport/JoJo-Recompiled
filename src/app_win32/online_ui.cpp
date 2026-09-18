@@ -195,7 +195,6 @@ void draw_name_keyboard(
     outline(g, 680.0f, 165.0f, 570.0f, 48.0f, kWhite, 2.0f);
     draw_text(g, widen(model.player_name), 695.0f, 165.0f, 535.0f, 48.0f, 25.0f, kWhite);
 
-    constexpr float start_x = 350.0f;
     constexpr float start_y = 285.0f;
     constexpr float cell_w = 80.0f;
     constexpr float cell_h = 54.0f;
