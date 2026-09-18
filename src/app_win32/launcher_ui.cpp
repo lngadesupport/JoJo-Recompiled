@@ -230,7 +230,7 @@ GameAction LauncherUi::selected_control_action() const noexcept {
 std::size_t LauncherUi::row_count() const noexcept {
     switch (page_) {
         case SettingsPage::graphics: return 6;
-        case SettingsPage::audio: return 4;
+        case SettingsPage::audio: return 2;
         case SettingsPage::controls: return 1 + all_game_actions().size();
         case SettingsPage::accessibility: return 5;
     }
@@ -375,14 +375,6 @@ LauncherUiAction LauncherUi::adjust_setting(
                     adjust_volume(settings.audio.master_volume);
                 break;
             case 1:
-                settings.audio.music_volume =
-                    adjust_volume(settings.audio.music_volume);
-                break;
-            case 2:
-                settings.audio.effects_volume =
-                    adjust_volume(settings.audio.effects_volume);
-                break;
-            case 3:
                 settings.audio.mute_when_unfocused =
                     !settings.audio.mute_when_unfocused;
                 break;
@@ -602,8 +594,6 @@ void LauncherUi::paint(
     } else if (page_ == SettingsPage::audio) {
         rows = {
             {L"MASTER VOLUME", std::to_wstring(settings.audio.master_volume) + L"%"},
-            {L"MUSIC VOLUME", std::to_wstring(settings.audio.music_volume) + L"%"},
-            {L"EFFECTS VOLUME", std::to_wstring(settings.audio.effects_volume) + L"%"},
             {L"MUTE WHEN UNFOCUSED", on_off(settings.audio.mute_when_unfocused)},
         };
         enabled.assign(rows.size(), true);
