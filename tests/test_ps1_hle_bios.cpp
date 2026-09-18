@@ -324,6 +324,89 @@ static void test_b0_19_hookentryint() {
     check_returned_through_ra(cpu);
 }
 
+static void test_hookentryint_restores_jmpbuf_and_returnfromexception() {
+    jojo::Ps1HleBios bios{};
+    jojo::Ps1MemoryBus bus{};
+
+    constexpr std::uint32_t hook_buffer = 0x80006000u;
+    constexpr std::uint32_t hook_ra = 0x80012340u;
+
+    auto install = make_cpu();
+    install.gpr[4] = hook_buffer;
+    CHECK(bios.dispatch(
+              install, 0xB0u, 0x19u, &bus) ==
+          jojo::Ps1HleBiosDispatchStatus::handled);
+
+    const std::array<std::uint32_t, 12> jump_buffer{
+        hook_ra,
+        0x801FF000u,
+        0x801FE000u,
+        0x11111111u,
+        0x22222222u,
+        0x33333333u,
+        0x44444444u,
+        0x55555555u,
+        0x66666666u,
+        0x77777777u,
+        0x88888888u,
+        0x12345678u,
+    };
+    for (std::size_t i = 0u; i < jump_buffer.size(); ++i) {
+        CHECK(bus.write32(
+                  hook_buffer +
+                      static_cast<std::uint32_t>(i * 4u),
+                  jump_buffer[i]).status ==
+              jojo::R3000aBusStatus::ok);
+    }
+
+    auto exception_cpu = make_cpu();
+    exception_cpu.pc = 0x80000080u;
+    exception_cpu.next_pc = 0x80000084u;
+    exception_cpu.cop0.status = 0x00000404u;
+    exception_cpu.cop0.cause = 0x00000400u;
+    exception_cpu.cop0.epc = 0x80020000u;
+    exception_cpu.external_interrupt_pending = 0x04u;
+
+    auto resume = exception_cpu;
+    resume.pc = 0x80020000u;
+    resume.next_pc = 0x80020004u;
+    resume.cop0.status = 0x00000401u;
+    resume.gpr[8] = 0xCAFEBABEu;
+
+    const auto hash_before = bios.diagnostic_state_hash();
+    CHECK(bios.begin_interrupt_hook(
+              exception_cpu, resume, bus) ==
+          jojo::Ps1HleBiosDispatchStatus::handled);
+    CHECK(bios.diagnostic_state_hash() != hash_before);
+    CHECK(exception_cpu.pc == hook_ra);
+    CHECK(exception_cpu.next_pc == hook_ra + 4u);
+    CHECK(exception_cpu.gpr[2] == 1u);
+    CHECK(exception_cpu.gpr[31] == jump_buffer[0]);
+    CHECK(exception_cpu.gpr[29] == jump_buffer[1]);
+    CHECK(exception_cpu.gpr[30] == jump_buffer[2]);
+    for (std::size_t i = 0u; i < 8u; ++i) {
+        CHECK(exception_cpu.gpr[16u + i] ==
+              jump_buffer[3u + i]);
+    }
+    CHECK(exception_cpu.gpr[28] == jump_buffer[11]);
+
+    // Model guest IRQ acknowledgement before B(17h).
+    exception_cpu.external_interrupt_pending = 0u;
+    const auto cause_before_return = exception_cpu.cop0.cause;
+    const auto epc_before_return = exception_cpu.cop0.epc;
+    CHECK(bios.dispatch(
+              exception_cpu, 0xB0u, 0x17u, &bus) ==
+          jojo::Ps1HleBiosDispatchStatus::handled);
+
+    CHECK(exception_cpu.pc == resume.pc);
+    CHECK(exception_cpu.next_pc == resume.next_pc);
+    CHECK(exception_cpu.cop0.status == resume.cop0.status);
+    CHECK(exception_cpu.cop0.cause == cause_before_return);
+    CHECK(exception_cpu.cop0.epc == epc_before_return);
+    CHECK(exception_cpu.external_interrupt_pending == 0u);
+    CHECK(exception_cpu.gpr[8] == 0xCAFEBABEu);
+}
+
 static void test_b0_5b_changeclearpad() {
     jojo::Ps1HleBios bios{};
 
@@ -538,6 +621,7 @@ int main() {
     test_a0_remove_iso9660_aliases();
     test_b0_18_resetentryint_clears_custom_hook();
     test_b0_19_hookentryint();
+    test_hookentryint_restores_jmpbuf_and_returnfromexception();
     test_b0_5b_changeclearpad();
     test_c0_irq_priority_chain_enqueue_and_dequeue();
     test_c0_03_removes_unmodeled_bios_chain_element();
