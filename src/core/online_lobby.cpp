@@ -174,6 +174,15 @@ Result<void> online_enter_joined_lobby(
     return Result<void>::success();
 }
 
+void online_enter_direct_lobby(
+    OnlineLobbyModel& model) noexcept {
+    model.screen = OnlineLobbyScreen::lobby;
+    model.local_player_is_host = false;
+    model.ready = false;
+    online_reset_peer_state(model);
+    model.status = "CONNECTED DIRECTLY TO LOBBY";
+}
+
 void online_set_connecting(
     OnlineLobbyModel& model,
     std::string status) {
