@@ -37,6 +37,10 @@ struct D3d11PresentationQuality {
 [[nodiscard]] D3d11PresentationQuality make_d3d11_presentation_quality(
     TextureFilter texture_filter,
     Msaa anti_aliasing) noexcept;
+[[nodiscard]] D3D11_VIEWPORT make_d3d11_aspect_viewport(
+    std::uint32_t target_width,
+    std::uint32_t target_height,
+    AspectRatio aspect_ratio) noexcept;
 
 struct D3d11FrameUploadPlan {
     std::uint32_t width{};
@@ -82,7 +86,8 @@ public:
         const Ps1DisplayFrame& frame,
         bool vsync = false,
         TextureFilter texture_filter = TextureFilter::off,
-        Msaa anti_aliasing = Msaa::off);
+        Msaa anti_aliasing = Msaa::off,
+        AspectRatio aspect_ratio = AspectRatio::ratio_4_3);
 
     [[nodiscard]] std::uint32_t back_buffer_width() const noexcept;
     [[nodiscard]] std::uint32_t back_buffer_height() const noexcept;
@@ -100,7 +105,8 @@ private:
     [[nodiscard]] Result<void> draw_frame(
         const Ps1DisplayFrame& frame,
         TextureFilter texture_filter,
-        Msaa anti_aliasing);
+        Msaa anti_aliasing,
+        AspectRatio aspect_ratio);
 
     HWND window_{};
     Microsoft::WRL::ComPtr<ID3D11Device> device_{};
