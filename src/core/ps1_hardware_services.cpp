@@ -198,6 +198,19 @@ R3000aBusResult Ps1HardwareServices::read32(std::uint32_t physical) noexcept {
         if (offset == 4u) return {R3000aBusStatus::ok, dma.bcr};
         return {R3000aBusStatus::ok, dma.chcr};
     }
+
+    if (decode_timer_register(physical, channel, offset)) {
+        const auto& timer = timers_[channel];
+        if (offset == kTimerCounterOffset) {
+            return {R3000aBusStatus::ok, timer.counter};
+        }
+        if (offset == kTimerModeOffset) {
+            return {R3000aBusStatus::ok, timer.mode};
+        }
+        if (offset == kTimerTargetOffset) {
+            return {R3000aBusStatus::ok, timer.target};
+        }
+    }
     return {R3000aBusStatus::unsupported, 0u};
 }
 
@@ -340,7 +353,9 @@ R3000aBusResult Ps1HardwareServices::write32(std::uint32_t physical,
     std::uint32_t timer_channel = 0u;
     std::uint32_t timer_offset = 0u;
     if (decode_timer_register(physical, timer_channel, timer_offset) &&
-        timer_offset == kTimerModeOffset) {
+        (timer_offset == kTimerCounterOffset ||
+         timer_offset == kTimerModeOffset ||
+         timer_offset == kTimerTargetOffset)) {
         return write16(physical, static_cast<std::uint16_t>(value & 0xFFFFu));
     }
     return {R3000aBusStatus::unsupported, 0u};
