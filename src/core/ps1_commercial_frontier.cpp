@@ -40,6 +40,12 @@ Ps1CommercialFrontierClass classify_ps1_commercial_frontier(
             }
             return Ps1CommercialFrontierClass::mmio_access;
         case Ps1BootStopReason::gpu_command_unimplemented:
+            if (report.unsupported_gpu_gp0_command) {
+                return Ps1CommercialFrontierClass::gpu_gp0_command;
+            }
+            if (report.unsupported_gpu_gp1_command) {
+                return Ps1CommercialFrontierClass::gpu_gp1_command;
+            }
             return Ps1CommercialFrontierClass::mmio_access;
         case Ps1BootStopReason::cpu_boundary:
             return Ps1CommercialFrontierClass::cpu_boundary;
