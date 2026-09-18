@@ -52,6 +52,7 @@ struct Ps1CommercialRuntimeCounters {
     std::array<std::uint64_t, 2> memory_card_read_sector_count{};
     std::array<std::uint64_t, 2> memory_card_write_sector_count{};
     std::uint64_t spu_sample_frames{};
+    std::uint64_t spu_nonzero_samples{};
 };
 
 struct Ps1CommercialEvidenceReport {
@@ -67,6 +68,7 @@ struct Ps1CommercialEvidenceReport {
     std::array<std::uint64_t, 2> memory_card_read_sector_count{};
     std::array<std::uint64_t, 2> memory_card_write_sector_count{};
     std::uint64_t spu_sample_frames{};
+    std::uint64_t spu_nonzero_samples{};
     std::optional<Ps1CommercialFrameEvidence> first_frame{};
     std::vector<Ps1CommercialDiagnosticDecision> diagnostic_decisions;
 };
@@ -74,7 +76,7 @@ struct Ps1CommercialEvidenceReport {
 struct Ps1GameplayValidationSummary {
     bool frame_observed{};
     bool controller_poll_observed{};
-    bool audio_generated{};
+    bool audio_non_silent_observed{};
     bool memory_card_read_observed{};
     bool memory_card_write_observed{};
 };
