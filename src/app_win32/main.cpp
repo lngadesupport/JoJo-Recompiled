@@ -1015,7 +1015,7 @@ void handle_launcher_action(jojo::win32::LauncherUiAction action){
         online_session.reset();
         online_lobby_sync_sent=false;
         const auto hosted=online_session.host(
-            jojo::NetworkEndpoint{{0u,0u,0u,0u},0u});
+            jojo::NetworkEndpoint{{0u,0u,0u,0u},27886u});
         if(!hosted){
             model.status="HOST FAILED: "+hosted.detail;
             break;
@@ -1029,8 +1029,8 @@ void handle_launcher_action(jojo::win32::LauncherUiAction action){
         const auto local=online_session.view().local_endpoint;
         if(local){
             model.status=
-                "DIRECT HOST READY • "+jojo::format_direct_endpoint(*local)+
-                " • PUBLIC DIRECTORY/RELAY NOT CONFIGURED";
+                "DIRECT HOST READY • PORT "+std::to_string(local->port)+
+                " • SHARE YOUR-IP:"+std::to_string(local->port);
         }else{
             model.status="DIRECT HOST READY • WAITING FOR PEER";
         }
@@ -1066,6 +1066,30 @@ void handle_launcher_action(jojo::win32::LauncherUiAction action){
         jojo::online_set_connecting(
             model,
             "CONNECTING TO "+room.name+"...");
+        break;
+    }
+    case jojo::win32::LauncherUiAction::online_connect_direct:{
+        auto& model=launcher_ui.online_model();
+        const auto remote=jojo::parse_direct_endpoint(model.direct_connect_endpoint);
+        if(!remote){
+            model.status="INVALID DIRECT ENDPOINT: "+remote.detail;
+            break;
+        }
+        online_session.reset();
+        online_lobby_sync_sent=false;
+        const auto joined=online_session.join(
+            jojo::NetworkEndpoint{{0u,0u,0u,0u},0u},
+            remote.value,
+            {},
+            online_now_ms());
+        if(!joined){
+            model.status="DIRECT CONNECT FAILED: "+joined.detail;
+            break;
+        }
+        model.selected_room.reset();
+        jojo::online_set_connecting(
+            model,
+            "CONNECTING DIRECTLY TO "+model.direct_connect_endpoint+"...");
         break;
     }
     case jojo::win32::LauncherUiAction::online_begin_matchmaking:{
