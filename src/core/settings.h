@@ -8,7 +8,7 @@ namespace jojo {
 
 enum class AspectRatio { ratio_4_3, ratio_16_9, ratio_16_10, ratio_21_9, ratio_32_9 };
 enum class TextureFilter : int { off = 0, x2 = 2, x4 = 4, x8 = 8, x16 = 16 };
-enum class Msaa : int { off = 0, x2 = 2, x4 = 4, x8 = 8 };
+enum class Msaa : int { off = 0, x2 = 2, x4 = 4, x8 = 8, x16 = 16 };
 enum class DisplayMode { windowed, fullscreen, borderless };
 enum class UiScale : int {
     automatic = 0,
@@ -43,15 +43,26 @@ struct AudioSettings {
     friend bool operator==(const AudioSettings&, const AudioSettings&) = default;
 };
 
+struct AccessibilitySettings {
+    bool high_contrast_ui{false};
+    bool reduce_flashing{false};
+    bool reduce_screen_shake{false};
+    bool hold_assist{false};
+    int menu_text_scale{100};
+    friend bool operator==(const AccessibilitySettings&, const AccessibilitySettings&) = default;
+};
+
 struct AppSettings {
     std::string source_binding_path{};
     GraphicsSettings graphics{};
     AudioSettings audio{};
+    AccessibilitySettings accessibility{};
     InputSettings input{};
 };
 
 [[nodiscard]] bool validate_graphics(const GraphicsSettings& settings) noexcept;
 [[nodiscard]] bool validate_audio(const AudioSettings& settings) noexcept;
+[[nodiscard]] bool validate_accessibility(const AccessibilitySettings& settings) noexcept;
 [[nodiscard]] bool validate_input(const InputSettings& settings) noexcept;
 [[nodiscard]] std::string to_string(AspectRatio value);
 [[nodiscard]] std::string to_string(DisplayMode value);
