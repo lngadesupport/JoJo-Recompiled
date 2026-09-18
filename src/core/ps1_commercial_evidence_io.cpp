@@ -98,6 +98,17 @@ std::string format_ps1_commercial_evidence_report(
     out << "stop_reason=" << ps1_boot_stop_reason_name(report.boot.stop_reason) << '\n';
     out << "total_instructions_retired=" << report.total_instructions_retired << '\n';
     out << "execution_segments=" << report.execution_segments << '\n';
+    out << "pad0_poll_count=" << report.pad_poll_count[0] << '\n';
+    out << "pad1_poll_count=" << report.pad_poll_count[1] << '\n';
+    out << "memory_card0_read_sector_count="
+        << report.memory_card_read_sector_count[0] << '\n';
+    out << "memory_card0_write_sector_count="
+        << report.memory_card_write_sector_count[0] << '\n';
+    out << "memory_card1_read_sector_count="
+        << report.memory_card_read_sector_count[1] << '\n';
+    out << "memory_card1_write_sector_count="
+        << report.memory_card_write_sector_count[1] << '\n';
+    out << "spu_sample_frames=" << report.spu_sample_frames << '\n';
     out << "segment_instructions_retired=" << report.boot.instructions_retired << '\n';
     out << "last_pc=" << hex32(report.boot.last_pc) << '\n';
     out << "last_opcode=" << optional_hex32(report.boot.last_opcode) << '\n';
