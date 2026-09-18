@@ -42,6 +42,11 @@ int main(int argc, char** argv) {
         argc >= 5 ? parse_u64(argv[4], 500000u) : 500000u;
     const bool native_x64 =
         argc >= 6 ? parse_u32(argv[5], 0u) != 0u : false;
+#if defined(_WIN32) && defined(_M_X64)
+    constexpr bool native_x64_backend_available = true;
+#else
+    constexpr bool native_x64_backend_available = false;
+#endif
 
     auto runner = jojo::Ps1CommercialEvidenceRunner::open(source);
     if (!runner) {
@@ -72,8 +77,26 @@ int main(int argc, char** argv) {
     std::cout << "revision_id=" << report.source.revision_id << "\n";
     std::cout << "source_size=" << report.source.source_size << "\n";
     std::cout << "source_hash_fnv1a64=" << report.source.source_hash_fnv1a64 << "\n";
-    std::cout << "native_x64="
+    std::cout << "native_x64_requested="
+              << (native_x64 ? 1 : 0)
+              << "\n";
+    std::cout << "native_x64_backend_available="
+              << (native_x64_backend_available ? 1 : 0)
+              << "\n";
+    std::cout << "native_x64_enabled="
               << (runner.value.native_x64_enabled() ? 1 : 0)
+              << "\n";
+    std::cout << "native_x64_instructions_retired="
+              << report.total_native_x64_instructions_retired
+              << "\n";
+    std::cout << "reference_instructions_retired="
+              << report.total_reference_instructions_retired
+              << "\n";
+    std::cout << "native_x64_cache_compilations="
+              << report.total_native_x64_cache_compilations
+              << "\n";
+    std::cout << "native_x64_cache_reuses="
+              << report.total_native_x64_cache_reuses
               << "\n";
     std::cout << "frontier="
               << jojo::ps1_commercial_frontier_class_name(report.frontier)
