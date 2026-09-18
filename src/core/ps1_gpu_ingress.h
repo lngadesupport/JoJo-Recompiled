@@ -61,6 +61,9 @@ private:
     void fill_rectangle(std::uint32_t width, std::uint32_t height) noexcept;
     void draw_monochrome_rectangle(std::uint32_t width, std::uint32_t height) noexcept;
     void draw_raw_textured_rectangle(std::uint32_t width, std::uint32_t height) noexcept;
+    [[nodiscard]] std::uint16_t sample_raw_texture(
+        std::uint32_t u,
+        std::uint32_t v) const noexcept;
     void copy_vram_rectangle(std::uint32_t width, std::uint32_t height) noexcept;
     void apply_display_mode(std::uint32_t parameter) noexcept;
 
@@ -90,6 +93,8 @@ private:
     std::uint8_t texture_depth_{};
     std::uint8_t texture_u_{};
     std::uint8_t texture_v_{};
+    std::uint32_t texture_clut_x_{};
+    std::uint32_t texture_clut_y_{};
     std::uint32_t copy_source_x_{};
     std::uint32_t copy_source_y_{};
     std::uint32_t copy_destination_x_{};
