@@ -1,6 +1,7 @@
 #ifdef _WIN32
 #define NOMINMAX
 #include "app_win32/launcher_ui.h"
+#include "core/version.h"
 
 #include <gdiplus.h>
 
@@ -17,7 +18,7 @@ namespace jojo::win32 {
 namespace {
 
 constexpr float kUiWidth = 1024.0f;
-constexpr float kUiHeight = 768.0f;
+constexpr float kUiHeight = 720.0f;
 const Gdiplus::Color kGold(255, 242, 195, 72);
 const Gdiplus::Color kText(255, 242, 238, 229);
 const Gdiplus::Color kMuted(255, 168, 166, 166);
@@ -416,9 +417,19 @@ void LauncherUi::paint(
     graphics.SetTextRenderingHint(Gdiplus::TextRenderingHintClearTypeGridFit);
 
     if (background_ && background_->GetLastStatus() == Gdiplus::Ok) {
+        constexpr UINT title_crop = 69u;
+        const UINT image_width = background_->GetWidth();
+        const UINT image_height = background_->GetHeight();
+        const UINT cropped_height =
+            image_height > title_crop ? image_height - title_crop : image_height;
         graphics.DrawImage(
             background_.get(),
-            Gdiplus::Rect(0, 0, client_width, client_height));
+            Gdiplus::Rect(0, 0, client_width, client_height),
+            0,
+            image_height > title_crop ? title_crop : 0u,
+            image_width,
+            cropped_height,
+            Gdiplus::UnitPixel);
     } else {
         Gdiplus::LinearGradientBrush fallback(
             Gdiplus::Point(0, 0),
@@ -434,7 +445,7 @@ void LauncherUi::paint(
 
     if (screen_ == Screen::main_menu) {
         Gdiplus::SolidBrush veil(Gdiplus::Color(165, 3, 12, 18));
-        graphics.FillRectangle(&veil, 704.0f, 205.0f, 306.0f, 340.0f);
+        graphics.FillRectangle(&veil, 704.0f, 156.0f, 306.0f, 340.0f);
 
         constexpr std::array<const wchar_t*, 4> labels{
             L"START GAME",
@@ -442,7 +453,7 @@ void LauncherUi::paint(
             L"SETTINGS",
             L"EXIT",
         };
-        constexpr std::array<float, 4> ys{245.0f, 315.0f, 385.0f, 455.0f};
+        constexpr std::array<float, 4> ys{196.0f, 266.0f, 336.0f, 406.0f};
         for (std::size_t i = 0; i < labels.size(); ++i) {
             const bool selected = i == main_selection_;
             draw_string(
@@ -464,15 +475,27 @@ void LauncherUi::paint(
         }
 
         Gdiplus::SolidBrush source_cover(Gdiplus::Color(205, 5, 11, 16));
-        graphics.FillRectangle(&source_cover, 238.0f, 702.0f, 440.0f, 48.0f);
+        graphics.FillRectangle(&source_cover, 238.0f, 653.0f, 440.0f, 48.0f);
         const std::wstring source_text =
             source_label.empty() ? L"(none)" : std::wstring(source_label);
         draw_string(
             graphics,
             source_text,
-            Gdiplus::RectF(245.0f, 703.0f, 425.0f, 45.0f),
+            Gdiplus::RectF(245.0f, 654.0f, 425.0f, 45.0f),
             17.0f,
             source_label.empty() ? kMuted : kText);
+
+        // Replace the mockup-only version number with the real runtime version.
+        Gdiplus::SolidBrush version_cover(Gdiplus::Color(235, 3, 25, 28));
+        graphics.FillRectangle(&version_cover, 910.0f, 642.0f, 105.0f, 58.0f);
+        draw_string(
+            graphics,
+            L"v" + widen_ascii(core_version()),
+            Gdiplus::RectF(915.0f, 647.0f, 92.0f, 42.0f),
+            16.0f,
+            kText,
+            Gdiplus::FontStyleBold,
+            Gdiplus::StringAlignmentFar);
         return;
     }
 
@@ -665,10 +688,10 @@ LauncherUiAction LauncherUi::mouse_up(
 
     if (screen_ == Screen::main_menu) {
         const std::array<Gdiplus::RectF, 4> menu_rects{{
-            {725.0f, 230.0f, 275.0f, 70.0f},
-            {725.0f, 300.0f, 275.0f, 70.0f},
-            {725.0f, 370.0f, 275.0f, 70.0f},
-            {725.0f, 440.0f, 275.0f, 70.0f},
+            {725.0f, 181.0f, 275.0f, 70.0f},
+            {725.0f, 251.0f, 275.0f, 70.0f},
+            {725.0f, 321.0f, 275.0f, 70.0f},
+            {725.0f, 391.0f, 275.0f, 70.0f},
         }};
         for (std::size_t i = 0; i < menu_rects.size(); ++i) {
             if (contains(menu_rects[i], x, y)) {
@@ -676,7 +699,7 @@ LauncherUiAction LauncherUi::mouse_up(
                 return activate_main_item();
             }
         }
-        if (contains({25.0f, 690.0f, 225.0f, 70.0f}, x, y)) {
+        if (contains({25.0f, 641.0f, 225.0f, 70.0f}, x, y)) {
             return LauncherUiAction::select_disc;
         }
         return LauncherUiAction::none;
