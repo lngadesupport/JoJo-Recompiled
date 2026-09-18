@@ -134,6 +134,18 @@ R3000aNativeAluResult execute_r3000a_native_alu_block(
                     instruction.rd,
                     arithmetic_shift_right(rt, rs));
                 break;
+            case MipsOp::mfhi:
+                queue_write(instruction.rd, state.hi);
+                break;
+            case MipsOp::mthi:
+                state.hi = rs;
+                break;
+            case MipsOp::mflo:
+                queue_write(instruction.rd, state.lo);
+                break;
+            case MipsOp::mtlo:
+                state.lo = rs;
+                break;
             case MipsOp::addu:
                 queue_write(instruction.rd, rs + rt);
                 break;
