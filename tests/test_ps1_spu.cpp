@@ -58,10 +58,12 @@ static void test_spu_host_neutral_audio_clock_and_voice_mix() {
 
     spu.step(767u);
     CHECK(spu.generated_sample_frames() == 0u);
+    CHECK(spu.nonzero_sample_count() == 0u);
     CHECK(spu.drain_audio_samples().empty());
 
     spu.step(1u);
     CHECK(spu.generated_sample_frames() == 1u);
+    CHECK(spu.nonzero_sample_count() == 2u);
     const auto frame = spu.drain_audio_samples();
     CHECK(frame.size() == 2u);
     if (frame.size() == 2u) {
