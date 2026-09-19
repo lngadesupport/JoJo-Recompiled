@@ -116,6 +116,10 @@ int main() {
     CHECK(bus.read8(0x1F801040u).value == 0xFFu);
     CHECK(bus.write8(0x1F801040u, 0x42u).status == jojo::R3000aBusStatus::ok);
     CHECK(bus.read8(0x1F801040u).value == 0x41u);
+    const auto bus_status16 = bus.read16(0x1F801044u);
+    CHECK(bus_status16.status == jojo::R3000aBusStatus::ok);
+    CHECK(bus_status16.value ==
+          (bus.read32(0x1F801044u).value & 0xFFFFu));
 
     CHECK((bus.hardware_services().interrupt_status() & 0x0080u) != 0u);
     CHECK(bus.write16(0x1F801070u, 0x077Fu).status == jojo::R3000aBusStatus::ok);

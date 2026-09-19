@@ -190,7 +190,8 @@ R3000aBusResult Ps1HardwareServices::read16(std::uint32_t physical) noexcept {
     if (physical == kRamSizeAddress) {
         return {R3000aBusStatus::ok, ram_size_ & 0xFFFFu};
     }
-    if (physical == Ps1Sio0::mode_address ||
+    if (physical == Ps1Sio0::status_address ||
+        physical == Ps1Sio0::mode_address ||
         physical == Ps1Sio0::control_address ||
         physical == Ps1Sio0::baud_address) {
         return sio0_.read16(physical);
