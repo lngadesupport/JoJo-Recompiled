@@ -158,6 +158,32 @@ int main() {
         CHECK(draw_gpu.vram_write_count() == 6u);
     }
 
+    // Variable rectangles carry 16-bit dimensions. A largely clipped
+    // 65535x65535 primitive must rasterize only the visible intersection,
+    // rather than iterating billions of off-screen pixels.
+    {
+        jojo::Ps1GpuIngress clipped_gpu;
+        CHECK(clipped_gpu.write_gp0(0xE3000000u).status ==
+              jojo::R3000aBusStatus::ok);
+        CHECK(clipped_gpu.write_gp0(0xE4000000u | 3u | (3u << 10u)).status ==
+              jojo::R3000aBusStatus::ok);
+
+        const auto writes_before = clipped_gpu.vram_write_count();
+        CHECK(clipped_gpu.write_gp0(0x600000F8u).status ==
+              jojo::R3000aBusStatus::ok);
+        CHECK(clipped_gpu.write_gp0(0x80008000u).status ==
+              jojo::R3000aBusStatus::ok);
+        CHECK(clipped_gpu.write_gp0(0xFFFFFFFFu).status ==
+              jojo::R3000aBusStatus::ok);
+
+        CHECK(clipped_gpu.vram_write_count() == writes_before + 16u);
+        for (std::uint32_t y = 0u; y < 4u; ++y) {
+            for (std::uint32_t x = 0u; x < 4u; ++x) {
+                CHECK(clipped_gpu.vram_pixel(x, y) == 0x001Fu);
+            }
+        }
+    }
+
     // GP0(64h): modulated textured rectangle multiplies texture color by
     // the command RGB color. 0x40 per component halves a white texel.
     {

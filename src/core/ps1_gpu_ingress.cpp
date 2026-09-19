@@ -181,20 +181,41 @@ void Ps1GpuIngress::fill_rectangle(std::uint32_t width, std::uint32_t height) no
 void Ps1GpuIngress::draw_monochrome_rectangle(
     std::uint32_t width,
     std::uint32_t height) noexcept {
-    for (std::uint32_t local_y = 0u; local_y < height; ++local_y) {
-        const auto y = draw_y_ + draw_offset_y_ + static_cast<std::int32_t>(local_y);
-        if (y < 0 || y >= static_cast<std::int32_t>(vram_height) ||
-            y < static_cast<std::int32_t>(draw_area_top_) ||
-            y > static_cast<std::int32_t>(draw_area_bottom_)) {
-            continue;
-        }
-        for (std::uint32_t local_x = 0u; local_x < width; ++local_x) {
-            const auto x = draw_x_ + draw_offset_x_ + static_cast<std::int32_t>(local_x);
-            if (x < 0 || x >= static_cast<std::int32_t>(vram_width) ||
-                x < static_cast<std::int32_t>(draw_area_left_) ||
-                x > static_cast<std::int32_t>(draw_area_right_)) {
-                continue;
-            }
+    if (width == 0u || height == 0u) return;
+
+    const auto origin_x =
+        static_cast<std::int64_t>(draw_x_) + draw_offset_x_;
+    const auto origin_y =
+        static_cast<std::int64_t>(draw_y_) + draw_offset_y_;
+    const auto clip_left = std::max<std::int64_t>(
+        0, static_cast<std::int64_t>(draw_area_left_));
+    const auto clip_top = std::max<std::int64_t>(
+        0, static_cast<std::int64_t>(draw_area_top_));
+    const auto clip_right = std::min<std::int64_t>(
+        static_cast<std::int64_t>(vram_width) - 1,
+        static_cast<std::int64_t>(draw_area_right_));
+    const auto clip_bottom = std::min<std::int64_t>(
+        static_cast<std::int64_t>(vram_height) - 1,
+        static_cast<std::int64_t>(draw_area_bottom_));
+    if (clip_left > clip_right || clip_top > clip_bottom) return;
+
+    const auto local_x_begin = std::max<std::int64_t>(
+        0, clip_left - origin_x);
+    const auto local_y_begin = std::max<std::int64_t>(
+        0, clip_top - origin_y);
+    const auto local_x_end = std::min<std::int64_t>(
+        width, clip_right - origin_x + 1);
+    const auto local_y_end = std::min<std::int64_t>(
+        height, clip_bottom - origin_y + 1);
+    if (local_x_begin >= local_x_end ||
+        local_y_begin >= local_y_end) {
+        return;
+    }
+
+    for (auto local_y = local_y_begin; local_y < local_y_end; ++local_y) {
+        const auto y = origin_y + local_y;
+        for (auto local_x = local_x_begin; local_x < local_x_end; ++local_x) {
+            const auto x = origin_x + local_x;
             vram_[static_cast<std::size_t>(y) * vram_width +
                   static_cast<std::uint32_t>(x)] = draw_color_;
             ++vram_write_count_;
@@ -255,28 +276,52 @@ std::uint16_t Ps1GpuIngress::sample_raw_texture(
 void Ps1GpuIngress::draw_textured_rectangle(
     std::uint32_t width,
     std::uint32_t height) noexcept {
-    for (std::uint32_t local_y = 0u; local_y < height; ++local_y) {
-        const auto y = draw_y_ + draw_offset_y_ + static_cast<std::int32_t>(local_y);
-        if (y < 0 || y >= static_cast<std::int32_t>(vram_height) ||
-            y < static_cast<std::int32_t>(draw_area_top_) ||
-            y > static_cast<std::int32_t>(draw_area_bottom_)) {
-            continue;
-        }
+    if (width == 0u || height == 0u) return;
 
-        for (std::uint32_t local_x = 0u; local_x < width; ++local_x) {
-            const auto x = draw_x_ + draw_offset_x_ + static_cast<std::int32_t>(local_x);
-            if (x < 0 || x >= static_cast<std::int32_t>(vram_width) ||
-                x < static_cast<std::int32_t>(draw_area_left_) ||
-                x > static_cast<std::int32_t>(draw_area_right_)) {
-                continue;
-            }
+    const auto origin_x =
+        static_cast<std::int64_t>(draw_x_) + draw_offset_x_;
+    const auto origin_y =
+        static_cast<std::int64_t>(draw_y_) + draw_offset_y_;
+    const auto clip_left = std::max<std::int64_t>(
+        0, static_cast<std::int64_t>(draw_area_left_));
+    const auto clip_top = std::max<std::int64_t>(
+        0, static_cast<std::int64_t>(draw_area_top_));
+    const auto clip_right = std::min<std::int64_t>(
+        static_cast<std::int64_t>(vram_width) - 1,
+        static_cast<std::int64_t>(draw_area_right_));
+    const auto clip_bottom = std::min<std::int64_t>(
+        static_cast<std::int64_t>(vram_height) - 1,
+        static_cast<std::int64_t>(draw_area_bottom_));
+    if (clip_left > clip_right || clip_top > clip_bottom) return;
 
+    const auto local_x_begin = std::max<std::int64_t>(
+        0, clip_left - origin_x);
+    const auto local_y_begin = std::max<std::int64_t>(
+        0, clip_top - origin_y);
+    const auto local_x_end = std::min<std::int64_t>(
+        width, clip_right - origin_x + 1);
+    const auto local_y_end = std::min<std::int64_t>(
+        height, clip_bottom - origin_y + 1);
+    if (local_x_begin >= local_x_end ||
+        local_y_begin >= local_y_end) {
+        return;
+    }
+
+    for (auto local_y = local_y_begin; local_y < local_y_end; ++local_y) {
+        const auto y = origin_y + local_y;
+        for (auto local_x = local_x_begin; local_x < local_x_end; ++local_x) {
+            const auto x = origin_x + local_x;
+
+            const auto local_x_u = static_cast<std::uint32_t>(local_x);
+            const auto local_y_u = static_cast<std::uint32_t>(local_y);
             const auto texture_x = texture_x_flip_
-                ? static_cast<std::uint32_t>(texture_u_) + (width - 1u - local_x)
-                : static_cast<std::uint32_t>(texture_u_) + local_x;
+                ? static_cast<std::uint32_t>(texture_u_) +
+                    (width - 1u - local_x_u)
+                : static_cast<std::uint32_t>(texture_u_) + local_x_u;
             const auto texture_y = texture_y_flip_
-                ? static_cast<std::uint32_t>(texture_v_) + (height - 1u - local_y)
-                : static_cast<std::uint32_t>(texture_v_) + local_y;
+                ? static_cast<std::uint32_t>(texture_v_) +
+                    (height - 1u - local_y_u)
+                : static_cast<std::uint32_t>(texture_v_) + local_y_u;
             const auto texel = sample_raw_texture(texture_x, texture_y);
             if (texel == 0u) continue;
 
