@@ -343,6 +343,11 @@ R3000aBusResult Ps1Sio0::read8(std::uint32_t physical) noexcept {
 }
 
 R3000aBusResult Ps1Sio0::read16(std::uint32_t physical) noexcept {
+    if (physical == status_address) {
+        return {
+            R3000aBusStatus::ok,
+            static_cast<std::uint16_t>(status_value())};
+    }
     if (physical == data_address) {
         ++raw_data_read_count_;
         if (rx_fifo_.empty()) {

@@ -47,6 +47,10 @@ int main() {
     sio.set_digital_pad_buttons(0u, buttons);
 
     CHECK(exchange(sio, 0x01u) == 0xFFu);
+    const auto status16 = sio.read16(0x1F801044u);
+    CHECK(status16.status == jojo::R3000aBusStatus::ok);
+    CHECK(status16.value ==
+          (sio.read32(0x1F801044u).value & 0xFFFFu));
     CHECK((sio.read32(0x1F801044u).value & (1u << 7u)) != 0u);
     CHECK((sio.read32(0x1F801044u).value & (1u << 9u)) == 0u);
 
