@@ -824,6 +824,10 @@ Result<void> D3d11Ps1Presenter::recreate_render_target() {
     msaa_texture_.Reset();
     msaa_render_target_.Reset();
     active_msaa_samples_ = 1u;
+    requested_msaa_samples_ = 1u;
+    constants_source_width_ = 0u;
+    constants_source_height_ = 0u;
+    constants_aa_samples_ = 0u;
     return Result<void>::success();
 }
 
@@ -1072,7 +1076,20 @@ Result<void> D3d11Ps1Presenter::ensure_msaa_target(
             "D3D11 MSAA target requires an active back buffer");
     }
 
-    UINT samples = std::max<UINT>(1u, requested_samples);
+    const UINT normalized_requested =
+        std::max<UINT>(1u, requested_samples);
+    if (normalized_requested == requested_msaa_samples_) {
+        if (normalized_requested <= 1u &&
+            active_msaa_samples_ == 1u) {
+            return Result<void>::success();
+        }
+        if (active_msaa_samples_ > 1u &&
+            msaa_texture_ && msaa_render_target_) {
+            return Result<void>::success();
+        }
+    }
+
+    UINT samples = normalized_requested;
     UINT quality_levels = 1u;
     while (samples > 1u) {
         quality_levels = 0u;
@@ -1091,6 +1108,7 @@ Result<void> D3d11Ps1Presenter::ensure_msaa_target(
         msaa_render_target_.Reset();
         msaa_texture_.Reset();
         active_msaa_samples_ = 1u;
+        requested_msaa_samples_ = normalized_requested;
         return Result<void>::success();
     }
 
@@ -1137,6 +1155,7 @@ Result<void> D3d11Ps1Presenter::ensure_msaa_target(
     msaa_texture_ = std::move(texture);
     msaa_render_target_ = std::move(target);
     active_msaa_samples_ = samples;
+    requested_msaa_samples_ = normalized_requested;
     return Result<void>::success();
 }
 
@@ -1190,27 +1209,34 @@ Result<void> D3d11Ps1Presenter::draw_cached_frame(
     };
     static_assert(sizeof(PixelConstants) == 16u);
 
-    D3D11_MAPPED_SUBRESOURCE mapped{};
-    const HRESULT mapped_hr = context_->Map(
-        pixel_constants_.Get(),
-        0u,
-        D3D11_MAP_WRITE_DISCARD,
-        0u,
-        &mapped);
-    if (FAILED(mapped_hr) || !mapped.pData) {
-        return Result<void>::failure(
-            ErrorCode::backend_unavailable,
-            "D3D11 failed to update presentation constants");
-    }
+    if (constants_source_width_ != source_width_ ||
+        constants_source_height_ != source_height_ ||
+        constants_aa_samples_ != quality.aa_samples) {
+        D3D11_MAPPED_SUBRESOURCE mapped{};
+        const HRESULT mapped_hr = context_->Map(
+            pixel_constants_.Get(),
+            0u,
+            D3D11_MAP_WRITE_DISCARD,
+            0u,
+            &mapped);
+        if (FAILED(mapped_hr) || !mapped.pData) {
+            return Result<void>::failure(
+                ErrorCode::backend_unavailable,
+                "D3D11 failed to update presentation constants");
+        }
 
-    const PixelConstants constants{
-        1.0f / static_cast<float>(source_width_),
-        1.0f / static_cast<float>(source_height_),
-        quality.aa_samples,
-        0.0f,
-    };
-    std::memcpy(mapped.pData, &constants, sizeof(constants));
-    context_->Unmap(pixel_constants_.Get(), 0u);
+        const PixelConstants constants{
+            1.0f / static_cast<float>(source_width_),
+            1.0f / static_cast<float>(source_height_),
+            quality.aa_samples,
+            0.0f,
+        };
+        std::memcpy(mapped.pData, &constants, sizeof(constants));
+        context_->Unmap(pixel_constants_.Get(), 0u);
+        constants_source_width_ = source_width_;
+        constants_source_height_ = source_height_;
+        constants_aa_samples_ = quality.aa_samples;
+    }
 
     const float clear[4]{0.0f, 0.0f, 0.0f, 1.0f};
     ID3D11RenderTargetView* target =
