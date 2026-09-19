@@ -42,6 +42,12 @@ constexpr std::array<std::uint32_t, 5> kJojoPadTableSignature{
 constexpr std::uint32_t kJojoPadStateBasePointerPhysical = 0x000635B4u;
 constexpr std::uint32_t kJojoPadStateStride = 0xF0u;
 constexpr std::uint32_t kJojoPadBufferPointerOffset = 0x3Cu;
+// JoJo's own input layer consumes these two 34-byte raw pad buffers and
+// derives held/pressed/released state at 0x8007CEB8/0x8007CEC8.
+constexpr std::array<std::uint32_t, 2> kJojoRawPadBuffers{
+    0x8007CE68u,
+    0x8007CE90u,
+};
 constexpr std::uint32_t kJojoPadCardFirstHandler = 0x8004DE84u;
 constexpr std::uint32_t kJojoPadCardSecondHandler = 0x8004DEECu;
 constexpr std::uint64_t kFnvPrime = 1099511628211ull;
@@ -260,8 +266,23 @@ bool Ps1BootRuntime::mirror_jojo_pad_buffers() noexcept {
     }
 
     auto& sio0 = bus_.hardware_services().sio0();
-    bool mirrored = false;
+    bool driver_buffer_ready = false;
     for (std::uint32_t port = 0u; port < 2u; ++port) {
+        const auto buttons = sio0.sample_digital_pad_buttons(port);
+
+        // Feed the exact raw buffers consumed by JoJo's 0x80011020 input
+        // decoder. Format: status, ID1, active-low buttons low/high.
+        const auto raw = kJojoRawPadBuffers[port];
+        static_cast<void>(bus_.write8(raw + 0u, 0x00u));
+        static_cast<void>(bus_.write8(raw + 1u, 0x41u));
+        static_cast<void>(bus_.write8(
+            raw + 2u,
+            static_cast<std::uint8_t>(buttons)));
+        static_cast<void>(bus_.write8(
+            raw + 3u,
+            static_cast<std::uint8_t>(buttons >> 8u)));
+
+        // Keep the linked retail Pad/Card driver's own buffers coherent too.
         const auto state_guest =
             state_base.value + port * kJojoPadStateStride;
         const auto buffer_ptr =
@@ -278,7 +299,6 @@ bool Ps1BootRuntime::mirror_jojo_pad_buffers() noexcept {
             continue;
         }
 
-        const auto buttons = sio0.sample_digital_pad_buttons(port);
         const auto status = bus_.write8(buffer_ptr.value + 0u, 0x00u);
         const auto id = bus_.write8(buffer_ptr.value + 1u, 0x41u);
         const auto low = bus_.write8(
@@ -287,13 +307,13 @@ bool Ps1BootRuntime::mirror_jojo_pad_buffers() noexcept {
         const auto high = bus_.write8(
             buffer_ptr.value + 3u,
             static_cast<std::uint8_t>(buttons >> 8u));
-        mirrored = mirrored ||
+        driver_buffer_ready = driver_buffer_ready ||
             (status.status == R3000aBusStatus::ok &&
              id.status == R3000aBusStatus::ok &&
              low.status == R3000aBusStatus::ok &&
              high.status == R3000aBusStatus::ok);
     }
-    return mirrored;
+    return driver_buffer_ready;
 }
 
 bool Ps1BootRuntime::enter_interrupt_chain_node() noexcept {

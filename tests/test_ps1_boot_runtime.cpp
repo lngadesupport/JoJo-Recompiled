@@ -574,6 +574,14 @@ static void test_jojo_pad_buffer_compatibility_mirror() {
     CHECK(runtime.bus().read8(pad2_buffer + 1u).value == 0x41u);
     CHECK(runtime.bus().read8(pad2_buffer + 2u).value == 0xEFu);
     CHECK(runtime.bus().read8(pad2_buffer + 3u).value == 0xFFu);
+    CHECK(runtime.bus().read8(0x8007CE68u + 0u).value == 0x00u);
+    CHECK(runtime.bus().read8(0x8007CE68u + 1u).value == 0x41u);
+    CHECK(runtime.bus().read8(0x8007CE68u + 2u).value == 0xF7u);
+    CHECK(runtime.bus().read8(0x8007CE68u + 3u).value == 0xFFu);
+    CHECK(runtime.bus().read8(0x8007CE90u + 0u).value == 0x00u);
+    CHECK(runtime.bus().read8(0x8007CE90u + 1u).value == 0x41u);
+    CHECK(runtime.bus().read8(0x8007CE90u + 2u).value == 0xEFu);
+    CHECK(runtime.bus().read8(0x8007CE90u + 3u).value == 0xFFu);
     CHECK(runtime.bus().hardware_services().sio0()
               .digital_pad_poll_count(0u) == 1u);
     CHECK(runtime.bus().hardware_services().sio0()
