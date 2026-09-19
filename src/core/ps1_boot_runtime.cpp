@@ -247,7 +247,8 @@ void Ps1BootRuntime::restore_interrupt_resume_state(
     cpu_.gpr[0] = 0u;
 }
 
-bool Ps1BootRuntime::mirror_jojo_pad_buffers() noexcept {
+bool Ps1BootRuntime::mirror_jojo_pad_buffers(
+    bool mirror_raw_buffers) noexcept {
     for (std::size_t i = 0u; i < kJojoPadTableSignature.size(); ++i) {
         const auto entry = bus_.read32(
             kJojoPadTablePhysical +
@@ -270,17 +271,21 @@ bool Ps1BootRuntime::mirror_jojo_pad_buffers() noexcept {
     for (std::uint32_t port = 0u; port < 2u; ++port) {
         const auto buttons = sio0.sample_digital_pad_buttons(port);
 
-        // Feed the exact raw buffers consumed by JoJo's 0x80011020 input
-        // decoder. Format: status, ID1, active-low buttons low/high.
-        const auto raw = kJojoRawPadBuffers[port];
-        static_cast<void>(bus_.write8(raw + 0u, 0x00u));
-        static_cast<void>(bus_.write8(raw + 1u, 0x41u));
-        static_cast<void>(bus_.write8(
-            raw + 2u,
-            static_cast<std::uint8_t>(buttons)));
-        static_cast<void>(bus_.write8(
-            raw + 3u,
-            static_cast<std::uint8_t>(buttons >> 8u)));
+        // JoJo consumes these raw bytes early in the frame, then reuses the
+        // same RAM for GPU ordering-table packets. Refresh them only at
+        // VBlank; interrupt-chain completions can happen after the display
+        // list has already been constructed.
+        if (mirror_raw_buffers) {
+            const auto raw = kJojoRawPadBuffers[port];
+            static_cast<void>(bus_.write8(raw + 0u, 0x00u));
+            static_cast<void>(bus_.write8(raw + 1u, 0x41u));
+            static_cast<void>(bus_.write8(
+                raw + 2u,
+                static_cast<std::uint8_t>(buttons)));
+            static_cast<void>(bus_.write8(
+                raw + 3u,
+                static_cast<std::uint8_t>(buttons >> 8u)));
+        }
 
         // Keep the linked retail Pad/Card driver's own buffers coherent too.
         const auto state_guest =
@@ -347,7 +352,7 @@ bool Ps1BootRuntime::enter_interrupt_chain_node() noexcept {
         const bool bypass_jojo_pad_card =
             first.value == kJojoPadCardFirstHandler &&
             second.value == kJojoPadCardSecondHandler &&
-            mirror_jojo_pad_buffers();
+            mirror_jojo_pad_buffers(false);
 
         if (first.value != 0u && !bypass_jojo_pad_card) {
             cpu_.gpr[31] = kInterruptChainReturnGuest;
@@ -385,7 +390,7 @@ bool Ps1BootRuntime::enter_interrupt_chain_node() noexcept {
             return true;
         }
         restore_interrupt_resume_state(resume);
-        static_cast<void>(mirror_jojo_pad_buffers());
+        static_cast<void>(mirror_jojo_pad_buffers(false));
         return true;
     }
     return false;
@@ -449,7 +454,7 @@ bool Ps1BootRuntime::continue_interrupt_priority_chain() noexcept {
         return true;
     }
     restore_interrupt_resume_state(resume);
-    static_cast<void>(mirror_jojo_pad_buffers());
+    static_cast<void>(mirror_jojo_pad_buffers(false));
     return true;
 }
 
@@ -852,7 +857,7 @@ void Ps1BootRuntime::signal_vblank() noexcept {
     auto& hardware = bus_.hardware_services();
     hardware.signal_vblank();
     bios_.service_pad_vblank(bus_, hardware.sio0());
-    static_cast<void>(mirror_jojo_pad_buffers());
+    static_cast<void>(mirror_jojo_pad_buffers(true));
     cpu_.external_interrupt_pending =
         hardware.interrupt_pending() ? 0x04u : 0u;
 }
