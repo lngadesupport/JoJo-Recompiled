@@ -540,6 +540,12 @@ Ps1BootReport Ps1BootRuntime::run(const Ps1BootOptions& options) noexcept {
     report.native_x64_enabled = native_x64_enabled_;
     bus_.set_diagnostic_mmio_probe_enabled(options.diagnostic_mmio_probe);
     const auto native_cache_at_start = native_x64_cache_.stats();
+    const bool fast_gameplay_path =
+        options.trace_capacity == 0u &&
+        options.mmio_event_capacity == 0u &&
+        options.bios_event_capacity == 0u &&
+        options.stagnation_instruction_limit == 0u &&
+        !options.diagnostic_mmio_probe;
 
     const auto& hardware_at_start = bus_.hardware_services();
     const auto dma_transfer_count_at_start = hardware_at_start.completed_dma_transfer_count();
@@ -549,7 +555,49 @@ Ps1BootReport Ps1BootRuntime::run(const Ps1BootOptions& options) noexcept {
     const auto gpu_gp1_command_count_at_start = hardware_at_start.gpu_gp1_command_count();
     const auto vram_write_count_at_start = hardware_at_start.gpu_vram_write_count();
 
+    std::uint32_t pending_hardware_cycles=0u;
+    const auto commit_hardware = [&](std::uint32_t cpu_cycles) noexcept {
+        if(cpu_cycles==0u) return;
+        auto& hardware = bus_.hardware_services();
+        hardware.step(cpu_cycles);
+
+        if (hardware.pending_dma_transfer()) {
+            const bool completed =
+                hardware.execute_pending_dma(
+                    std::span<std::uint8_t>(
+                        bus_.main_ram_data(),
+                        Ps1MemoryBus::main_ram_size));
+            const auto completed_channel =
+                hardware.last_completed_dma_channel();
+            if (completed && completed_channel &&
+                *completed_channel == 4u) {
+                bios_.deliver_event(0xF0000009u, 0x00000020u);
+            }
+        }
+
+        cpu_.external_interrupt_pending =
+            hardware.interrupt_pending() ? 0x04u : 0u;
+    };
+    const auto flush_hardware = [&]() noexcept {
+        if(pending_hardware_cycles==0u) return;
+        const auto cycles=pending_hardware_cycles;
+        pending_hardware_cycles=0u;
+        commit_hardware(cycles);
+    };
+    const auto pump_hardware = [&](std::uint32_t cpu_cycles) noexcept {
+        if(!fast_gameplay_path){
+            commit_hardware(cpu_cycles);
+            return;
+        }
+        pending_hardware_cycles+=cpu_cycles;
+        constexpr std::uint32_t kFastHardwareQuantum=16u;
+        if(pending_hardware_cycles>=kFastHardwareQuantum){
+            flush_hardware();
+        }
+    };
+
     const auto finish = [&](Ps1BootStopReason reason) {
+        flush_hardware();
         report.stop_reason = reason;
         const auto& hardware = bus_.hardware_services();
         report.dma_transfer_count =
@@ -608,30 +656,6 @@ Ps1BootReport Ps1BootRuntime::run(const Ps1BootOptions& options) noexcept {
     std::uint64_t instructions_since_progress = 0u;
     std::set<std::uint64_t> observed_bios_dependencies;
     std::set<std::uint64_t> observed_mmio_dependencies;
-
-    const auto pump_hardware = [&](std::uint32_t cpu_cycles) noexcept {
-        auto& hardware = bus_.hardware_services();
-        hardware.step(cpu_cycles);
-
-        if (hardware.pending_dma_transfer()) {
-            const bool completed =
-                hardware.execute_pending_dma(
-                    std::span<std::uint8_t>(
-                        bus_.main_ram_data(),
-                        Ps1MemoryBus::main_ram_size));
-            const auto completed_channel =
-                hardware.last_completed_dma_channel();
-            if (completed && completed_channel &&
-                *completed_channel == 4u) {
-                // PsyQ waits on the BIOS SPU hardware event after DMA4.
-                // Spec 20h is the command-completed notification.
-                bios_.deliver_event(0xF0000009u, 0x00000020u);
-            }
-        }
-
-        cpu_.external_interrupt_pending =
-            hardware.interrupt_pending() ? 0x04u : 0u;
-    };
 
     while (report.execution_steps < options.instruction_budget) {
         report.last_pc = cpu_.pc;
@@ -806,12 +830,6 @@ Ps1BootReport Ps1BootRuntime::run(const Ps1BootOptions& options) noexcept {
             cpu_.external_interrupt_pending == 0u &&
             pc_in_native_text &&
             observed_opcode.status == R3000aBusStatus::ok) {
-            const bool fast_gameplay_path =
-                options.trace_capacity == 0u &&
-                options.mmio_event_capacity == 0u &&
-                options.bios_event_capacity == 0u &&
-                options.stagnation_instruction_limit == 0u;
-
             if (fast_gameplay_path &&
                 !cpu_.pending_load.valid &&
                 !cpu_.delay_slot.active) {
