@@ -1,6 +1,7 @@
 #include "core/ps1_commercial_evidence.h"
 #include "core/ps1_commercial_evidence_io.h"
 #include "core/ps1_commercial_frontier.h"
+#include "core/ps1_hle_bios.h"
 #include "core/ps1_timing.h"
 
 #include <algorithm>
@@ -123,6 +124,9 @@ int run_gameplay_probe(
     std::uint64_t total_native_retired = 0u;
     std::uint64_t total_reference_retired = 0u;
     std::uint64_t completed_frames = 0u;
+    std::array<std::uint64_t, 5> pad_bios_calls{};
+    std::uint64_t pad_internal_set_calls = 0u;
+    std::uint64_t pad_internal_clear_calls = 0u;
     jojo::Ps1BootReport last_boot{};
     auto frontier = jojo::Ps1CommercialFrontierClass::execution_budget;
     std::optional<jojo::Ps1DisplayFrame> last_non_black_frame;
@@ -158,6 +162,23 @@ int run_gameplay_probe(
         total_instructions_retired += last_boot.instructions_retired;
         total_native_retired += last_boot.native_x64_instructions_retired;
         total_reference_retired += last_boot.reference_instructions_retired;
+
+        for (const auto& bios : last_boot.recent_bios_calls) {
+            if (bios.table_physical == 0x000000B0u &&
+                bios.selector >= 0x12u &&
+                bios.selector <= 0x16u) {
+                ++pad_bios_calls[
+                    static_cast<std::size_t>(bios.selector - 0x12u)];
+            } else if (
+                bios.table_physical ==
+                jojo::kPs1HleSetPadEnableHandlerAddress) {
+                ++pad_internal_set_calls;
+            } else if (
+                bios.table_physical ==
+                jojo::kPs1HleClearPadEnableHandlerAddress) {
+                ++pad_internal_clear_calls;
+            }
+        }
 
         frontier = jojo::classify_ps1_commercial_frontier(last_boot);
         if (frontier != jojo::Ps1CommercialFrontierClass::execution_budget) {
@@ -297,6 +318,13 @@ int run_gameplay_probe(
            << controller_poll << '\n';
     report << "validation_controller_input_observed="
            << controller_input << '\n';
+    report << "bios_b12_initpad2_calls=" << pad_bios_calls[0] << '\n';
+    report << "bios_b13_startpad2_calls=" << pad_bios_calls[1] << '\n';
+    report << "bios_b14_stoppad2_calls=" << pad_bios_calls[2] << '\n';
+    report << "bios_b15_pad_init2_calls=" << pad_bios_calls[3] << '\n';
+    report << "bios_b16_pad_dr_calls=" << pad_bios_calls[4] << '\n';
+    report << "bios_pad_internal_set_calls=" << pad_internal_set_calls << '\n';
+    report << "bios_pad_internal_clear_calls=" << pad_internal_clear_calls << '\n';
     report << "spu_sample_frames=" << counters.spu_sample_frames << '\n';
     report << "spu_nonzero_samples=" << counters.spu_nonzero_samples << '\n';
     report << "validation_audio_non_silent_observed="
@@ -343,6 +371,13 @@ int run_gameplay_probe(
     std::cout << "pad0_poll_count=" << counters.pad_poll_count[0] << "\n";
     std::cout << "pad0_pressed_poll_count="
               << counters.pad_pressed_poll_count[0] << "\n";
+    std::cout << "bios_b12_initpad2_calls=" << pad_bios_calls[0] << "\n";
+    std::cout << "bios_b13_startpad2_calls=" << pad_bios_calls[1] << "\n";
+    std::cout << "bios_b14_stoppad2_calls=" << pad_bios_calls[2] << "\n";
+    std::cout << "bios_b15_pad_init2_calls=" << pad_bios_calls[3] << "\n";
+    std::cout << "bios_b16_pad_dr_calls=" << pad_bios_calls[4] << "\n";
+    std::cout << "bios_pad_internal_set_calls=" << pad_internal_set_calls << "\n";
+    std::cout << "bios_pad_internal_clear_calls=" << pad_internal_clear_calls << "\n";
     std::cout << "spu_nonzero_samples="
               << counters.spu_nonzero_samples << "\n";
     std::cout << "memory_card0_read_sector_count="
