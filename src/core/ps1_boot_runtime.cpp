@@ -16,6 +16,10 @@ namespace {
 constexpr std::uint32_t kBiosA0 = 0x000000A0u;
 constexpr std::uint32_t kBiosB0 = 0x000000B0u;
 constexpr std::uint32_t kBiosC0 = 0x000000C0u;
+constexpr std::uint32_t kB0ReturnFromException = 0x00000017u;
+constexpr std::uint32_t kInterruptChainReturnPhysical = 0x0000F000u;
+constexpr std::uint32_t kInterruptChainReturnGuest = 0x8000F000u;
+constexpr std::uint32_t kMaxInterruptChainNodes = 64u;
 constexpr std::uint32_t kA0SendGp1Command = 0x00000048u;
 constexpr std::uint32_t kA0GpuCw = 0x00000049u;
 constexpr std::uint32_t kA0GetGpuStatus = 0x0000004Du;
@@ -203,6 +207,149 @@ bool Ps1BootRuntime::native_x64_enabled() const noexcept {
     return native_x64_enabled_;
 }
 
+void Ps1BootRuntime::restore_interrupt_resume_state(
+    const R3000aState& resume_state) noexcept {
+    const auto current_cause = cpu_.cop0.cause;
+    const auto current_epc = cpu_.cop0.epc;
+    const auto current_target = cpu_.cop0.target_address;
+    const auto current_bad_vaddr = cpu_.cop0.bad_vaddr;
+    const auto current_external_irq = cpu_.external_interrupt_pending;
+
+    cpu_ = resume_state;
+    cpu_.cop0.cause = current_cause;
+    cpu_.cop0.epc = current_epc;
+    cpu_.cop0.target_address = current_target;
+    cpu_.cop0.bad_vaddr = current_bad_vaddr;
+    cpu_.external_interrupt_pending = current_external_irq;
+    cpu_.gpr[0] = 0u;
+}
+
+bool Ps1BootRuntime::enter_interrupt_chain_node() noexcept {
+    while (interrupt_chain_.active) {
+        if (interrupt_chain_.nodes_visited >= kMaxInterruptChainNodes) {
+            restore_interrupt_resume_state(interrupt_chain_.resume_state);
+            interrupt_chain_ = {};
+            return false;
+        }
+
+        const auto next = bus_.read32(interrupt_chain_.node + 0u);
+        const auto second = bus_.read32(interrupt_chain_.node + 4u);
+        const auto first = bus_.read32(interrupt_chain_.node + 8u);
+        if (next.status != R3000aBusStatus::ok ||
+            second.status != R3000aBusStatus::ok ||
+            first.status != R3000aBusStatus::ok) {
+            restore_interrupt_resume_state(interrupt_chain_.resume_state);
+            interrupt_chain_ = {};
+            return false;
+        }
+
+        ++interrupt_chain_.nodes_visited;
+        interrupt_chain_.next_node = next.value;
+        interrupt_chain_.second_function = second.value;
+        interrupt_chain_.phase = Ps1InterruptChainPhase::first;
+
+        if (first.value != 0u) {
+            cpu_.gpr[31] = kInterruptChainReturnGuest;
+            cpu_.pc = first.value;
+            cpu_.next_pc = first.value + 4u;
+            cpu_.pending_load = {};
+            cpu_.delay_slot = {};
+            cpu_.gpr[0] = 0u;
+            return true;
+        }
+
+        if (interrupt_chain_.next_node != 0u) {
+            interrupt_chain_.node = interrupt_chain_.next_node;
+            continue;
+        }
+
+        bool found = false;
+        for (auto priority = interrupt_chain_.priority + 1u;
+             priority < 4u;
+             ++priority) {
+            const auto head = bios_.interrupt_priority_head(priority);
+            if (head && *head != 0u) {
+                interrupt_chain_.priority = priority;
+                interrupt_chain_.node = *head;
+                found = true;
+                break;
+            }
+        }
+        if (found) continue;
+
+        const auto resume = interrupt_chain_.resume_state;
+        interrupt_chain_ = {};
+        const auto hooked = bios_.begin_interrupt_hook(cpu_, resume, bus_);
+        if (hooked == Ps1HleBiosDispatchStatus::handled) {
+            return true;
+        }
+        restore_interrupt_resume_state(resume);
+        return true;
+    }
+    return false;
+}
+
+bool Ps1BootRuntime::begin_interrupt_priority_chain(
+    const R3000aState& resume_state) noexcept {
+    if (interrupt_chain_.active) return false;
+
+    for (std::uint32_t priority = 0u; priority < 4u; ++priority) {
+        const auto head = bios_.interrupt_priority_head(priority);
+        if (!head || *head == 0u) continue;
+
+        interrupt_chain_ = {};
+        interrupt_chain_.active = true;
+        interrupt_chain_.resume_state = resume_state;
+        interrupt_chain_.priority = priority;
+        interrupt_chain_.node = *head;
+        return enter_interrupt_chain_node();
+    }
+    return false;
+}
+
+bool Ps1BootRuntime::continue_interrupt_priority_chain() noexcept {
+    if (!interrupt_chain_.active) return false;
+
+    if (interrupt_chain_.phase == Ps1InterruptChainPhase::first &&
+        cpu_.gpr[2] != 0u &&
+        interrupt_chain_.second_function != 0u) {
+        interrupt_chain_.phase = Ps1InterruptChainPhase::second;
+        const auto target = interrupt_chain_.second_function;
+        cpu_.gpr[31] = kInterruptChainReturnGuest;
+        cpu_.pc = target;
+        cpu_.next_pc = target + 4u;
+        cpu_.pending_load = {};
+        cpu_.delay_slot = {};
+        cpu_.gpr[0] = 0u;
+        return true;
+    }
+
+    if (interrupt_chain_.next_node != 0u) {
+        interrupt_chain_.node = interrupt_chain_.next_node;
+        return enter_interrupt_chain_node();
+    }
+
+    for (auto priority = interrupt_chain_.priority + 1u;
+         priority < 4u;
+         ++priority) {
+        const auto head = bios_.interrupt_priority_head(priority);
+        if (head && *head != 0u) {
+            interrupt_chain_.priority = priority;
+            interrupt_chain_.node = *head;
+            return enter_interrupt_chain_node();
+        }
+    }
+
+    const auto resume = interrupt_chain_.resume_state;
+    interrupt_chain_ = {};
+    const auto hooked = bios_.begin_interrupt_hook(cpu_, resume, bus_);
+    if (hooked == Ps1HleBiosDispatchStatus::handled) {
+        return true;
+    }
+    restore_interrupt_resume_state(resume);
+    return true;
+}
+
 Ps1BootReport Ps1BootRuntime::run(const Ps1BootOptions& options) noexcept {
     Ps1BootReport report{};
     report.last_pc = cpu_.pc;
@@ -306,6 +453,14 @@ Ps1BootReport Ps1BootRuntime::run(const Ps1BootOptions& options) noexcept {
         report.last_pc = cpu_.pc;
 
         const auto physical_pc = Ps1MemoryBus::guest_to_physical(cpu_.pc);
+        if (physical_pc &&
+            *physical_pc == kInterruptChainReturnPhysical &&
+            interrupt_chain_.active) {
+            static_cast<void>(continue_interrupt_priority_chain());
+            instructions_since_progress = 0u;
+            continue;
+        }
+
         if (physical_pc && is_hle_internal_bios_entry(*physical_pc)) {
             if (observed_bios_dependencies.insert(
                     bios_dependency_key(*physical_pc, 0u)).second) {
@@ -348,6 +503,18 @@ Ps1BootReport Ps1BootRuntime::run(const Ps1BootOptions& options) noexcept {
                 cpu_.gpr[7],
                 cpu_.gpr[31],
             }, options.bios_event_capacity);
+
+            if (*physical_pc == kBiosB0 &&
+                cpu_.gpr[9] == kB0ReturnFromException &&
+                interrupt_chain_.active) {
+                const auto resume = interrupt_chain_.resume_state;
+                interrupt_chain_ = {};
+                restore_interrupt_resume_state(resume);
+                diagnostic_bios_frontier_pending_ = false;
+                instructions_since_progress = 0u;
+                continue;
+            }
+
             if (*physical_pc == kBiosA0) {
                 const auto selector = cpu_.gpr[9];
                 if (selector == kA0SendGp1Command) {
@@ -516,6 +683,11 @@ Ps1BootReport Ps1BootRuntime::run(const Ps1BootOptions& options) noexcept {
                 resume_state.external_interrupt_pending =
                     cpu_.external_interrupt_pending;
 
+                if (begin_interrupt_priority_chain(resume_state)) {
+                    instructions_since_progress = 0u;
+                    continue;
+                }
+
                 const auto hooked =
                     bios_.begin_interrupt_hook(
                         cpu_, resume_state, bus_);
@@ -633,6 +805,39 @@ std::uint64_t Ps1BootRuntime::diagnostic_state_hash() const noexcept {
 
     hash_u64(hash, bios_.diagnostic_state_hash());
     hash_bool(hash, diagnostic_bios_frontier_pending_);
+    hash_bool(hash, interrupt_chain_.active);
+    if (interrupt_chain_.active) {
+        hash_u32(hash, interrupt_chain_.priority);
+        hash_u32(hash, interrupt_chain_.node);
+        hash_u32(hash, interrupt_chain_.next_node);
+        hash_u32(hash, interrupt_chain_.second_function);
+        hash_byte(
+            hash,
+            static_cast<std::uint8_t>(interrupt_chain_.phase));
+        hash_u32(hash, interrupt_chain_.nodes_visited);
+        for (const auto value : interrupt_chain_.resume_state.gpr) {
+            hash_u32(hash, value);
+        }
+        hash_u32(hash, interrupt_chain_.resume_state.hi);
+        hash_u32(hash, interrupt_chain_.resume_state.lo);
+        hash_u32(hash, interrupt_chain_.resume_state.pc);
+        hash_u32(hash, interrupt_chain_.resume_state.next_pc);
+        hash_bool(hash, interrupt_chain_.resume_state.pending_load.valid);
+        hash_byte(hash, interrupt_chain_.resume_state.pending_load.reg);
+        hash_u32(hash, interrupt_chain_.resume_state.pending_load.value);
+        hash_bool(hash, interrupt_chain_.resume_state.delay_slot.active);
+        hash_u32(hash, interrupt_chain_.resume_state.delay_slot.branch_pc);
+        hash_bool(hash, interrupt_chain_.resume_state.delay_slot.taken);
+        hash_u32(hash, interrupt_chain_.resume_state.delay_slot.target);
+        hash_u32(hash, interrupt_chain_.resume_state.cop0.target_address);
+        hash_u32(hash, interrupt_chain_.resume_state.cop0.bad_vaddr);
+        hash_u32(hash, interrupt_chain_.resume_state.cop0.status);
+        hash_u32(hash, interrupt_chain_.resume_state.cop0.cause);
+        hash_u32(hash, interrupt_chain_.resume_state.cop0.epc);
+        hash_byte(
+            hash,
+            interrupt_chain_.resume_state.external_interrupt_pending);
+    }
     return hash;
 }
 
@@ -649,6 +854,7 @@ Ps1BootRuntimeState Ps1BootRuntime::save_state() const {
         native_text_end_,
         native_x64_enabled_,
         diagnostic_bios_frontier_pending_,
+        interrupt_chain_,
     };
 }
 
@@ -665,6 +871,7 @@ Result<void> Ps1BootRuntime::load_state(const Ps1BootRuntimeState& state) {
         native_x64_enabled_ = state.native_x64_enabled;
         diagnostic_bios_frontier_pending_ =
             state.diagnostic_bios_frontier_pending;
+        interrupt_chain_ = state.interrupt_chain;
 
         // Compiled host code is derived state. Never restore stale cache
         // entries across a guest-state rewind.

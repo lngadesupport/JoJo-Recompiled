@@ -14,6 +14,22 @@
 
 namespace jojo {
 
+enum class Ps1InterruptChainPhase : std::uint8_t {
+    first,
+    second,
+};
+
+struct Ps1InterruptChainState {
+    bool active{};
+    R3000aState resume_state{};
+    std::uint32_t priority{};
+    std::uint32_t node{};
+    std::uint32_t next_node{};
+    std::uint32_t second_function{};
+    Ps1InterruptChainPhase phase{Ps1InterruptChainPhase::first};
+    std::uint32_t nodes_visited{};
+};
+
 struct Ps1BootRuntimeState {
     Ps1MemoryBus bus{};
     R3000aState cpu{};
@@ -22,6 +38,7 @@ struct Ps1BootRuntimeState {
     std::uint64_t native_text_end{};
     bool native_x64_enabled{};
     bool diagnostic_bios_frontier_pending{};
+    Ps1InterruptChainState interrupt_chain{};
 };
 
 enum class Ps1BiosFallback : std::uint8_t {
@@ -63,6 +80,13 @@ public:
     [[nodiscard]] const Ps1MemoryBus& bus() const noexcept;
 
 private:
+    [[nodiscard]] bool begin_interrupt_priority_chain(
+        const R3000aState& resume_state) noexcept;
+    [[nodiscard]] bool continue_interrupt_priority_chain() noexcept;
+    [[nodiscard]] bool enter_interrupt_chain_node() noexcept;
+    void restore_interrupt_resume_state(
+        const R3000aState& resume_state) noexcept;
+
     Ps1MemoryBus bus_{};
     R3000aState cpu_{};
     Ps1HleBios bios_{};
@@ -71,6 +95,7 @@ private:
     std::uint64_t native_text_end_{};
     bool native_x64_enabled_{};
     bool diagnostic_bios_frontier_pending_{};
+    Ps1InterruptChainState interrupt_chain_{};
 };
 
 } // namespace jojo
