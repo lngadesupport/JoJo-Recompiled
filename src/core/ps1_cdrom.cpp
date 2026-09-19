@@ -687,6 +687,43 @@ R3000aBusResult Ps1CdromController::execute_command(std::uint8_t command) noexce
             return {R3000aBusStatus::ok, 0u};
         }
 
+        case 0x15u: // SeekL
+        case 0x16u: { // SeekP
+            if (disc_ == nullptr || !parameters_.empty() ||
+                current_lba_ >= disc_->logical_sector_count()) {
+                return {R3000aBusStatus::unsupported, 0u};
+            }
+
+            // Explicit seeks cancel any active/pending data read. Keep the
+            // Setloc-derived LBA as the seek target and report SEEK until the
+            // delayed completion interrupt.
+            stop_read_stream();
+            drive_sector_queue_.clear();
+            sector_buffer_.clear();
+            data_.clear();
+
+            status_byte_ = static_cast<std::uint8_t>(
+                (status_byte_ & ~kStatActivityMask) |
+                kStatMotor | kStatSeek);
+            const auto completed_status = static_cast<std::uint8_t>(
+                (status_byte_ & ~kStatActivityMask) | kStatMotor);
+            deferred_responses_.push_back(DeferredResponse{
+                0x02u,
+                completed_status,
+                kCdCommandCompletionCycles,
+                {},
+                false,
+                true,
+                false,
+            });
+            if (!push_response(status_byte_)) {
+                deferred_responses_.pop_back();
+                return {R3000aBusStatus::unsupported, 0u};
+            }
+            interrupt_flags_ = 0x03u;
+            return {R3000aBusStatus::ok, 0u};
+        }
+
         case 0x0Au: { // Init: preserve host HINTMSK, INT3 then INT2
             const auto* attached = disc_;
             const auto interrupt_enable = interrupt_enable_;

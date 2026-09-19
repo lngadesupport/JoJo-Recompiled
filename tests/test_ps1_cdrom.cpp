@@ -211,6 +211,39 @@ int main() {
     CHECK(cd.write8(0x1F801800u, 0x00u).status ==
           jojo::R3000aBusStatus::ok);
 
+    // SeekL/SeekP use the current Setloc target and complete in two
+    // phases: INT3 acknowledge while SEEK is active, then INT2 completion.
+    for (const auto seek_command : {0x15u, 0x16u}) {
+        CHECK(cd.write8(
+                  0x1F801801u,
+                  static_cast<std::uint8_t>(seek_command)).status ==
+              jojo::R3000aBusStatus::ok);
+        const auto seek_ack = cd.read8(0x1F801801u);
+        CHECK(seek_ack.status == jojo::R3000aBusStatus::ok);
+        CHECK((seek_ack.value & 0x42u) == 0x42u);
+        CHECK(cd.write8(0x1F801800u, 0x01u).status ==
+              jojo::R3000aBusStatus::ok);
+        CHECK((cd.read8(0x1F801803u).value & 0x07u) == 0x03u);
+        CHECK(cd.write8(0x1F801803u, 0x07u).status ==
+              jojo::R3000aBusStatus::ok);
+        CHECK(cd.write8(0x1F801800u, 0x00u).status ==
+              jojo::R3000aBusStatus::ok);
+
+        cd.step(33869u);
+        const auto seek_complete = cd.read8(0x1F801801u);
+        CHECK(seek_complete.status == jojo::R3000aBusStatus::ok);
+        CHECK((seek_complete.value & 0x02u) != 0u);
+        CHECK((seek_complete.value & 0x40u) == 0u);
+        CHECK(cd.write8(0x1F801800u, 0x01u).status ==
+              jojo::R3000aBusStatus::ok);
+        CHECK((cd.read8(0x1F801803u).value & 0x07u) == 0x02u);
+        CHECK(cd.write8(0x1F801803u, 0x07u).status ==
+              jojo::R3000aBusStatus::ok);
+        CHECK(cd.write8(0x1F801800u, 0x00u).status ==
+              jojo::R3000aBusStatus::ok);
+        CHECK(cd.current_lba() == 25u);
+    }
+
     // ReadN acknowledges with INT3, then streams INT1 + sector data until
     // Pause/Stop. Setmode=80h above selects the real PS1 double-speed cadence.
     CHECK(cd.write8(0x1F801801u, 0x06u).status == jojo::R3000aBusStatus::ok);
