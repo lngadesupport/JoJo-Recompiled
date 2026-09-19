@@ -26,8 +26,8 @@ struct GraphicsSettings {
     int width{1920};
     int height{1080};
     AspectRatio aspect_ratio{AspectRatio::ratio_16_9};
-    TextureFilter texture_filter{TextureFilter::x16};
-    Msaa msaa{Msaa::x4};
+    TextureFilter texture_filter{TextureFilter::x2};
+    Msaa msaa{Msaa::off};
     DisplayMode display_mode{DisplayMode::windowed};
     bool vsync{false};
     int frame_limit{240};
