@@ -858,8 +858,12 @@ bool initialize_game_runtime_runner(){
     }
 
 #if defined(_M_X64)
-    runner.value.set_native_x64_enabled(true);
-    add_log(L"Backend híbrido R3000A→x64 habilitado; operações não promovidas usam fallback de referência.");
+    // The block JIT remains available to diagnostics, but the commercial
+    // gameplay path currently uses the faster timing-safe prefetched
+    // interpreter. This avoids interrupt timing drift while the block
+    // backend is expanded to cover memory/control-flow safely.
+    runner.value.set_native_x64_enabled(false);
+    add_log(L"Fast runtime x64 host: prefetch + direct PS1 RAM + timing-safe interpreter.");
 #endif
 
     const auto save_root=app_root()/L"saves";
@@ -914,7 +918,10 @@ void run_checkpoint(){
 
     if(checkpoint_btn) SetWindowTextW(checkpoint_btn,L"PARAR JOGO");
 #if defined(_M_X64)
-    status=L"Jogo em execução • PS1 direto • R3000A→x64 híbrido.";
+    status=L"Jogo em execução • PS1 direto • fast runtime • host até "+
+        (app_settings.graphics.frame_limit==0
+            ?std::wstring(L"unlimited")
+            :std::to_wstring(app_settings.graphics.frame_limit)+L" FPS");
 #else
     status=L"Jogo em execução • PS1 direto • timing de vídeo dinâmico.";
 #endif
