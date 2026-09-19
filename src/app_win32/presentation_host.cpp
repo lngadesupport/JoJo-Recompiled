@@ -176,7 +176,7 @@ struct PresentationShaderBytecodeCache {
     Microsoft::WRL::ComPtr<ID3DBlob> presentation_ps{};
     Microsoft::WRL::ComPtr<ID3DBlob> blit_vs{};
     Microsoft::WRL::ComPtr<ID3DBlob> blit_ps{};
-    ErrorCode error{ErrorCode::ok};
+    ErrorCode error{ErrorCode::none};
     std::string detail{};
     bool ready{};
 };
