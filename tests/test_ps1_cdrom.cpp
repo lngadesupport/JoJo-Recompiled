@@ -244,6 +244,25 @@ int main() {
         CHECK(cd.current_lba() == 25u);
     }
 
+    // GetlocP reports BCD track/index and relative/absolute position.
+    CHECK(cd.write8(0x1F801801u, 0x11u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(cd.read8(0x1F801801u).value == 0x01u);
+    CHECK(cd.read8(0x1F801801u).value == 0x01u);
+    CHECK(cd.read8(0x1F801801u).value == 0x00u);
+    CHECK(cd.read8(0x1F801801u).value == 0x00u);
+    CHECK(cd.read8(0x1F801801u).value == 0x24u);
+    CHECK(cd.read8(0x1F801801u).value == 0x00u);
+    CHECK(cd.read8(0x1F801801u).value == 0x02u);
+    CHECK(cd.read8(0x1F801801u).value == 0x24u);
+    CHECK(cd.write8(0x1F801800u, 0x01u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK((cd.read8(0x1F801803u).value & 0x07u) == 0x03u);
+    CHECK(cd.write8(0x1F801803u, 0x07u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(cd.write8(0x1F801800u, 0x00u).status ==
+          jojo::R3000aBusStatus::ok);
+
     // ReadN acknowledges with INT3, then streams INT1 + sector data until
     // Pause/Stop. Setmode=80h above selects the real PS1 double-speed cadence.
     CHECK(cd.write8(0x1F801801u, 0x06u).status == jojo::R3000aBusStatus::ok);

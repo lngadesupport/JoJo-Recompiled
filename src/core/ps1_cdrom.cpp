@@ -639,6 +639,81 @@ R3000aBusResult Ps1CdromController::execute_command(std::uint8_t command) noexce
             interrupt_flags_ = 0x03u;
             return {R3000aBusStatus::ok, 0u};
 
+        case 0x10u: { // GetlocL: newest data-sector header/subheader
+            if (disc_ == nullptr || !parameters_.empty() ||
+                current_lba_ == 0u) {
+                return {R3000aBusStatus::unsupported, 0u};
+            }
+
+            const auto newest_lba = current_lba_ - 1u;
+            auto sector = disc_->read_cdrom_sectors(
+                newest_lba, 1u, true);
+            if (sector && sector.value.size() >= 8u) {
+                for (std::size_t i = 0u; i < 8u; ++i) {
+                    if (!push_response(sector.value[i])) {
+                        return {R3000aBusStatus::unsupported, 0u};
+                    }
+                }
+            } else {
+                // Cooked images don't retain raw header/subheader bytes.
+                // Synthesize the standard data-sector header so the command
+                // remains useful for deterministic fixtures.
+                const auto absolute = newest_lba + 150u;
+                const auto total_seconds = absolute / 75u;
+                const std::array<std::uint8_t, 8> header{
+                    binary_to_bcd(static_cast<std::uint32_t>(
+                        total_seconds / 60u)),
+                    binary_to_bcd(static_cast<std::uint32_t>(
+                        total_seconds % 60u)),
+                    binary_to_bcd(static_cast<std::uint32_t>(
+                        absolute % 75u)),
+                    0x02u,
+                    0x00u, 0x00u, 0x00u, 0x00u,
+                };
+                for (const auto value : header) {
+                    if (!push_response(value)) {
+                        return {R3000aBusStatus::unsupported, 0u};
+                    }
+                }
+            }
+            interrupt_flags_ = 0x03u;
+            return {R3000aBusStatus::ok, 0u};
+        }
+
+        case 0x11u: { // GetlocP: track/index + relative/absolute SubQ position
+            if (disc_ == nullptr || !parameters_.empty()) {
+                return {R3000aBusStatus::unsupported, 0u};
+            }
+
+            const auto lba = current_lba_ > 0u
+                ? current_lba_ - 1u
+                : 0u;
+            const auto absolute = lba + 150u;
+            const auto relative_seconds = lba / 75u;
+            const auto absolute_seconds = absolute / 75u;
+            const std::array<std::uint8_t, 8> position{
+                0x01u, // track 1, BCD
+                0x01u, // index 1, BCD
+                binary_to_bcd(static_cast<std::uint32_t>(
+                    relative_seconds / 60u)),
+                binary_to_bcd(static_cast<std::uint32_t>(
+                    relative_seconds % 60u)),
+                binary_to_bcd(static_cast<std::uint32_t>(lba % 75u)),
+                binary_to_bcd(static_cast<std::uint32_t>(
+                    absolute_seconds / 60u)),
+                binary_to_bcd(static_cast<std::uint32_t>(
+                    absolute_seconds % 60u)),
+                binary_to_bcd(static_cast<std::uint32_t>(absolute % 75u)),
+            };
+            for (const auto value : position) {
+                if (!push_response(value)) {
+                    return {R3000aBusStatus::unsupported, 0u};
+                }
+            }
+            interrupt_flags_ = 0x03u;
+            return {R3000aBusStatus::ok, 0u};
+        }
+
         case 0x13u: // GetTN: title disc has one data track.
             parameters_.clear();
             if (!push_response(status_byte_) ||
