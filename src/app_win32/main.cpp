@@ -765,8 +765,7 @@ void game_tick(){
                 if(now-next_present_tick>present_period*4) next_present_tick=now;
                 next_present_tick+=present_period;
             }
-            const auto presented=game_presenter->present(
-                game_frame,
+            const auto presented=game_presenter->present_cached(
                 false,
                 app_settings.graphics.texture_filter,
                 app_settings.graphics.msaa,
