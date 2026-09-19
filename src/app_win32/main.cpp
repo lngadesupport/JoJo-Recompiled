@@ -831,10 +831,12 @@ void game_tick(){
         const auto frontier=jojo::classify_ps1_commercial_frontier(segment);
         if(frontier!=jojo::Ps1CommercialFrontierClass::execution_budget){
             service_game_audio();
-            const auto frame=game_runner->display_frame();
+            jojo::Ps1DisplayFrame frame{};
+            frame.rgba8.swap(game_frame.rgba8);
+            game_runner->display_frame_into(frame);
             game_frame_progress.observe(frame);
             if(frame.width!=0u&&frame.height!=0u&&!frame.rgba8.empty()){
-                (void)show_game_frame(frame);
+                (void)show_game_frame(std::move(frame));
             }
             stop_game_runtime(&segment);
             return;
@@ -857,12 +859,14 @@ void game_tick(){
     game_runner->signal_vblank();
     ++game_completed_frames;
 
-    const auto frame=game_runner->display_frame();
+    jojo::Ps1DisplayFrame frame{};
+    frame.rgba8.swap(game_frame.rgba8);
+    game_runner->display_frame_into(frame);
     if(game_completed_frames<=2u || (game_completed_frames%30u)==0u){
         game_frame_progress.observe(frame);
     }
     if(frame.width!=0u&&frame.height!=0u&&!frame.rgba8.empty()){
-        (void)show_game_frame(frame);
+        (void)show_game_frame(std::move(frame));
     }
 
     // Keep the hot path free of filesystem/report work. Saves and detailed
