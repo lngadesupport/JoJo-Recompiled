@@ -950,7 +950,7 @@ Ps1BootReport Ps1BootRuntime::run(const Ps1BootOptions& options) noexcept {
         const auto step=
             observed_opcode.status==R3000aBusStatus::ok &&
             (cpu_.pc & 3u)==0u
-                ?step_r3000a_prefetched(
+                ?step_r3000a_prefetched_ps1(
                     cpu_,bus_,observed_opcode.value)
                 :step_r3000a(cpu_,bus_);
         if (step.status == R3000aStepStatus::retired) {
