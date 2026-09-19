@@ -52,6 +52,12 @@ int main() {
     CHECK(status16.value ==
           (sio.read32(0x1F801044u).value & 0xFFFFu));
     CHECK((sio.read32(0x1F801044u).value & (1u << 7u)) != 0u);
+    sio.step(63u);
+    CHECK((sio.read32(0x1F801044u).value & (1u << 7u)) != 0u);
+    sio.step(1u);
+    CHECK((sio.read32(0x1F801044u).value & (1u << 7u)) == 0u);
+    // /ACK pulse ending does not clear the sticky IRQ; JOY_CTRL ACK does.
+    CHECK((sio.read32(0x1F801044u).value & (1u << 9u)) != 0u);
     CHECK((sio.read32(0x1F801044u).value & (1u << 9u)) == 0u);
 
     CHECK(sio.write16(0x1F80104Au, 0x1003u).status == jojo::R3000aBusStatus::ok);

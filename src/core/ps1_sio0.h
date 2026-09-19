@@ -29,6 +29,7 @@ public:
     [[nodiscard]] R3000aBusResult write32(
         std::uint32_t physical,
         std::uint32_t value) noexcept;
+    void step(std::uint32_t cpu_cycles) noexcept;
 
     void set_digital_pad_buttons(
         std::uint32_t port,
@@ -110,6 +111,7 @@ private:
     Ps1MemoryCard::Sector memory_write_buffer_{};
     bool memory_sector_valid_{};
     bool dsr_{};
+    std::uint32_t dsr_cycles_remaining_{};
     bool irq_{};
 };
 

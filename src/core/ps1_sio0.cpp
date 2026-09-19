@@ -18,6 +18,10 @@ constexpr std::uint32_t kStatusRxReady = 1u << 1u;
 constexpr std::uint32_t kStatusTxIdle = 1u << 2u;
 constexpr std::uint32_t kStatusDsr = 1u << 7u;
 constexpr std::uint32_t kStatusIrq = 1u << 9u;
+// Digital pads pulse /ACK a few microseconds after each byte. At 33.8688 MHz,
+// 64 CPU cycles is ~1.9 us, matching the timing window expected by JoJo's
+// BIOS Pad/Card handler.
+constexpr std::uint32_t kDsrPulseCycles = 64u;
 
 constexpr std::uint64_t kFnvOffset = 14695981039346656037ull;
 constexpr std::uint64_t kFnvPrime = 1099511628211ull;
@@ -46,6 +50,7 @@ void Ps1Sio0::reset_transaction() noexcept {
     memory_write_buffer_.fill(0u);
     memory_sector_valid_ = false;
     dsr_ = false;
+    dsr_cycles_remaining_ = 0u;
 }
 
 void Ps1Sio0::reset_registers() noexcept {
@@ -323,6 +328,7 @@ void Ps1Sio0::transfer_byte(std::uint8_t value) noexcept {
     if (rx_fifo_.size() > 8u) rx_fifo_.pop_front();
 
     dsr_ = more_data;
+    dsr_cycles_remaining_ = more_data ? kDsrPulseCycles : 0u;
     if (more_data && (control_ & kControlDsrIrqEnable) != 0u) {
         irq_ = true;
     }
@@ -344,6 +350,7 @@ R3000aBusResult Ps1Sio0::read8(std::uint32_t physical) noexcept {
 
 R3000aBusResult Ps1Sio0::read16(std::uint32_t physical) noexcept {
     if (physical == status_address) {
+        ++raw_status_read_count_;
         return {
             R3000aBusStatus::ok,
             static_cast<std::uint16_t>(status_value())};
@@ -473,6 +480,18 @@ R3000aBusResult Ps1Sio0::write32(
     return {R3000aBusStatus::unsupported, 0u};
 }
 
+void Ps1Sio0::step(std::uint32_t cpu_cycles) noexcept {
+    if (!dsr_ || dsr_cycles_remaining_ == 0u || cpu_cycles == 0u) {
+        return;
+    }
+    if (cpu_cycles >= dsr_cycles_remaining_) {
+        dsr_cycles_remaining_ = 0u;
+        dsr_ = false;
+        return;
+    }
+    dsr_cycles_remaining_ -= cpu_cycles;
+}
+
 void Ps1Sio0::set_digital_pad_buttons(
     std::uint32_t port,
     std::uint16_t active_low_buttons) noexcept {
@@ -584,6 +603,7 @@ std::uint64_t Ps1Sio0::diagnostic_state_hash() const noexcept {
     hash_byte(hash, memory_end_byte_);
     hash_byte(hash, static_cast<std::uint8_t>(memory_sector_valid_ ? 1u : 0u));
     hash_byte(hash, static_cast<std::uint8_t>(dsr_ ? 1u : 0u));
+    hash_u16(hash, static_cast<std::uint16_t>(dsr_cycles_remaining_));
     hash_byte(hash, static_cast<std::uint8_t>(irq_ ? 1u : 0u));
     for (const auto value : rx_fifo_) hash_byte(hash, value);
     return hash;

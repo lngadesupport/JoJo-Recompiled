@@ -496,6 +496,7 @@ R3000aBusResult Ps1HardwareServices::write32(std::uint32_t physical,
 void Ps1HardwareServices::step(std::uint32_t cpu_cycles) noexcept {
     spu_.step(cpu_cycles);
     cdrom_.step(cpu_cycles);
+    sio0_.step(cpu_cycles);
     sync_sio0_irq_edge();
     sync_cdrom_irq_edge();
     for (std::uint32_t channel = 0u; channel < timers_.size(); ++channel) {
