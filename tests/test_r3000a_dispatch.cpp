@@ -52,7 +52,8 @@ void test_safe_alu_dispatch_matches_reference() {
     const auto result = jojo::dispatch_r3000a_block(
         block, dispatched, dispatch_bus, cache);
     CHECK(result.status == jojo::R3000aDispatchStatus::completed);
-#if defined(_WIN32) && defined(_M_X64)
+#if (defined(_WIN32) && defined(_M_X64)) || \
+    (defined(__linux__) && defined(__x86_64__))
     CHECK(result.mode == jojo::R3000aDispatchMode::native_x64);
 #else
     CHECK(result.mode == jojo::R3000aDispatchMode::reference_fallback);
