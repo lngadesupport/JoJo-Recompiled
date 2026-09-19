@@ -61,7 +61,10 @@ public:
     [[nodiscard]] std::uint32_t dma_interrupt() const noexcept;
     [[nodiscard]] const Ps1DmaChannelState& dma_channel(std::uint32_t channel) const noexcept;
     [[nodiscard]] const std::optional<Ps1DmaTransferRequest>& pending_dma_transfer() const noexcept;
+    [[nodiscard]] const std::optional<Ps1DmaTransferRequest>& pending_dma_transfer(
+        std::uint32_t channel) const noexcept;
     [[nodiscard]] bool execute_pending_dma(std::span<std::uint8_t> main_ram) noexcept;
+    [[nodiscard]] std::optional<std::uint8_t> last_completed_dma_channel() const noexcept;
     [[nodiscard]] bool complete_dma_transfer(std::uint32_t channel) noexcept;
     void cancel_pending_dma_transfer() noexcept;
     [[nodiscard]] std::uint64_t completed_dma_transfer_count() const noexcept;
@@ -104,7 +107,8 @@ private:
     std::array<Ps1DmaChannelState, 7> dma_channels_{};
     std::uint32_t dma_control_{0x07654321u};
     std::uint32_t dma_interrupt_{};
-    std::optional<Ps1DmaTransferRequest> pending_dma_transfer_{};
+    std::array<std::optional<Ps1DmaTransferRequest>, 7> pending_dma_transfers_{};
+    std::optional<std::uint8_t> last_completed_dma_channel_{};
     std::uint64_t completed_dma_transfer_count_{};
     std::uint64_t vblank_count_{};
     Ps1CdromController cdrom_{};

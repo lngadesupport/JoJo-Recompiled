@@ -417,7 +417,7 @@ R3000aBusResult Ps1HardwareServices::write32(std::uint32_t physical,
             return {R3000aBusStatus::ok, 0u};
         }
         if (!dma_channel_enabled(dma_control_, dma_channel_index) ||
-            pending_dma_transfer_.has_value()) {
+            pending_dma_transfers_[dma_channel_index].has_value()) {
             return {R3000aBusStatus::unsupported, 0u};
         }
         const auto sync_mode =
@@ -472,7 +472,7 @@ R3000aBusResult Ps1HardwareServices::write32(std::uint32_t physical,
         }
 
         dma.chcr = value;
-        pending_dma_transfer_ = Ps1DmaTransferRequest{
+        pending_dma_transfers_[dma_channel_index] = Ps1DmaTransferRequest{
             static_cast<std::uint8_t>(dma_channel_index),
             dma.madr,
             static_cast<std::uint32_t>(words64),
@@ -568,56 +568,160 @@ const Ps1DmaChannelState& Ps1HardwareServices::dma_channel(std::uint32_t channel
 
 const std::optional<Ps1DmaTransferRequest>&
 Ps1HardwareServices::pending_dma_transfer() const noexcept {
-    return pending_dma_transfer_;
+    static const std::optional<Ps1DmaTransferRequest> empty{};
+    for (const auto& request : pending_dma_transfers_) {
+        if (request) return request;
+    }
+    return empty;
+}
+
+const std::optional<Ps1DmaTransferRequest>&
+Ps1HardwareServices::pending_dma_transfer(
+    std::uint32_t channel) const noexcept {
+    static const std::optional<Ps1DmaTransferRequest> empty{};
+    return channel < pending_dma_transfers_.size()
+        ? pending_dma_transfers_[channel]
+        : empty;
 }
 
 bool Ps1HardwareServices::execute_pending_dma(
     std::span<std::uint8_t> main_ram) noexcept {
-    if (!pending_dma_transfer_) return false;
-    const auto request = *pending_dma_transfer_;
+    last_completed_dma_channel_.reset();
 
-    if (request.channel == 2u &&
-        request.from_ram &&
-        request.sync_mode == 2u) {
-        if (main_ram.size() < 4u) return false;
+    const auto try_request =
+        [&](const Ps1DmaTransferRequest& request) noexcept -> bool {
+        if (request.channel == 2u &&
+            request.from_ram &&
+            request.sync_mode == 2u) {
+            if (main_ram.size() < 4u) return false;
 
-        auto candidate = gpu_;
-        std::vector<bool> visited(main_ram.size() / 4u, false);
-        std::uint32_t node_address = request.madr & 0x00FFFFFCu;
-        std::size_t nodes = 0u;
-        std::size_t total_words = 0u;
-        constexpr std::size_t kMaxLinkedListNodes = 65536u;
-        constexpr std::size_t kMaxLinkedListWords =
-            (2u * 1024u * 1024u) / 4u;
+            auto candidate = gpu_;
+            std::vector<bool> visited(main_ram.size() / 4u, false);
+            std::uint32_t node_address = request.madr & 0x00FFFFFCu;
+            std::size_t nodes = 0u;
+            std::size_t total_words = 0u;
+            constexpr std::size_t kMaxLinkedListNodes = 65536u;
+            constexpr std::size_t kMaxLinkedListWords =
+                (2u * 1024u * 1024u) / 4u;
 
-        for (;;) {
-            const auto node = static_cast<std::size_t>(node_address);
-            if ((node & 3u) != 0u ||
-                node + 4u > main_ram.size()) {
+            for (;;) {
+                const auto node = static_cast<std::size_t>(node_address);
+                if ((node & 3u) != 0u ||
+                    node + 4u > main_ram.size()) {
+                    return false;
+                }
+                const auto visited_index = node / 4u;
+                if (visited_index >= visited.size() ||
+                    visited[visited_index] ||
+                    ++nodes > kMaxLinkedListNodes) {
+                    return false;
+                }
+                visited[visited_index] = true;
+
+                const std::uint32_t header =
+                    static_cast<std::uint32_t>(main_ram[node + 0u]) |
+                    (static_cast<std::uint32_t>(main_ram[node + 1u]) << 8u) |
+                    (static_cast<std::uint32_t>(main_ram[node + 2u]) << 16u) |
+                    (static_cast<std::uint32_t>(main_ram[node + 3u]) << 24u);
+                const auto packet_words =
+                    static_cast<std::size_t>(header >> 24u);
+                if (packet_words > kMaxLinkedListWords - total_words ||
+                    node + 4u + packet_words * 4u > main_ram.size()) {
+                    return false;
+                }
+
+                for (std::size_t i = 0u; i < packet_words; ++i) {
+                    const auto offset = node + 4u + i * 4u;
+                    const std::uint32_t value =
+                        static_cast<std::uint32_t>(main_ram[offset + 0u]) |
+                        (static_cast<std::uint32_t>(main_ram[offset + 1u]) << 8u) |
+                        (static_cast<std::uint32_t>(main_ram[offset + 2u]) << 16u) |
+                        (static_cast<std::uint32_t>(main_ram[offset + 3u]) << 24u);
+                    if (candidate.write_gp0(value).status !=
+                        R3000aBusStatus::ok) {
+                        return false;
+                    }
+                }
+                total_words += packet_words;
+
+                if ((header & 0x00800000u) != 0u) break;
+                node_address = header & 0x00FFFFFCu;
+            }
+
+            gpu_ = candidate;
+            return complete_dma_transfer(2u);
+        }
+
+        if (request.channel == 6u &&
+            !request.from_ram &&
+            request.sync_mode == 0u) {
+            if (request.words == 0u || main_ram.size() < 4u) {
                 return false;
             }
-            const auto visited_index = node / 4u;
-            if (visited_index >= visited.size() ||
-                visited[visited_index] ||
-                ++nodes > kMaxLinkedListNodes) {
-                return false;
-            }
-            visited[visited_index] = true;
-
-            const std::uint32_t header =
-                static_cast<std::uint32_t>(main_ram[node + 0u]) |
-                (static_cast<std::uint32_t>(main_ram[node + 1u]) << 8u) |
-                (static_cast<std::uint32_t>(main_ram[node + 2u]) << 16u) |
-                (static_cast<std::uint32_t>(main_ram[node + 3u]) << 24u);
-            const auto packet_words =
-                static_cast<std::size_t>(header >> 24u);
-            if (packet_words > kMaxLinkedListWords - total_words ||
-                node + 4u + packet_words * 4u > main_ram.size()) {
+            const auto start =
+                static_cast<std::size_t>(request.madr & 0x00FFFFFCu);
+            const auto backward_bytes =
+                (static_cast<std::size_t>(request.words) - 1u) * 4u;
+            if (start + 4u > main_ram.size() ||
+                backward_bytes > start) {
                 return false;
             }
 
-            for (std::size_t i = 0u; i < packet_words; ++i) {
-                const auto offset = node + 4u + i * 4u;
+            for (std::size_t i = 0u; i < request.words; ++i) {
+                const auto address = start - i * 4u;
+                const std::uint32_t value =
+                    (i + 1u == request.words)
+                        ? 0x00FFFFFFu
+                        : static_cast<std::uint32_t>(
+                            (address - 4u) & 0x00FFFFFFu);
+                main_ram[address + 0u] =
+                    static_cast<std::uint8_t>(value);
+                main_ram[address + 1u] =
+                    static_cast<std::uint8_t>(value >> 8u);
+                main_ram[address + 2u] =
+                    static_cast<std::uint8_t>(value >> 16u);
+                main_ram[address + 3u] =
+                    static_cast<std::uint8_t>(value >> 24u);
+            }
+            return complete_dma_transfer(6u);
+        }
+
+        const auto start = static_cast<std::size_t>(request.madr);
+        const auto byte_count = static_cast<std::size_t>(request.words) * 4u;
+        if (start >= main_ram.size() || byte_count > main_ram.size() - start) {
+            return false;
+        }
+
+        if (request.channel == 4u) {
+            std::vector<std::uint32_t> words(request.words, 0u);
+            if (request.from_ram) {
+                for (std::size_t i = 0; i < request.words; ++i) {
+                    const auto offset = start + i * 4u;
+                    words[i] =
+                        static_cast<std::uint32_t>(main_ram[offset + 0u]) |
+                        (static_cast<std::uint32_t>(main_ram[offset + 1u]) << 8u) |
+                        (static_cast<std::uint32_t>(main_ram[offset + 2u]) << 16u) |
+                        (static_cast<std::uint32_t>(main_ram[offset + 3u]) << 24u);
+                }
+                if (!spu_.dma_write_words(words)) return false;
+            } else {
+                if (!spu_.dma_read_words(words)) return false;
+                for (std::size_t i = 0; i < request.words; ++i) {
+                    const auto value = words[i];
+                    const auto offset = start + i * 4u;
+                    main_ram[offset + 0u] = static_cast<std::uint8_t>(value);
+                    main_ram[offset + 1u] = static_cast<std::uint8_t>(value >> 8u);
+                    main_ram[offset + 2u] = static_cast<std::uint8_t>(value >> 16u);
+                    main_ram[offset + 3u] = static_cast<std::uint8_t>(value >> 24u);
+                }
+            }
+            return complete_dma_transfer(4u);
+        }
+
+        if (request.channel == 2u && request.from_ram) {
+            auto candidate = gpu_;
+            for (std::size_t i = 0; i < request.words; ++i) {
+                const auto offset = start + i * 4u;
                 const std::uint32_t value =
                     static_cast<std::uint32_t>(main_ram[offset + 0u]) |
                     (static_cast<std::uint32_t>(main_ram[offset + 1u]) << 8u) |
@@ -628,121 +732,49 @@ bool Ps1HardwareServices::execute_pending_dma(
                     return false;
                 }
             }
-            total_words += packet_words;
-
-            if ((header & 0x00800000u) != 0u) {
-                break;
-            }
-            node_address = header & 0x00FFFFFCu;
+            gpu_ = candidate;
+            return complete_dma_transfer(2u);
         }
 
-        gpu_ = candidate;
-        return complete_dma_transfer(2u);
-    }
+        if (request.channel != 3u || request.from_ram) return false;
+        if (cdrom_.data_bytes_available() < byte_count) return false;
 
-    if (request.channel == 6u &&
-        !request.from_ram &&
-        request.sync_mode == 0u) {
-        if (request.words == 0u || main_ram.size() < 4u) {
-            return false;
-        }
-        const auto start =
-            static_cast<std::size_t>(request.madr & 0x00FFFFFCu);
-        const auto backward_bytes =
-            (static_cast<std::size_t>(request.words) - 1u) * 4u;
-        if (start + 4u > main_ram.size() ||
-            backward_bytes > start) {
-            return false;
-        }
-
-        for (std::size_t i = 0u; i < request.words; ++i) {
-            const auto address = start - i * 4u;
-            const std::uint32_t value =
-                (i + 1u == request.words)
-                    ? 0x00FFFFFFu
-                    : static_cast<std::uint32_t>(
-                        (address - 4u) & 0x00FFFFFFu);
-            main_ram[address + 0u] =
-                static_cast<std::uint8_t>(value);
-            main_ram[address + 1u] =
-                static_cast<std::uint8_t>(value >> 8u);
-            main_ram[address + 2u] =
-                static_cast<std::uint8_t>(value >> 16u);
-            main_ram[address + 3u] =
-                static_cast<std::uint8_t>(value >> 24u);
-        }
-        return complete_dma_transfer(6u);
-    }
-
-    const auto start = static_cast<std::size_t>(request.madr);
-    const auto byte_count = static_cast<std::size_t>(request.words) * 4u;
-    if (start >= main_ram.size() || byte_count > main_ram.size() - start) {
-        return false;
-    }
-
-    if (request.channel == 4u) {
         std::vector<std::uint32_t> words(request.words, 0u);
-        if (request.from_ram) {
-            for (std::size_t i = 0; i < request.words; ++i) {
-                const auto offset = start + i * 4u;
-                words[i] =
-                    static_cast<std::uint32_t>(main_ram[offset + 0u]) |
-                    (static_cast<std::uint32_t>(main_ram[offset + 1u]) << 8u) |
-                    (static_cast<std::uint32_t>(main_ram[offset + 2u]) << 16u) |
-                    (static_cast<std::uint32_t>(main_ram[offset + 3u]) << 24u);
-            }
-            if (!spu_.dma_write_words(words)) return false;
-        } else {
-            if (!spu_.dma_read_words(words)) return false;
-            for (std::size_t i = 0; i < request.words; ++i) {
-                const auto value = words[i];
-                const auto offset = start + i * 4u;
-                main_ram[offset + 0u] = static_cast<std::uint8_t>(value);
-                main_ram[offset + 1u] = static_cast<std::uint8_t>(value >> 8u);
-                main_ram[offset + 2u] = static_cast<std::uint8_t>(value >> 16u);
-                main_ram[offset + 3u] = static_cast<std::uint8_t>(value >> 24u);
-            }
-        }
-        return complete_dma_transfer(4u);
-    }
+        if (cdrom_.read_data_words(words) != words.size()) return false;
 
-    if (request.channel == 2u && request.from_ram) {
-        auto candidate = gpu_;
-        for (std::size_t i = 0; i < request.words; ++i) {
+        for (std::size_t i = 0; i < words.size(); ++i) {
+            const auto value = words[i];
             const auto offset = start + i * 4u;
-            const std::uint32_t value =
-                static_cast<std::uint32_t>(main_ram[offset + 0u]) |
-                (static_cast<std::uint32_t>(main_ram[offset + 1u]) << 8u) |
-                (static_cast<std::uint32_t>(main_ram[offset + 2u]) << 16u) |
-                (static_cast<std::uint32_t>(main_ram[offset + 3u]) << 24u);
-            if (candidate.write_gp0(value).status != R3000aBusStatus::ok) {
-                return false;
-            }
+            main_ram[offset + 0u] = static_cast<std::uint8_t>(value);
+            main_ram[offset + 1u] = static_cast<std::uint8_t>(value >> 8u);
+            main_ram[offset + 2u] = static_cast<std::uint8_t>(value >> 16u);
+            main_ram[offset + 3u] = static_cast<std::uint8_t>(value >> 24u);
         }
-        gpu_ = candidate;
-        return complete_dma_transfer(2u);
+        return complete_dma_transfer(3u);
+    };
+
+    for (std::uint32_t channel = 0u;
+         channel < pending_dma_transfers_.size();
+         ++channel) {
+        if (!pending_dma_transfers_[channel]) continue;
+        if (try_request(*pending_dma_transfers_[channel])) {
+            last_completed_dma_channel_ =
+                static_cast<std::uint8_t>(channel);
+            return true;
+        }
     }
+    return false;
+}
 
-    if (request.channel != 3u || request.from_ram) return false;
-    if (cdrom_.data_bytes_available() < byte_count) return false;
-
-    std::vector<std::uint32_t> words(request.words, 0u);
-    if (cdrom_.read_data_words(words) != words.size()) return false;
-
-    for (std::size_t i = 0; i < words.size(); ++i) {
-        const auto value = words[i];
-        const auto offset = start + i * 4u;
-        main_ram[offset + 0u] = static_cast<std::uint8_t>(value);
-        main_ram[offset + 1u] = static_cast<std::uint8_t>(value >> 8u);
-        main_ram[offset + 2u] = static_cast<std::uint8_t>(value >> 16u);
-        main_ram[offset + 3u] = static_cast<std::uint8_t>(value >> 24u);
-    }
-    return complete_dma_transfer(3u);
+std::optional<std::uint8_t>
+Ps1HardwareServices::last_completed_dma_channel() const noexcept {
+    return last_completed_dma_channel_;
 }
 
 bool Ps1HardwareServices::complete_dma_transfer(std::uint32_t channel) noexcept {
-    if (!pending_dma_transfer_ || pending_dma_transfer_->channel != channel ||
-        channel >= dma_channels_.size()) {
+    if (channel >= dma_channels_.size() ||
+        !pending_dma_transfers_[channel] ||
+        pending_dma_transfers_[channel]->channel != channel) {
         return false;
     }
 
@@ -750,7 +782,7 @@ bool Ps1HardwareServices::complete_dma_transfer(std::uint32_t channel) noexcept 
     dma.chcr &= ~(kDmaBusy | kDmaTrigger);
     dma_interrupt_ |= 1u << (24u + channel);
     ++completed_dma_transfer_count_;
-    pending_dma_transfer_.reset();
+    pending_dma_transfers_[channel].reset();
 
     if ((visible_dma_interrupt(dma_interrupt_) & kDmaInterruptMasterFlag) != 0u) {
         interrupt_status_ = static_cast<std::uint16_t>(interrupt_status_ | 0x0008u);
@@ -759,7 +791,10 @@ bool Ps1HardwareServices::complete_dma_transfer(std::uint32_t channel) noexcept 
 }
 
 void Ps1HardwareServices::cancel_pending_dma_transfer() noexcept {
-    pending_dma_transfer_.reset();
+    for (auto& request : pending_dma_transfers_) {
+        request.reset();
+    }
+    last_completed_dma_channel_.reset();
 }
 
 std::uint64_t Ps1HardwareServices::completed_dma_transfer_count() const noexcept {
@@ -831,13 +866,15 @@ std::uint64_t Ps1HardwareServices::diagnostic_state_hash() const noexcept {
     }
     hash_u32(hash, dma_control_);
     hash_u32(hash, dma_interrupt_);
-    hash_bool(hash, pending_dma_transfer_.has_value());
-    if (pending_dma_transfer_) {
-        hash_byte(hash, pending_dma_transfer_->channel);
-        hash_u32(hash, pending_dma_transfer_->madr);
-        hash_u32(hash, pending_dma_transfer_->words);
-        hash_bool(hash, pending_dma_transfer_->from_ram);
-        hash_byte(hash, pending_dma_transfer_->sync_mode);
+    for (const auto& request : pending_dma_transfers_) {
+        hash_bool(hash, request.has_value());
+        if (request) {
+            hash_byte(hash, request->channel);
+            hash_u32(hash, request->madr);
+            hash_u32(hash, request->words);
+            hash_bool(hash, request->from_ram);
+            hash_byte(hash, request->sync_mode);
+        }
     }
     hash_u64(hash, completed_dma_transfer_count_);
     hash_u64(hash, vblank_count_);

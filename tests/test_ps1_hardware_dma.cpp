@@ -110,6 +110,44 @@ int main() {
     }
     hw.cancel_pending_dma_transfer();
 
+    // Real PS1 DMA channels can be armed concurrently. A CD request may wait
+    // for data while OTC clears the ordering table on channel 6.
+    const std::uint32_t ch6_enable = 1u << (6u * 4u + 3u);
+    CHECK(hw.write32(
+              0x1F8010F0u,
+              ch3_enable | ch6_enable).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(hw.write32(0x1F8010B0u, 0x00005000u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(hw.write32(0x1F8010B4u, 0x00000004u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(hw.write32(0x1F8010B8u, 0x11000000u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(hw.pending_dma_transfer(3u).has_value());
+
+    CHECK(hw.write32(0x1F8010E0u, 0x0000100Cu).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(hw.write32(0x1F8010E4u, 0x00000004u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(hw.write32(0x1F8010E8u, 0x11000002u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(hw.pending_dma_transfer(6u).has_value());
+
+    std::array<std::uint8_t, 2u * 1024u * 1024u> concurrent_ram{};
+    CHECK(hw.execute_pending_dma(concurrent_ram));
+    CHECK(hw.last_completed_dma_channel().has_value());
+    if (hw.last_completed_dma_channel()) {
+        CHECK(*hw.last_completed_dma_channel() == 6u);
+    }
+    CHECK(hw.pending_dma_transfer(3u).has_value());
+    CHECK(!hw.pending_dma_transfer(6u).has_value());
+    CHECK(static_cast<std::uint32_t>(concurrent_ram[0x100Cu + 0u]) |
+              (static_cast<std::uint32_t>(concurrent_ram[0x100Cu + 1u]) << 8u) |
+              (static_cast<std::uint32_t>(concurrent_ram[0x100Cu + 2u]) << 16u) |
+              (static_cast<std::uint32_t>(concurrent_ram[0x100Cu + 3u]) << 24u)
+          == 0x00001008u);
+    hw.cancel_pending_dma_transfer();
+
     const std::uint32_t ch0_enable = 1u << 3u;
     CHECK(hw.write32(0x1F8010F0u, ch0_enable).status == jojo::R3000aBusStatus::ok);
     CHECK(hw.write32(0x1F801088u, 0x11000000u).status == jojo::R3000aBusStatus::unsupported);

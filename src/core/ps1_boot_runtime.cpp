@@ -534,14 +534,15 @@ Ps1BootReport Ps1BootRuntime::run(const Ps1BootOptions& options) noexcept {
         hardware.step(1u);
 
         if (hardware.pending_dma_transfer()) {
-            const auto channel =
-                hardware.pending_dma_transfer()->channel;
             const bool completed =
                 hardware.execute_pending_dma(
                     std::span<std::uint8_t>(
                         bus_.main_ram_data(),
                         Ps1MemoryBus::main_ram_size));
-            if (completed && channel == 4u) {
+            const auto completed_channel =
+                hardware.last_completed_dma_channel();
+            if (completed && completed_channel &&
+                *completed_channel == 4u) {
                 // PsyQ waits on the BIOS SPU hardware event after DMA4.
                 // Spec 20h is the command-completed notification.
                 bios_.deliver_event(0xF0000009u, 0x00000020u);
