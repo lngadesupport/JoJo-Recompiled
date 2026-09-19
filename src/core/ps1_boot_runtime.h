@@ -87,6 +87,7 @@ private:
     void restore_interrupt_resume_state(
         const R3000aState& resume_state) noexcept;
     [[nodiscard]] bool mirror_jojo_pad_buffers() noexcept;
+    [[nodiscard]] bool mirror_jojo_processed_pad_state() noexcept;
     [[nodiscard]] bool mirror_jojo_raw_pad_for_decoder() noexcept;
 
     Ps1MemoryBus bus_{};
