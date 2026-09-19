@@ -868,24 +868,16 @@ void game_tick(){
         (void)show_game_frame(std::move(frame));
     }
 
-    // Keep the hot path free of filesystem/report work. Saves and detailed
-    // diagnostics checkpoint every ~5 seconds at NTSC instead of every second.
-    if((game_completed_frames%300u)==0u){
+    // Never build the heavyweight commercial diagnostic report in the
+    // gameplay hot path. It scans VRAM/SPU state and performs filesystem I/O,
+    // which creates visible frametime spikes. The complete report is still
+    // written on stop/frontier. Memory Cards receive a lightweight periodic
+    // safety flush roughly every 30 seconds at NTSC.
+    if((game_completed_frames%1800u)==0u){
         const auto flushed=game_runner->flush_memory_cards();
         if(!flushed){
             add_log(L"Aviso: autosave do Memory Card falhou: "+
                 wide(flushed.detail));
-        }
-        const auto checkpoint_path=
-            app_root()/L"diagnostics"/L"commercial-session.txt";
-        const auto checkpoint_report=make_game_session_report(
-            jojo::Ps1CommercialSessionTermination::periodic_checkpoint);
-        const auto checkpoint=
-            jojo::save_ps1_commercial_evidence_report_atomic(
-                checkpoint_path,checkpoint_report);
-        if(!checkpoint){
-            add_log(L"Aviso: checkpoint de validação falhou: "+
-                wide(checkpoint.detail));
         }
     }
 
