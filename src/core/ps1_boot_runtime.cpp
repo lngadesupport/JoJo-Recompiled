@@ -48,6 +48,10 @@ constexpr std::array<std::uint32_t, 2> kJojoRawPadBuffers{
     0x8007CE68u,
     0x8007CE90u,
 };
+constexpr std::array<std::uint32_t, 2> kJojoProcessedPadStates{
+    0x8007CEB8u,
+    0x8007CEC8u,
+};
 constexpr std::uint32_t kJojoPadDecoderPhysical = 0x00011020u;
 constexpr std::uint32_t kJojoPadCardFirstHandler = 0x8004DE84u;
 constexpr std::uint32_t kJojoPadCardSecondHandler = 0x8004DEECu;
@@ -301,6 +305,56 @@ bool Ps1BootRuntime::mirror_jojo_pad_buffers() noexcept {
              high.status == R3000aBusStatus::ok);
     }
     return driver_buffer_ready;
+}
+
+bool Ps1BootRuntime::mirror_jojo_processed_pad_state() noexcept {
+    for (std::size_t i = 0u; i < kJojoPadTableSignature.size(); ++i) {
+        const auto entry = bus_.read32(
+            kJojoPadTablePhysical +
+            static_cast<std::uint32_t>(i * sizeof(std::uint32_t)));
+        if (entry.status != R3000aBusStatus::ok ||
+            entry.value != kJojoPadTableSignature[i]) {
+            return false;
+        }
+    }
+
+    auto& sio0 = bus_.hardware_services().sio0();
+    bool wrote_state = false;
+    for (std::uint32_t port = 0u;
+         port < kJojoProcessedPadStates.size();
+         ++port) {
+        const auto state_guest = kJojoProcessedPadStates[port];
+        const auto previous_held = bus_.read16(state_guest + 2u);
+        const auto previous_pressed = bus_.read16(state_guest + 6u);
+        if (previous_held.status != R3000aBusStatus::ok ||
+            previous_pressed.status != R3000aBusStatus::ok) {
+            continue;
+        }
+
+        const auto active_low = sio0.digital_pad_buttons(port);
+        const auto byte_swapped = static_cast<std::uint16_t>(
+            (active_low << 8u) | (active_low >> 8u));
+        const auto held = static_cast<std::uint16_t>(~byte_swapped);
+        const auto pressed = static_cast<std::uint16_t>(
+            held & static_cast<std::uint16_t>(~previous_held.value));
+
+        const auto port_id = bus_.write8(
+            state_guest + 0u,
+            static_cast<std::uint8_t>(port));
+        const auto current = bus_.write16(state_guest + 2u, held);
+        const auto previous = bus_.write16(
+            state_guest + 4u, previous_held.value);
+        const auto edge = bus_.write16(state_guest + 6u, pressed);
+        const auto previous_edge = bus_.write16(
+            state_guest + 8u, previous_pressed.value);
+        wrote_state = wrote_state ||
+            (port_id.status == R3000aBusStatus::ok &&
+             current.status == R3000aBusStatus::ok &&
+             previous.status == R3000aBusStatus::ok &&
+             edge.status == R3000aBusStatus::ok &&
+             previous_edge.status == R3000aBusStatus::ok);
+    }
+    return wrote_state;
 }
 
 bool Ps1BootRuntime::mirror_jojo_raw_pad_for_decoder() noexcept {
@@ -883,6 +937,10 @@ void Ps1BootRuntime::signal_vblank() noexcept {
     hardware.signal_vblank();
     bios_.service_pad_vblank(bus_, hardware.sio0());
     static_cast<void>(mirror_jojo_pad_buffers());
+    // SLUS_010.60 normally derives this state in its own decoder. Keep the
+    // title's processed held/pressed edge state coherent every VBlank as a
+    // revision-guarded fallback, without touching the raw GPU-reused buffers.
+    static_cast<void>(mirror_jojo_processed_pad_state());
     cpu_.external_interrupt_pending =
         hardware.interrupt_pending() ? 0x04u : 0u;
 }
