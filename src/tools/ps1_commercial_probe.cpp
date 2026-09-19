@@ -124,6 +124,7 @@ int run_gameplay_probe(
     std::uint64_t total_native_retired = 0u;
     std::uint64_t total_reference_retired = 0u;
     std::uint64_t completed_frames = 0u;
+    std::optional<std::uint64_t> first_pad_poll_frame{};
     std::array<std::uint64_t, 5> pad_bios_calls{};
     std::uint64_t pad_internal_set_calls = 0u;
     std::uint64_t pad_internal_clear_calls = 0u;
@@ -140,9 +141,18 @@ int run_gameplay_probe(
     }
 
     while (completed_frames < gameplay_frames) {
+        const auto counters_before_frame = runner.validation_counters();
+        if (!first_pad_poll_frame &&
+            counters_before_frame.pad_poll_count[0] != 0u) {
+            first_pad_poll_frame = completed_frames;
+        }
+
+        const auto scripted_frame = first_pad_poll_frame
+            ? completed_frames - *first_pad_poll_frame + 120u
+            : completed_frames;
         runner.set_pad_buttons(
             0u,
-            scripted_input ? scripted_buttons(completed_frames) : 0xFFFFu);
+            scripted_input ? scripted_buttons(scripted_frame) : 0xFFFFu);
 
         jojo::Ps1BootOptions options{};
         options.instruction_budget =
@@ -232,7 +242,18 @@ int run_gameplay_probe(
                     << " gp0="
                     << checkpoint_counters.gpu_gp0_word_count
                     << " vram_writes="
-                    << checkpoint_counters.vram_write_count;
+                    << checkpoint_counters.vram_write_count
+                    << " bios_b12=" << pad_bios_calls[0]
+                    << " bios_b13=" << pad_bios_calls[1]
+                    << " bios_b14=" << pad_bios_calls[2]
+                    << " bios_b15=" << pad_bios_calls[3]
+                    << " bios_b16=" << pad_bios_calls[4]
+                    << " pad_internal_set=" << pad_internal_set_calls
+                    << " pad_internal_clear=" << pad_internal_clear_calls
+                    << " first_pad_poll_frame="
+                    << (first_pad_poll_frame
+                            ? std::to_string(*first_pad_poll_frame)
+                            : std::string{"none"});
                 if (!last_boot.recent_bios_calls.empty()) {
                     const auto& bios =
                         last_boot.recent_bios_calls.back();
@@ -301,6 +322,10 @@ int run_gameplay_probe(
     report << "frontier="
            << jojo::ps1_commercial_frontier_class_name(frontier) << '\n';
     report << "completed_frames=" << completed_frames << '\n';
+    report << "first_pad_poll_frame=";
+    if (first_pad_poll_frame) report << *first_pad_poll_frame;
+    else report << "none";
+    report << '\n';
     report << "total_execution_steps=" << total_execution_steps << '\n';
     report << "total_instructions_retired=" << total_instructions_retired << '\n';
     report << "native_x64_instructions_retired=" << total_native_retired << '\n';
@@ -364,6 +389,10 @@ int run_gameplay_probe(
     std::cout << "frontier="
               << jojo::ps1_commercial_frontier_class_name(frontier) << "\n";
     std::cout << "completed_frames=" << completed_frames << "\n";
+    std::cout << "first_pad_poll_frame=";
+    if (first_pad_poll_frame) std::cout << *first_pad_poll_frame;
+    else std::cout << "none";
+    std::cout << "\n";
     std::cout << "observed_non_black_frames="
               << frame_progress.observed_non_black_frames() << "\n";
     std::cout << "frame_change_count="
