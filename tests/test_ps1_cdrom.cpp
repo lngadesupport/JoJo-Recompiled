@@ -375,6 +375,23 @@ int main() {
               static_cast<std::uint32_t>('S'));
         CHECK(((raw_words[3] >> 24u) & 0xFFu) ==
               static_cast<std::uint32_t>('E'));
+
+        // A final Pause must not discard the unread tail of the host FIFO.
+        CHECK(raw_cd.data_bytes_available() == 292u);
+        CHECK(raw_cd.write8(0x1F801801u, 0x09u).status ==
+              jojo::R3000aBusStatus::ok);
+        CHECK(raw_cd.data_bytes_available() == 292u);
+        CHECK(raw_cd.read8(0x1F801801u).status ==
+              jojo::R3000aBusStatus::ok);
+        CHECK(raw_cd.write8(0x1F801800u, 0x01u).status ==
+              jojo::R3000aBusStatus::ok);
+        CHECK(raw_cd.write8(0x1F801803u, 0x07u).status ==
+              jojo::R3000aBusStatus::ok);
+        CHECK(raw_cd.write8(0x1F801800u, 0x00u).status ==
+              jojo::R3000aBusStatus::ok);
+        raw_cd.step(33869u);
+        CHECK(raw_cd.data_bytes_available() == 292u);
+
         CHECK(raw_cd.write8(0x1F801803u, 0x00u).status ==
               jojo::R3000aBusStatus::ok);
         CHECK(raw_cd.data_bytes_available() == 0u);

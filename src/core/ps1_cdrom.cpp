@@ -510,9 +510,10 @@ R3000aBusResult Ps1CdromController::execute_command(std::uint8_t command) noexce
         }
 
         case 0x09u: { // Pause
+            // Pause stops future ReadN/ReadS delivery but does not destroy a
+            // datablock already exposed to the host. Software may issue Pause
+            // while the final DMA is still draining the Data FIFO.
             stop_read_stream();
-            sector_buffer_.clear();
-            data_.clear();
             const auto completed_status = static_cast<std::uint8_t>(
                 (status_byte_ & ~kStatActivityMask) |
                 (status_byte_ & kStatMotor));
