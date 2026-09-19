@@ -362,7 +362,32 @@ int main() {
     CHECK(buffered_cd.write8(0x1F801803u, 0x00u).status ==
           jojo::R3000aBusStatus::ok);
 
-    // The second queued sector is likewise ready for INT1 immediately.
+    // Pause stops future physical reads but preserves sectors that were
+    // already read into the drive's internal queue. This matches the title's
+    // final-sector flow: Pause can precede the last host DMA.
+    CHECK(buffered_cd.write8(0x1F801801u, 0x09u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(buffered_cd.read8(0x1F801801u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(buffered_cd.write8(0x1F801800u, 0x01u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(buffered_cd.write8(0x1F801803u, 0x07u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(buffered_cd.write8(0x1F801800u, 0x00u).status ==
+          jojo::R3000aBusStatus::ok);
+    buffered_cd.step(33869u);
+    CHECK(buffered_cd.read8(0x1F801801u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(buffered_cd.write8(0x1F801800u, 0x01u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK((buffered_cd.read8(0x1F801803u).value & 0x07u) == 0x02u);
+    CHECK(buffered_cd.write8(0x1F801803u, 0x07u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(buffered_cd.write8(0x1F801800u, 0x00u).status ==
+          jojo::R3000aBusStatus::ok);
+
+    // The second queued sector is ready for INT1 even though Pause has
+    // stopped the spindle/read stream.
     buffered_cd.step(0u);
     CHECK(buffered_cd.write8(0x1F801800u, 0x01u).status ==
           jojo::R3000aBusStatus::ok);

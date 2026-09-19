@@ -430,7 +430,6 @@ std::uint32_t Ps1CdromController::sector_cycles() const noexcept {
 void Ps1CdromController::stop_read_stream() noexcept {
     read_stream_active_ = false;
     read_cycles_remaining_ = 0u;
-    drive_sector_queue_.clear();
 }
 
 void Ps1CdromController::clear_transfer_fifos() noexcept {
@@ -491,6 +490,7 @@ R3000aBusResult Ps1CdromController::execute_command(std::uint8_t command) noexce
                 return {R3000aBusStatus::unsupported, 0u};
             }
             stop_read_stream();
+            drive_sector_queue_.clear();
             sector_buffer_.clear();
             data_.clear();
             read_stream_active_ = true;
@@ -505,6 +505,7 @@ R3000aBusResult Ps1CdromController::execute_command(std::uint8_t command) noexce
 
         case 0x07u: { // MotorOn
             stop_read_stream();
+            drive_sector_queue_.clear();
             sector_buffer_.clear();
             data_.clear();
             const auto completed_status = static_cast<std::uint8_t>(
@@ -524,6 +525,7 @@ R3000aBusResult Ps1CdromController::execute_command(std::uint8_t command) noexce
 
         case 0x08u: { // Stop
             stop_read_stream();
+            drive_sector_queue_.clear();
             sector_buffer_.clear();
             data_.clear();
             status_byte_ = static_cast<std::uint8_t>(
