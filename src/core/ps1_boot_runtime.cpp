@@ -609,9 +609,9 @@ Ps1BootReport Ps1BootRuntime::run(const Ps1BootOptions& options) noexcept {
     std::set<std::uint64_t> observed_bios_dependencies;
     std::set<std::uint64_t> observed_mmio_dependencies;
 
-    const auto pump_hardware = [&]() noexcept {
+    const auto pump_hardware = [&](std::uint32_t cpu_cycles) noexcept {
         auto& hardware = bus_.hardware_services();
-        hardware.step(1u);
+        hardware.step(cpu_cycles);
 
         if (hardware.pending_dma_transfer()) {
             const bool completed =
@@ -650,7 +650,8 @@ Ps1BootReport Ps1BootRuntime::run(const Ps1BootOptions& options) noexcept {
         }
 
         if (physical_pc && is_hle_internal_bios_entry(*physical_pc)) {
-            if (observed_bios_dependencies.insert(
+            if (options.stagnation_instruction_limit != 0u &&
+                observed_bios_dependencies.insert(
                     bios_dependency_key(*physical_pc, 0u)).second) {
                 instructions_since_progress = 0u;
             }
@@ -676,7 +677,8 @@ Ps1BootReport Ps1BootRuntime::run(const Ps1BootOptions& options) noexcept {
         }
 
         if (physical_pc && is_bios_table(*physical_pc)) {
-            if (observed_bios_dependencies.insert(
+            if (options.stagnation_instruction_limit != 0u &&
+                observed_bios_dependencies.insert(
                     bios_dependency_key(*physical_pc, cpu_.gpr[9])).second) {
                 instructions_since_progress = 0u;
             }
@@ -770,7 +772,7 @@ Ps1BootReport Ps1BootRuntime::run(const Ps1BootOptions& options) noexcept {
             if (syscall_status == Ps1HleBiosDispatchStatus::handled) {
                 ++report.execution_steps;
                 ++instructions_since_progress;
-                pump_hardware();
+                pump_hardware(1u);
                 if (options.stagnation_instruction_limit != 0u &&
                     instructions_since_progress >=
                         options.stagnation_instruction_limit) {
@@ -791,31 +793,109 @@ Ps1BootReport Ps1BootRuntime::run(const Ps1BootOptions& options) noexcept {
             cpu_.external_interrupt_pending == 0u &&
             pc_in_native_text &&
             observed_opcode.status == R3000aBusStatus::ok) {
-            const auto compiled =
-                native_x64_cache_.get_or_compile_instruction(
-                    cpu_.pc,
-                    observed_opcode.value);
-            if (compiled) {
-                const auto native =
-                    execute_r3000a_x64_block(
-                        *compiled.value,
-                        cpu_,
-                        bus_.main_ram_data());
-                if (native.status == R3000aX64ExecutionStatus::executed) {
-                    ++report.execution_steps;
-                    ++report.instructions_retired;
-                    ++report.native_x64_instructions_retired;
-                    ++instructions_since_progress;
-                    pump_hardware();
-                    if (options.stagnation_instruction_limit != 0u &&
-                        instructions_since_progress >=
-                            options.stagnation_instruction_limit) {
-                        return finish(Ps1BootStopReason::diagnostic_stall);
-                    }
-                    continue;
+            const bool fast_gameplay_path =
+                options.trace_capacity == 0u &&
+                options.mmio_event_capacity == 0u &&
+                options.bios_event_capacity == 0u &&
+                options.stagnation_instruction_limit == 0u;
+
+            if (fast_gameplay_path &&
+                !cpu_.pending_load.valid &&
+                !cpu_.delay_slot.active) {
+                constexpr std::size_t kMaxNativeAluBlock = 16u;
+                std::array<std::uint32_t, kMaxNativeAluBlock> words{};
+                std::size_t word_count = 0u;
+                const auto remaining_budget =
+                    options.instruction_budget - report.execution_steps;
+                const auto remaining_text =
+                    (native_text_end_ - cpu_.pc) / 4u;
+                const auto max_words = static_cast<std::size_t>(
+                    std::min<std::uint64_t>(
+                        kMaxNativeAluBlock,
+                        std::min<std::uint64_t>(
+                            remaining_budget,
+                            remaining_text)));
+
+                for (std::size_t i = 0u; i < max_words; ++i) {
+                    const auto read = bus_.read32(
+                        cpu_.pc + static_cast<std::uint32_t>(i * 4u));
+                    if (read.status != R3000aBusStatus::ok) break;
+                    const auto decoded = decode_mips(read.value);
+                    if (!r3000a_op_is_x64_lowerable(decoded.op)) break;
+                    words[word_count++] = read.value;
                 }
-                if (native.status == R3000aX64ExecutionStatus::host_error) {
-                    return finish(Ps1BootStopReason::fatal_runtime_error);
+
+                // A native call only pays off when it amortizes dispatch/cache
+                // overhead over several straight-line ALU instructions.
+                if (word_count >= 3u) {
+                    const auto block = lift_r3000a_basic_block(
+                        cpu_.pc,
+                        std::span<const std::uint32_t>(
+                            words.data(), word_count),
+                        word_count);
+                    if (block) {
+                        const auto compiled =
+                            native_x64_cache_.get_or_compile(block.value);
+                        if (compiled) {
+                            const auto native =
+                                execute_r3000a_x64_block(
+                                    *compiled.value,
+                                    cpu_,
+                                    bus_.main_ram_data());
+                            if (native.status ==
+                                R3000aX64ExecutionStatus::executed) {
+                                const auto retired =
+                                    static_cast<std::uint64_t>(
+                                        native.instructions_retired);
+                                report.execution_steps += retired;
+                                report.instructions_retired += retired;
+                                report.native_x64_instructions_retired += retired;
+                                instructions_since_progress += retired;
+                                pump_hardware(
+                                    static_cast<std::uint32_t>(retired));
+                                continue;
+                            }
+                            if (native.status ==
+                                R3000aX64ExecutionStatus::host_error) {
+                                return finish(
+                                    Ps1BootStopReason::fatal_runtime_error);
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (!fast_gameplay_path) {
+                const auto compiled =
+                    native_x64_cache_.get_or_compile_instruction(
+                        cpu_.pc,
+                        observed_opcode.value);
+                if (compiled) {
+                    const auto native =
+                        execute_r3000a_x64_block(
+                            *compiled.value,
+                            cpu_,
+                            bus_.main_ram_data());
+                    if (native.status ==
+                        R3000aX64ExecutionStatus::executed) {
+                        ++report.execution_steps;
+                        ++report.instructions_retired;
+                        ++report.native_x64_instructions_retired;
+                        ++instructions_since_progress;
+                        pump_hardware(1u);
+                        if (options.stagnation_instruction_limit != 0u &&
+                            instructions_since_progress >=
+                                options.stagnation_instruction_limit) {
+                            return finish(
+                                Ps1BootStopReason::diagnostic_stall);
+                        }
+                        continue;
+                    }
+                    if (native.status ==
+                        R3000aX64ExecutionStatus::host_error) {
+                        return finish(
+                            Ps1BootStopReason::fatal_runtime_error);
+                    }
                 }
             }
         }
@@ -827,7 +907,7 @@ Ps1BootReport Ps1BootRuntime::run(const Ps1BootOptions& options) noexcept {
             ++report.instructions_retired;
             ++report.reference_instructions_retired;
             ++instructions_since_progress;
-            pump_hardware();
+            pump_hardware(1u);
             if (const auto& probe = bus_.last_diagnostic_mmio_probe(); probe) {
                 ++report.speculative_mmio_count;
                 record_recent_mmio(report, Ps1MmioSummary{
@@ -838,7 +918,9 @@ Ps1BootReport Ps1BootRuntime::run(const Ps1BootOptions& options) noexcept {
                     probe->value,
                     true,
                 }, options.mmio_event_capacity);
-                if (observed_mmio_dependencies.insert(mmio_dependency_key(*probe)).second) {
+                if (options.stagnation_instruction_limit != 0u &&
+                    observed_mmio_dependencies.insert(
+                        mmio_dependency_key(*probe)).second) {
                     instructions_since_progress = 0u;
                 }
             }
@@ -851,7 +933,7 @@ Ps1BootReport Ps1BootRuntime::run(const Ps1BootOptions& options) noexcept {
 
         if (step.status == R3000aStepStatus::exception) {
             ++report.execution_steps;
-            pump_hardware();
+            pump_hardware(1u);
 
             if (step.diagnostic.exception_code ==
                 R3000aExceptionCode::interrupt) {
