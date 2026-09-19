@@ -87,6 +87,13 @@ struct Ps1CommercialRuntimeCounters {
     std::array<std::uint64_t, 2> memory_card_write_sector_count{};
     std::array<std::uint64_t, 2> memory_card_changed_write_sector_count{};
     std::uint64_t dma_transfer_count{};
+    std::uint8_t dma_pending_mask{};
+    std::array<std::uint32_t, 7> dma_madr{};
+    std::array<std::uint32_t, 7> dma_bcr{};
+    std::array<std::uint32_t, 7> dma_chcr{};
+    std::array<std::uint32_t, 7> dma_pending_words{};
+    std::array<std::uint8_t, 7> dma_pending_sync{};
+    std::array<bool, 7> dma_pending_from_ram{};
     std::uint64_t cdrom_command_count{};
     std::uint64_t gpu_gp0_word_count{};
     std::uint64_t gpu_gp1_command_count{};

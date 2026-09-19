@@ -124,6 +124,7 @@ int run_gameplay_probe(
     std::uint64_t total_native_retired = 0u;
     std::uint64_t total_reference_retired = 0u;
     std::uint64_t completed_frames = 0u;
+    std::uint64_t segments_without_frame = 0u;
     std::optional<std::uint64_t> first_pad_poll_frame{};
     std::array<std::uint64_t, 5> pad_bios_calls{};
     std::uint64_t pad_internal_set_calls = 0u;
@@ -191,11 +192,35 @@ int run_gameplay_probe(
             break;
         }
 
+        ++segments_without_frame;
+        if (segments_without_frame >= 200u) {
+            const auto stalled = runner.validation_counters();
+            std::cerr << "gameplay_watchdog_frame=" << completed_frames << "\n";
+            std::cerr << "gameplay_watchdog_pc=" << last_boot.last_pc << "\n";
+            std::cerr << "gameplay_watchdog_dma_pending_mask="
+                      << static_cast<unsigned>(stalled.dma_pending_mask) << "\n";
+            for (std::uint32_t channel = 0u; channel < 7u; ++channel) {
+                if ((stalled.dma_pending_mask & (1u << channel)) == 0u) continue;
+                std::cerr << "gameplay_watchdog_dma" << channel
+                          << "_madr=" << stalled.dma_madr[channel]
+                          << " bcr=" << stalled.dma_bcr[channel]
+                          << " chcr=" << stalled.dma_chcr[channel]
+                          << " words=" << stalled.dma_pending_words[channel]
+                          << " sync="
+                          << static_cast<unsigned>(stalled.dma_pending_sync[channel])
+                          << " from_ram="
+                          << (stalled.dma_pending_from_ram[channel] ? 1 : 0)
+                          << "\n";
+            }
+            break;
+        }
+
         frame_ticks_remaining -= last_boot.execution_steps;
         if (frame_ticks_remaining != 0u) continue;
 
         runner.signal_vblank();
         ++completed_frames;
+        segments_without_frame = 0u;
 
         const auto frame = runner.display_frame();
         frame_progress.observe(frame);
@@ -235,6 +260,8 @@ int run_gameplay_probe(
                     << checkpoint_counters.gpu_gp0_word_count
                     << " vram_writes="
                     << checkpoint_counters.vram_write_count
+                    << " dma_pending_mask="
+                    << static_cast<unsigned>(checkpoint_counters.dma_pending_mask)
                     << " bios_b12=" << checkpoint_counters.pad_bios_call_count[0]
                     << " bios_b13=" << checkpoint_counters.pad_bios_call_count[1]
                     << " bios_b14=" << checkpoint_counters.pad_bios_call_count[2]

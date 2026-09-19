@@ -456,6 +456,20 @@ Ps1CommercialEvidenceRunner::validation_counters() const noexcept {
     counters.sio_control_reset_count = sio0.control_reset_count();
     counters.dma_transfer_count =
         hardware.completed_dma_transfer_count();
+    for (std::uint32_t channel = 0u; channel < 7u; ++channel) {
+        const auto& state = hardware.dma_channel(channel);
+        counters.dma_madr[channel] = state.madr;
+        counters.dma_bcr[channel] = state.bcr;
+        counters.dma_chcr[channel] = state.chcr;
+        const auto& pending = hardware.pending_dma_transfer(channel);
+        if (pending) {
+            counters.dma_pending_mask = static_cast<std::uint8_t>(
+                counters.dma_pending_mask | (1u << channel));
+            counters.dma_pending_words[channel] = pending->words;
+            counters.dma_pending_sync[channel] = pending->sync_mode;
+            counters.dma_pending_from_ram[channel] = pending->from_ram;
+        }
+    }
     counters.cdrom_command_count = hardware.cdrom().command_count();
     counters.gpu_gp0_word_count = hardware.gpu_gp0_word_count();
     counters.gpu_gp1_command_count = hardware.gpu_gp1_command_count();
