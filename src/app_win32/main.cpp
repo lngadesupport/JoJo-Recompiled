@@ -2200,6 +2200,12 @@ int WINAPI wWinMain(HINSTANCE inst,HINSTANCE,PWSTR,int show){
         :launcher_art_jpg;
     const bool launcher_art_ready=launcher_ui.initialize(launcher_art);
 
+    const auto shader_preload=jojo::preload_d3d11_presentation_shaders();
+    if(!shader_preload){
+        status=L"Pré-carregamento de shaders D3D11 falhou: "+
+            wide(shader_preload.detail);
+    }
+
     const auto startup=jojo::win32::resolve_startup_source(executable_root,app_settings,open_options);
     if(startup && startup.value) source=startup.value->wstring();
     else if(!startup) status=L"Autodetecção de Data/ROM falhou: "+wide(startup.detail);
