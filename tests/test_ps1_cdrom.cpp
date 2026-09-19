@@ -723,6 +723,7 @@ int main() {
     // No attached media means data commands fail explicitly.
     jojo::Ps1CdromController detached;
     CHECK(detached.write8(0x1F801801u, 0x06u).status == jojo::R3000aBusStatus::unsupported);
+    CHECK(detached.write8(0x1F801801u, 0x1Bu).status == jojo::R3000aBusStatus::unsupported);
 
     fs::remove_all(root);
     return failures ? 1 : 0;

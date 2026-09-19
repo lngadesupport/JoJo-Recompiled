@@ -503,7 +503,8 @@ R3000aBusResult Ps1CdromController::execute_command(std::uint8_t command) noexce
             return {R3000aBusStatus::ok, 0u};
         }
 
-        case 0x06u: { // ReadN: INT3 acknowledge, then repeated INT1+sector
+        case 0x06u: // ReadN
+        case 0x1Bu: { // ReadS: INT3 acknowledge, then repeated INT1+sector
             if (disc_ == nullptr ||
                 current_lba_ >= disc_->logical_sector_count()) {
                 return {R3000aBusStatus::unsupported, 0u};
