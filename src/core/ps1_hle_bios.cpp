@@ -348,6 +348,7 @@ Ps1HleBiosDispatchStatus Ps1HleBios::dispatch(
 
     if (table_physical == kBiosB0 &&
         selector == kB0InitPad2) {
+        ++pad_bios_call_counts_[0u];
         if (bus == nullptr) {
             return Ps1HleBiosDispatchStatus::unimplemented;
         }
@@ -380,6 +381,7 @@ Ps1HleBiosDispatchStatus Ps1HleBios::dispatch(
 
     if (table_physical == kBiosB0 &&
         selector == kB0StartPad2) {
+        ++pad_bios_call_counts_[1u];
         if (!pad_initialized_) {
             return Ps1HleBiosDispatchStatus::unimplemented;
         }
@@ -391,6 +393,7 @@ Ps1HleBiosDispatchStatus Ps1HleBios::dispatch(
 
     if (table_physical == kBiosB0 &&
         selector == kB0StopPad2) {
+        ++pad_bios_call_counts_[2u];
         pad_started_ = false;
         cpu.gpr[2] = 1u;
         return_from_bios_call(cpu);
@@ -399,6 +402,7 @@ Ps1HleBiosDispatchStatus Ps1HleBios::dispatch(
 
     if (table_physical == kBiosB0 &&
         selector == kB0PadInit2) {
+        ++pad_bios_call_counts_[3u];
         const auto type = cpu.gpr[4];
         if (type != 0x20000000u &&
             type != 0x20000001u) {
@@ -421,6 +425,7 @@ Ps1HleBiosDispatchStatus Ps1HleBios::dispatch(
 
     if (table_physical == kBiosB0 &&
         selector == kB0PadDr) {
+        ++pad_bios_call_counts_[4u];
         const auto swap_bytes = [](std::uint16_t value) noexcept {
             return static_cast<std::uint16_t>(
                 (value << 8u) | (value >> 8u));
@@ -716,11 +721,13 @@ Ps1HleBiosDispatchStatus Ps1HleBios::dispatch_internal(
     R3000aState& cpu,
     std::uint32_t physical_address) noexcept {
     if (physical_address == kPs1HleSetPadEnableHandlerAddress) {
+        ++pad_internal_set_call_count_;
         pad_enabled_ = true;
         return_from_bios_call(cpu);
         return Ps1HleBiosDispatchStatus::handled;
     }
     if (physical_address == kPs1HleClearPadEnableHandlerAddress) {
+        ++pad_internal_clear_call_count_;
         pad_enabled_ = false;
         return_from_bios_call(cpu);
         return Ps1HleBiosDispatchStatus::handled;
@@ -868,6 +875,21 @@ Ps1HleBios::interrupt_priority_head(
     }
     return interrupt_priority_heads_[
         static_cast<std::size_t>(priority)];
+}
+
+std::uint64_t Ps1HleBios::pad_bios_call_count(
+    std::uint32_t selector) const noexcept {
+    if (selector < 0x12u || selector > 0x16u) return 0u;
+    return pad_bios_call_counts_[
+        static_cast<std::size_t>(selector - 0x12u)];
+}
+
+std::uint64_t Ps1HleBios::pad_internal_set_call_count() const noexcept {
+    return pad_internal_set_call_count_;
+}
+
+std::uint64_t Ps1HleBios::pad_internal_clear_call_count() const noexcept {
+    return pad_internal_clear_call_count_;
 }
 
 } // namespace jojo

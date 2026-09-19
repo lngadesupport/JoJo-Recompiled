@@ -695,6 +695,21 @@ Ps1BootRuntime::bios_pad_card_auto_ack_enabled() const noexcept {
     return bios_.pad_card_auto_ack_enabled();
 }
 
+std::uint64_t Ps1BootRuntime::bios_pad_call_count(
+    std::uint32_t selector) const noexcept {
+    return bios_.pad_bios_call_count(selector);
+}
+
+std::uint64_t
+Ps1BootRuntime::bios_pad_internal_set_call_count() const noexcept {
+    return bios_.pad_internal_set_call_count();
+}
+
+std::uint64_t
+Ps1BootRuntime::bios_pad_internal_clear_call_count() const noexcept {
+    return bios_.pad_internal_clear_call_count();
+}
+
 std::optional<bool> Ps1BootRuntime::bios_root_counter_auto_ack_enabled(
     std::uint32_t counter) const noexcept {
     return bios_.root_counter_auto_ack_enabled(counter);

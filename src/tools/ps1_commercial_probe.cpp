@@ -173,21 +173,13 @@ int run_gameplay_probe(
         total_native_retired += last_boot.native_x64_instructions_retired;
         total_reference_retired += last_boot.reference_instructions_retired;
 
-        for (const auto& bios : last_boot.recent_bios_calls) {
-            if (bios.table_physical == 0x000000B0u &&
-                bios.selector >= 0x12u &&
-                bios.selector <= 0x16u) {
-                ++pad_bios_calls[
-                    static_cast<std::size_t>(bios.selector - 0x12u)];
-            } else if (
-                bios.table_physical ==
-                jojo::kPs1HleSetPadEnableHandlerAddress) {
-                ++pad_internal_set_calls;
-            } else if (
-                bios.table_physical ==
-                jojo::kPs1HleClearPadEnableHandlerAddress) {
-                ++pad_internal_clear_calls;
-            }
+        {
+            const auto cumulative = runner.validation_counters();
+            pad_bios_calls = cumulative.pad_bios_call_count;
+            pad_internal_set_calls =
+                cumulative.pad_internal_set_call_count;
+            pad_internal_clear_calls =
+                cumulative.pad_internal_clear_call_count;
         }
 
         frontier = jojo::classify_ps1_commercial_frontier(last_boot);
@@ -243,13 +235,13 @@ int run_gameplay_probe(
                     << checkpoint_counters.gpu_gp0_word_count
                     << " vram_writes="
                     << checkpoint_counters.vram_write_count
-                    << " bios_b12=" << pad_bios_calls[0]
-                    << " bios_b13=" << pad_bios_calls[1]
-                    << " bios_b14=" << pad_bios_calls[2]
-                    << " bios_b15=" << pad_bios_calls[3]
-                    << " bios_b16=" << pad_bios_calls[4]
-                    << " pad_internal_set=" << pad_internal_set_calls
-                    << " pad_internal_clear=" << pad_internal_clear_calls
+                    << " bios_b12=" << checkpoint_counters.pad_bios_call_count[0]
+                    << " bios_b13=" << checkpoint_counters.pad_bios_call_count[1]
+                    << " bios_b14=" << checkpoint_counters.pad_bios_call_count[2]
+                    << " bios_b15=" << checkpoint_counters.pad_bios_call_count[3]
+                    << " bios_b16=" << checkpoint_counters.pad_bios_call_count[4]
+                    << " pad_internal_set=" << checkpoint_counters.pad_internal_set_call_count
+                    << " pad_internal_clear=" << checkpoint_counters.pad_internal_clear_call_count
                     << " first_pad_poll_frame="
                     << (first_pad_poll_frame
                             ? std::to_string(*first_pad_poll_frame)

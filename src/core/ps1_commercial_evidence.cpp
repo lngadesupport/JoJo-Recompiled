@@ -426,6 +426,15 @@ Ps1CommercialEvidenceRunner::validation_counters() const noexcept {
         counters.memory_card_changed_write_sector_count[port] =
             sio0.memory_card_changed_write_sector_count(port);
     }
+    for (std::uint32_t selector = 0x12u; selector <= 0x16u; ++selector) {
+        counters.pad_bios_call_count[
+            static_cast<std::size_t>(selector - 0x12u)] =
+            runtime_.bios_pad_call_count(selector);
+    }
+    counters.pad_internal_set_call_count =
+        runtime_.bios_pad_internal_set_call_count();
+    counters.pad_internal_clear_call_count =
+        runtime_.bios_pad_internal_clear_call_count();
     counters.dma_transfer_count =
         hardware.completed_dma_transfer_count();
     counters.cdrom_command_count = hardware.cdrom().command_count();

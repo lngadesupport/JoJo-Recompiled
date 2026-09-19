@@ -67,6 +67,9 @@ enum class Ps1CommercialSessionTermination : std::uint8_t {
 struct Ps1CommercialRuntimeCounters {
     std::array<std::uint64_t, 2> pad_poll_count{};
     std::array<std::uint64_t, 2> pad_pressed_poll_count{};
+    std::array<std::uint64_t, 5> pad_bios_call_count{};
+    std::uint64_t pad_internal_set_call_count{};
+    std::uint64_t pad_internal_clear_call_count{};
     std::array<std::uint64_t, 2> memory_card_read_sector_count{};
     std::array<std::uint64_t, 2> memory_card_write_sector_count{};
     std::array<std::uint64_t, 2> memory_card_changed_write_sector_count{};

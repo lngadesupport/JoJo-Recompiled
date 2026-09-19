@@ -96,6 +96,10 @@ public:
     [[nodiscard]] bool iso9660_removed() const noexcept;
     [[nodiscard]] std::optional<std::uint32_t> interrupt_priority_head(
         std::uint32_t priority) const noexcept;
+    [[nodiscard]] std::uint64_t pad_bios_call_count(
+        std::uint32_t selector) const noexcept;
+    [[nodiscard]] std::uint64_t pad_internal_set_call_count() const noexcept;
+    [[nodiscard]] std::uint64_t pad_internal_clear_call_count() const noexcept;
 
 private:
     std::optional<Ps1BiosHeapState> heap_state_{};
@@ -109,6 +113,11 @@ private:
     std::array<std::uint32_t, 2> pad_buffer_sizes_{};
     std::optional<std::uint32_t> pad_button_destination_{};
     std::array<std::uint16_t, 2> pad_last_buttons_{0xFFFFu, 0xFFFFu};
+    // Observation-only counters. Deliberately excluded from
+    // diagnostic_state_hash() so instrumentation cannot alter replay state.
+    std::array<std::uint64_t, 5> pad_bios_call_counts_{};
+    std::uint64_t pad_internal_set_call_count_{};
+    std::uint64_t pad_internal_clear_call_count_{};
     bool card_initialized_{};
     bool card_started_{};
     bool card_pad_enabled_{};

@@ -52,6 +52,10 @@ public:
     [[nodiscard]] const std::optional<Ps1BiosHeapState>& bios_heap_state() const noexcept;
     [[nodiscard]] const std::optional<std::uint32_t>& bios_interrupt_hook_address() const noexcept;
     [[nodiscard]] const std::optional<bool>& bios_pad_card_auto_ack_enabled() const noexcept;
+    [[nodiscard]] std::uint64_t bios_pad_call_count(
+        std::uint32_t selector) const noexcept;
+    [[nodiscard]] std::uint64_t bios_pad_internal_set_call_count() const noexcept;
+    [[nodiscard]] std::uint64_t bios_pad_internal_clear_call_count() const noexcept;
     [[nodiscard]] std::optional<bool> bios_root_counter_auto_ack_enabled(
         std::uint32_t counter) const noexcept;
     [[nodiscard]] bool bios_iso9660_removed() const noexcept;

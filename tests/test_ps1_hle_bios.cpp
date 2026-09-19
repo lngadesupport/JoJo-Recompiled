@@ -534,6 +534,7 @@ static void test_b0_12_13_14_pad2_vblank_updates_guest_buffers() {
     CHECK(bios.dispatch(init, 0xB0u, 0x12u, &bus) ==
           jojo::Ps1HleBiosDispatchStatus::handled);
     CHECK(init.gpr[2] == 1u);
+    CHECK(bios.pad_bios_call_count(0x12u) == 1u);
     for (std::uint32_t i = 0u; i < 0x22u; ++i) {
         CHECK(bus.read8(pad1 + i).value == 0u);
         CHECK(bus.read8(pad2 + i).value == 0u);
@@ -542,6 +543,7 @@ static void test_b0_12_13_14_pad2_vblank_updates_guest_buffers() {
     auto start = make_cpu();
     CHECK(bios.dispatch(start, 0xB0u, 0x13u, &bus) ==
           jojo::Ps1HleBiosDispatchStatus::handled);
+    CHECK(bios.pad_bios_call_count(0x13u) == 1u);
 
     auto& sio = bus.hardware_services().sio0();
     sio.set_digital_pad_buttons(0u, 0xBFEFu);
