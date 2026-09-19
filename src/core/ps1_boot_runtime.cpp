@@ -936,11 +936,7 @@ Ps1BootReport Ps1BootRuntime::run(const Ps1BootOptions& options) noexcept {
             observed_opcode.status==R3000aBusStatus::ok &&
             (cpu_.pc & 3u)==0u
                 ?step_r3000a_prefetched(
-                    cpu_,
-                    bus_,
-                    observed_opcode.value,
-                    bus_.main_ram_data(),
-                    Ps1MemoryBus::main_ram_size)
+                    cpu_,bus_,observed_opcode.value)
                 :step_r3000a(cpu_,bus_);
         if (step.status == R3000aStepStatus::retired) {
             ++report.execution_steps;
