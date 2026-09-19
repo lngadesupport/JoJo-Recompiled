@@ -164,6 +164,14 @@ std::string format_ps1_commercial_evidence_report(
         out << "none";
     }
     out << '\n';
+    out << "dma3_madr=" << hex32(report.dma3_madr) << '\n';
+    out << "dma3_bcr=" << hex32(report.dma3_bcr) << '\n';
+    out << "dma3_chcr=" << hex32(report.dma3_chcr) << '\n';
+    out << "cd_current_lba=" << report.cd_current_lba << '\n';
+    out << "cd_data_bytes=" << report.cd_data_bytes << '\n';
+    out << "cd_request=" << static_cast<unsigned>(report.cd_request) << '\n';
+    out << "cd_irq_pending=" << (report.cd_irq_pending ? 1 : 0) << '\n';
+    out << "cd_deferred_response_count=" << report.cd_deferred_response_count << '\n';
     out << "gpu_display_enabled=" << (report.gpu_display.enabled ? 1 : 0) << '\n';
     out << "gpu_display_rgb24=" << (report.gpu_display.rgb24 ? 1 : 0) << '\n';
     out << "gpu_display_pal=" << (report.gpu_display.pal ? 1 : 0) << '\n';

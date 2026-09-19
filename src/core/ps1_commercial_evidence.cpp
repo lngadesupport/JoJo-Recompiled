@@ -209,6 +209,19 @@ Ps1CommercialEvidenceReport Ps1CommercialEvidenceRunner::run(
         report.bios_interrupt_hook_address =
             runtime_.bios_interrupt_hook_address();
 
+        const auto& dma3 = hardware.dma_channel(3u);
+        report.dma3_madr = dma3.madr;
+        report.dma3_bcr = dma3.bcr;
+        report.dma3_chcr = dma3.chcr;
+        const auto& cdrom = hardware.cdrom();
+        report.cd_current_lba = cdrom.current_lba();
+        report.cd_data_bytes = static_cast<std::uint32_t>(
+            cdrom.data_bytes_available());
+        report.cd_request = cdrom.request_register();
+        report.cd_irq_pending = cdrom.irq_pending();
+        report.cd_deferred_response_count = static_cast<std::uint32_t>(
+            cdrom.deferred_response_count());
+
         const auto& gpu = hardware.gpu();
         report.gpu_display = gpu.display_state();
         report.gpu_nonzero_vram_words = 0u;

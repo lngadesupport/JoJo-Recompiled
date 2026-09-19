@@ -117,6 +117,14 @@ struct Ps1CommercialEvidenceReport {
     std::uint32_t cpu_cop0_cause{};
     std::uint8_t cpu_external_interrupt_pending{};
     std::optional<std::uint32_t> bios_interrupt_hook_address{};
+    std::uint32_t dma3_madr{};
+    std::uint32_t dma3_bcr{};
+    std::uint32_t dma3_chcr{};
+    std::uint64_t cd_current_lba{};
+    std::uint32_t cd_data_bytes{};
+    std::uint8_t cd_request{};
+    bool cd_irq_pending{};
+    std::uint32_t cd_deferred_response_count{};
     Ps1GpuDisplayState gpu_display{};
     std::uint64_t gpu_nonzero_vram_words{};
     std::uint64_t gpu_display_region_nonzero_words{};
