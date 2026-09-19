@@ -2,6 +2,7 @@
 
 #include "core/mips_decoder.h"
 #include "core/ps1_gte.h"
+#include "core/ps1_memory_bus.h"
 
 #include <bit>
 #include <cstdint>
@@ -142,9 +143,10 @@ R3000aStepResult enter_exception(
 
 } // namespace
 
+template <typename Bus>
 R3000aStepResult step_r3000a_impl(
     R3000aState& state,
-    R3000aBus& bus,
+    Bus& bus,
     const std::uint32_t* prefetched_opcode) noexcept {
     state.gpr[0] = 0u;
     const std::uint32_t instruction_pc = state.pc;
@@ -644,6 +646,13 @@ R3000aStepResult step_r3000a(
 R3000aStepResult step_r3000a_prefetched(
     R3000aState& state,
     R3000aBus& bus,
+    std::uint32_t raw_opcode) noexcept {
+    return step_r3000a_impl(state,bus,&raw_opcode);
+}
+
+R3000aStepResult step_r3000a_prefetched_ps1(
+    R3000aState& state,
+    Ps1MemoryBus& bus,
     std::uint32_t raw_opcode) noexcept {
     return step_r3000a_impl(state,bus,&raw_opcode);
 }
