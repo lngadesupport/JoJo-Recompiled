@@ -22,6 +22,7 @@
 #include <shellapi.h>
 #include <shobjidl.h>
 #include <shlobj_core.h>
+#include <mmsystem.h>
 #include <chrono>
 #include <deque>
 #include <filesystem>
@@ -96,8 +97,9 @@ std::uint32_t game_execution_segments{};
 std::uint64_t game_completed_frames{};
 jojo::Ps1CommercialFrameProgress game_frame_progress{};
 std::optional<jojo::Ps1BootReport> game_last_segment{};
-jojo::Ps1FrameSliceBudget game_frame_budget{65536u};
+jojo::Ps1FrameSliceBudget game_frame_budget{524288u};
 std::chrono::steady_clock::time_point next_game_tick{};
+std::chrono::steady_clock::time_point next_present_tick{};
 fs::path settings_path, binding_path, executable_root;
 jojo::AppSettings app_settings{};
 jojo::Ps1DiscOpenOptions open_options{};
@@ -394,6 +396,7 @@ LRESULT CALLBACK game_proc(HWND h,UINT m,WPARAM w,LPARAM l){
 bool show_game_frame(jojo::Ps1DisplayFrame frame){
     if(frame.width==0u || frame.height==0u || frame.rgba8.empty()) return false;
 
+    bool created_window=false;
     if(!game_window){
         game_window=CreateWindowExW(
             0,
@@ -455,11 +458,14 @@ bool show_game_frame(jojo::Ps1DisplayFrame frame){
             return false;
         }
         game_presenter=std::move(presenter.value);
+        created_window=true;
     }
 
     game_frame=std::move(frame);
-    ShowWindow(game_window,SW_SHOWNORMAL);
-    UpdateWindow(game_window);
+    if(created_window){
+        ShowWindow(game_window,SW_SHOW);
+        UpdateWindow(game_window);
+    }
     const auto presented=game_presenter->present(
                 game_frame,
                 app_settings.graphics.vsync,
@@ -673,6 +679,33 @@ void game_tick(){
         return;
     }
 
+    const auto now=std::chrono::steady_clock::now();
+
+    // Presentation is decoupled from the PS1 simulation clock. When VSync is
+    // disabled the latest completed PS1 frame can be scanned out at up to
+    // 240 Hz without accelerating the original ~60 Hz game logic.
+    if(!app_settings.graphics.vsync &&
+       game_presenter &&
+       !game_frame.rgba8.empty()){
+        const auto present_period=
+            std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+                std::chrono::duration<double>(1.0/240.0));
+        if(next_present_tick.time_since_epoch().count()==0){
+            next_present_tick=now;
+        }
+        if(now>=next_present_tick){
+            if(now-next_present_tick>present_period*4) next_present_tick=now;
+            next_present_tick+=present_period;
+            const auto presented=game_presenter->present(
+                game_frame,
+                false,
+                app_settings.graphics.texture_filter,
+                app_settings.graphics.msaa,
+                app_settings.graphics.aspect_ratio);
+            (void)presented;
+        }
+    }
+
     if(game_frame_budget.frame_complete()){
         const auto display_timing=game_runner->gpu_display_state();
         const auto timing_mode=display_timing.pal
@@ -683,97 +716,120 @@ void game_tick(){
                 ? jojo::Ps1VideoTimingMode::ntsc_interlaced
                 : jojo::Ps1VideoTimingMode::ntsc_non_interlaced);
 
-        const auto now=std::chrono::steady_clock::now();
-        const auto frame_period=std::chrono::duration_cast<std::chrono::steady_clock::duration>(
-            std::chrono::duration<double>(jojo::ps1_frame_seconds(timing_mode)));
+        const auto frame_period=
+            std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+                std::chrono::duration<double>(
+                    jojo::ps1_frame_seconds(timing_mode)));
         if(now<next_game_tick) return;
-        if(now-next_game_tick>frame_period*4) next_game_tick=now;
+        if(now-next_game_tick>frame_period*3) next_game_tick=now;
         next_game_tick+=frame_period;
 
         (void)game_frame_budget.begin_frame(timing_mode);
         apply_current_input(*game_runner);
     }
 
-    const auto slice_ticks=game_frame_budget.next_slice_ticks();
-    if(slice_ticks==0u) return;
+    // Finish the current emulated video frame in this callback instead of
+    // requiring one coarse Win32 timer event per 64K CPU ticks. 524K slices
+    // keep responsiveness while reducing run_segment/reporting overhead.
+    std::uint32_t slices=0u;
+    while(game_runner &&
+          !game_frame_budget.frame_complete() &&
+          slices<8u){
+        const auto slice_ticks=game_frame_budget.next_slice_ticks();
+        if(slice_ticks==0u) break;
 
-    jojo::Ps1BootOptions options{};
-    options.instruction_budget=slice_ticks;
-    options.trace_capacity=64u;
-    options.mmio_event_capacity=64u;
-    options.bios_event_capacity=64u;
-    options.stagnation_instruction_limit=0u;
+        jojo::Ps1BootOptions options{};
+        options.instruction_budget=slice_ticks;
+        options.trace_capacity=0u;
+        options.mmio_event_capacity=0u;
+        options.bios_event_capacity=0u;
+        options.stagnation_instruction_limit=0u;
 
-    const auto segment=game_runner->run_segment(options);
-    game_last_segment=segment;
-    ++game_execution_segments;
-    game_total_execution_steps+=segment.execution_steps;
-    game_total_instructions+=segment.instructions_retired;
-    game_native_x64_instructions+=segment.native_x64_instructions_retired;
-    game_reference_instructions+=segment.reference_instructions_retired;
-    game_native_x64_cache_compilations+=
-        segment.native_x64_cache_compilations;
-    game_native_x64_cache_reuses+=segment.native_x64_cache_reuses;
-    game_native_x64_cache_invalidations+=
-        segment.native_x64_cache_invalidations;
-    game_native_x64_cache_evictions+=segment.native_x64_cache_evictions;
+        const auto segment=game_runner->run_segment(options);
+        game_last_segment=segment;
+        ++game_execution_segments;
+        game_total_execution_steps+=segment.execution_steps;
+        game_total_instructions+=segment.instructions_retired;
+        game_native_x64_instructions+=segment.native_x64_instructions_retired;
+        game_reference_instructions+=segment.reference_instructions_retired;
+        game_native_x64_cache_compilations+=
+            segment.native_x64_cache_compilations;
+        game_native_x64_cache_reuses+=segment.native_x64_cache_reuses;
+        game_native_x64_cache_invalidations+=
+            segment.native_x64_cache_invalidations;
+        game_native_x64_cache_evictions+=segment.native_x64_cache_evictions;
 
-    const auto frontier=jojo::classify_ps1_commercial_frontier(segment);
-    if(frontier!=jojo::Ps1CommercialFrontierClass::execution_budget){
-        service_game_audio();
-        const auto frame=game_runner->display_frame();
-        game_frame_progress.observe(frame);
-        if(frame.width!=0u&&frame.height!=0u&&!frame.rgba8.empty()){
-            (void)show_game_frame(frame);
+        const auto frontier=jojo::classify_ps1_commercial_frontier(segment);
+        if(frontier!=jojo::Ps1CommercialFrontierClass::execution_budget){
+            service_game_audio();
+            const auto frame=game_runner->display_frame();
+            game_frame_progress.observe(frame);
+            if(frame.width!=0u&&frame.height!=0u&&!frame.rgba8.empty()){
+                (void)show_game_frame(frame);
+            }
+            stop_game_runtime(&segment);
+            return;
         }
-        stop_game_runtime(&segment);
-        return;
+
+        if(segment.execution_steps==0u ||
+           !game_frame_budget.consume(segment.execution_steps)){
+            jojo::Ps1BootReport invalid=segment;
+            invalid.stop_reason=jojo::Ps1BootStopReason::fatal_runtime_error;
+            stop_game_runtime(&invalid);
+            return;
+        }
+        ++slices;
     }
 
-    if(segment.execution_steps==0u ||
-       !game_frame_budget.consume(segment.execution_steps)){
-        jojo::Ps1BootReport invalid=segment;
-        invalid.stop_reason=jojo::Ps1BootStopReason::fatal_runtime_error;
-        stop_game_runtime(&invalid);
-        return;
-    }
-
+    // Drain audio once per host callback instead of once per CPU slice.
     service_game_audio();
-    if(!game_frame_budget.frame_complete()) return;
+    if(!game_runner || !game_frame_budget.frame_complete()) return;
 
     game_runner->signal_vblank();
     ++game_completed_frames;
 
     const auto frame=game_runner->display_frame();
-    game_frame_progress.observe(frame);
+    if(game_completed_frames<=2u || (game_completed_frames%30u)==0u){
+        game_frame_progress.observe(frame);
+    }
     if(frame.width!=0u&&frame.height!=0u&&!frame.rgba8.empty()){
         (void)show_game_frame(frame);
     }
 
-    if((game_completed_frames%60u)==0u){
+    // Keep the hot path free of filesystem/report work. Saves and detailed
+    // diagnostics checkpoint every ~5 seconds at NTSC instead of every second.
+    if((game_completed_frames%300u)==0u){
         const auto flushed=game_runner->flush_memory_cards();
-        if(!flushed) add_log(L"Aviso: autosave do Memory Card falhou: "+wide(flushed.detail));
+        if(!flushed){
+            add_log(L"Aviso: autosave do Memory Card falhou: "+
+                wide(flushed.detail));
+        }
         const auto checkpoint_path=
             app_root()/L"diagnostics"/L"commercial-session.txt";
         const auto checkpoint_report=make_game_session_report(
             jojo::Ps1CommercialSessionTermination::periodic_checkpoint);
-        const auto checkpoint=jojo::save_ps1_commercial_evidence_report_atomic(
-            checkpoint_path,checkpoint_report);
+        const auto checkpoint=
+            jojo::save_ps1_commercial_evidence_report_atomic(
+                checkpoint_path,checkpoint_report);
         if(!checkpoint){
-            add_log(L"Aviso: checkpoint de validação falhou: "+wide(checkpoint.detail));
+            add_log(L"Aviso: checkpoint de validação falhou: "+
+                wide(checkpoint.detail));
         }
-        const auto validation=
-            jojo::summarize_ps1_gameplay_validation(checkpoint_report);
+    }
+
+    if((game_completed_frames%60u)==0u){
         const auto native_percent=game_total_instructions==0u
-            ? 0u
-            : static_cast<std::uint64_t>(
+            ?0u
+            :static_cast<std::uint64_t>(
                 (static_cast<long double>(game_native_x64_instructions)*
                  100.0L)/
                 static_cast<long double>(game_total_instructions));
         status=L"Jogo • frames: "+
             std::to_wstring(game_completed_frames)+
             L" • x64 "+std::to_wstring(native_percent)+L"% • "+
-            validation_status_text(validation);
+            (app_settings.graphics.vsync
+                ?L"VSync"
+                :L"host 240 Hz");
         InvalidateRect(win,nullptr,FALSE);
     }
 }
@@ -825,6 +881,7 @@ bool initialize_game_runtime_runner(){
     game_last_segment.reset();
     game_frame_budget.reset();
     next_game_tick=std::chrono::steady_clock::now();
+    next_present_tick=next_game_tick;
     return true;
 }
 
@@ -2040,8 +2097,13 @@ int WINAPI wWinMain(HINSTANCE inst,HINSTANCE,PWSTR,int show){
     if(app_settings.source_binding_path.empty()) app_settings.source_binding_path=utf8(binding_path.wstring());
     else binding_path=fs::path(wide(app_settings.source_binding_path));
 
-    const auto launcher_art=
+    const auto launcher_art_png=
+        executable_root/L"assets"/L"launcher"/L"jojo_launcher_main.png";
+    const auto launcher_art_jpg=
         executable_root/L"assets"/L"launcher"/L"jojo_launcher_main.jpg";
+    const auto launcher_art=fs::exists(launcher_art_png)
+        ?launcher_art_png
+        :launcher_art_jpg;
     const bool launcher_art_ready=launcher_ui.initialize(launcher_art);
 
     const auto startup=jojo::win32::resolve_startup_source(executable_root,app_settings,open_options);
@@ -2095,8 +2157,11 @@ int WINAPI wWinMain(HINSTANCE inst,HINSTANCE,PWSTR,int show){
         add_log(L"Aviso: não foi possível criar o atalho na Área de Trabalho.");
         InvalidateRect(win,nullptr,FALSE);
     }
+    const bool high_resolution_timer=
+        timeBeginPeriod(1u)==TIMERR_NOERROR;
     ShowWindow(win,show);UpdateWindow(win);
     MSG msg{};while(GetMessageW(&msg,nullptr,0,0)>0){TranslateMessage(&msg);DispatchMessageW(&msg);}
+    if(high_resolution_timer) timeEndPeriod(1u);
     if(game_window && IsWindow(game_window)) DestroyWindow(game_window);
     game_presenter.reset();
     game_audio_host.reset();
