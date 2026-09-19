@@ -329,9 +329,6 @@ void Ps1Sio0::transfer_byte(std::uint8_t value) noexcept {
 
     dsr_ = more_data;
     dsr_cycles_remaining_ = more_data ? kDsrPulseCycles : 0u;
-    if (more_data && (control_ & kControlDsrIrqEnable) != 0u) {
-        irq_ = true;
-    }
 }
 
 R3000aBusResult Ps1Sio0::read8(std::uint32_t physical) noexcept {
@@ -450,11 +447,7 @@ R3000aBusResult Ps1Sio0::write16(
     control_ = static_cast<std::uint16_t>(value & kControlStoredMask);
 
     if (acknowledge) {
-        irq_ = dsr_ && (control_ & kControlDsrIrqEnable) != 0u;
-    } else if (dsr_ &&
-               (previous_control & kControlDsrIrqEnable) == 0u &&
-               (control_ & kControlDsrIrqEnable) != 0u) {
-        irq_ = true;
+        irq_ = false;
     }
     const bool dtr_fell =
         (previous_control & kControlDtr) != 0u &&
@@ -487,6 +480,9 @@ void Ps1Sio0::step(std::uint32_t cpu_cycles) noexcept {
     if (cpu_cycles >= dsr_cycles_remaining_) {
         dsr_cycles_remaining_ = 0u;
         dsr_ = false;
+        if ((control_ & kControlDsrIrqEnable) != 0u) {
+            irq_ = true;
+        }
         return;
     }
     dsr_cycles_remaining_ -= cpu_cycles;

@@ -46,25 +46,27 @@ int main() {
     buttons &= static_cast<std::uint16_t>(~(1u << 14u)); // Cross
     sio.set_digital_pad_buttons(0u, buttons);
 
+    CHECK(sio.write16(0x1F80104Au, 0x1003u).status ==
+          jojo::R3000aBusStatus::ok);
     CHECK(exchange(sio, 0x01u) == 0xFFu);
     const auto status16 = sio.read16(0x1F801044u);
     CHECK(status16.status == jojo::R3000aBusStatus::ok);
     CHECK(status16.value ==
           (sio.read32(0x1F801044u).value & 0xFFFFu));
     CHECK((sio.read32(0x1F801044u).value & (1u << 7u)) != 0u);
+    CHECK((sio.read32(0x1F801044u).value & (1u << 9u)) == 0u);
+    // Clearing IRQ before /ACK falls cannot consume the future edge.
+    CHECK(sio.write16(0x1F80104Au, 0x1013u).status ==
+          jojo::R3000aBusStatus::ok);
     sio.step(63u);
     CHECK((sio.read32(0x1F801044u).value & (1u << 7u)) != 0u);
+    CHECK((sio.read32(0x1F801044u).value & (1u << 9u)) == 0u);
     sio.step(1u);
     CHECK((sio.read32(0x1F801044u).value & (1u << 7u)) == 0u);
-    // /ACK pulse ending does not clear the sticky IRQ; JOY_CTRL ACK does.
     CHECK((sio.read32(0x1F801044u).value & (1u << 9u)) != 0u);
+    CHECK(sio.write16(0x1F80104Au, 0x1013u).status ==
+          jojo::R3000aBusStatus::ok);
     CHECK((sio.read32(0x1F801044u).value & (1u << 9u)) == 0u);
-
-    CHECK(sio.write16(0x1F80104Au, 0x1003u).status == jojo::R3000aBusStatus::ok);
-    CHECK((sio.read32(0x1F801044u).value & (1u << 9u)) != 0u);
-    // Acknowledge while /ACK (DSR) is still asserted: IRQ must remain set.
-    CHECK(sio.write16(0x1F80104Au, 0x1013u).status == jojo::R3000aBusStatus::ok);
-    CHECK((sio.read32(0x1F801044u).value & (1u << 9u)) != 0u);
     CHECK(exchange(sio, 0x42u) == 0x41u);
     CHECK(exchange(sio, 0x00u) == 0x5Au);
     CHECK(exchange(sio, 0x00u) == 0xEFu);
@@ -135,7 +137,10 @@ int main() {
     CHECK(bus.write16(0x1F80104Au, 0x1001u).status == jojo::R3000aBusStatus::ok);
     CHECK(bus.write16(0x1F80104Au, 0x1011u).status == jojo::R3000aBusStatus::ok);
     CHECK(bus.write16(0x1F80104Au, 0x1003u).status == jojo::R3000aBusStatus::ok);
-    CHECK(bus.write8(0x1F801040u, 0x01u).status == jojo::R3000aBusStatus::ok);
+    CHECK(bus.write8(0x1F801040u, 0x01u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK((bus.hardware_services().interrupt_status() & 0x0080u) == 0u);
+    bus.hardware_services().step(64u);
     CHECK((bus.hardware_services().interrupt_status() & 0x0080u) != 0u);
 
     return failures ? 1 : 0;
