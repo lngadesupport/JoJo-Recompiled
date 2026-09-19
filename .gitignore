@@ -19,6 +19,11 @@
 *.cdi
 *.chd
 
+# Local commercial validation outputs (reports, frames, and memory cards)
+commercial-probe*.txt
+commercial-probe*.ppm
+commercial-probe*.mcr
+
 # Converter-created local installations
 /local-install/
 

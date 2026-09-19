@@ -204,14 +204,23 @@ Result<void> LanLobbyDiscovery::request_scan() {
             255u, 255u, 255u, 255u},
             kLanLobbyDiscoveryPort},
         request);
-    if (!broadcast) {
-        return broadcast;
-    }
 
     // Also probe loopback so two local instances can be used for testing.
-    (void)scan_transport_.send_datagram(
+    const auto loopback = scan_transport_.send_datagram(
         NetworkEndpoint::loopback(kLanLobbyDiscoveryPort),
         request);
+    // Some hosts and sandboxed CI environments reject global broadcast even
+    // though loopback (and sometimes interface-scoped discovery) is usable.
+    // Treat the scan as failed only when neither delivery path was accepted.
+    if (!broadcast && !loopback) {
+        return Result<void>::failure(
+            broadcast.error != ErrorCode::none
+                ? broadcast.error
+                : loopback.error,
+            !broadcast.detail.empty()
+                ? broadcast.detail
+                : loopback.detail);
+    }
     return Result<void>::success();
 }
 

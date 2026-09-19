@@ -142,10 +142,10 @@ int main() {
     }
     CHECK(hw.pending_dma_transfer(3u).has_value());
     CHECK(!hw.pending_dma_transfer(6u).has_value());
-    CHECK(static_cast<std::uint32_t>(concurrent_ram[0x100Cu + 0u]) |
+    CHECK((static_cast<std::uint32_t>(concurrent_ram[0x100Cu + 0u]) |
               (static_cast<std::uint32_t>(concurrent_ram[0x100Cu + 1u]) << 8u) |
               (static_cast<std::uint32_t>(concurrent_ram[0x100Cu + 2u]) << 16u) |
-              (static_cast<std::uint32_t>(concurrent_ram[0x100Cu + 3u]) << 24u)
+              (static_cast<std::uint32_t>(concurrent_ram[0x100Cu + 3u]) << 24u))
           == 0x00001008u);
     hw.cancel_pending_dma_transfer();
 

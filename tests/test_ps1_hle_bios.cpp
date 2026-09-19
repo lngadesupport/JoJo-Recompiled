@@ -312,7 +312,7 @@ static void test_card2_lifecycle_tracks_pad_enable_and_start_stop() {
 }
 
 static void test_stdout_write_aliases_return_requested_length() {
-    for (const auto call : std::array<std::pair<std::uint32_t, std::uint32_t>, 2>{{
+    for (const auto& call : std::array<std::pair<std::uint32_t, std::uint32_t>, 2>{{
              {0xA0u, 0x03u},
              {0xB0u, 0x35u},
          }}) {

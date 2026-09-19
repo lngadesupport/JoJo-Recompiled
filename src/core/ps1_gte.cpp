@@ -456,19 +456,6 @@ void color_matrix_from_ir(
     multiply_matrix_vector_into_ir(gte, 16u, vector, 13u, shift, lm);
 }
 
-void primary_color_modulate(
-    R3000aGte& gte,
-    unsigned shift,
-    bool lm) noexcept {
-    const auto rgba = gte.data[6];
-    for (unsigned i = 0u; i < 3u; ++i) {
-        const auto ir = static_cast<std::int64_t>(signed16(gte.data[9u + i]));
-        const auto raw =
-            static_cast<std::int64_t>(rgb_component(rgba, i)) * ir * 16;
-        store_mac_ir(gte, i + 1u, raw, shift, lm);
-    }
-}
-
 void depth_cue_from_base(
     R3000aGte& gte,
     const std::int64_t (&base_raw)[3],
