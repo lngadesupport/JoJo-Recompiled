@@ -48,6 +48,80 @@ static void test_vblank_routes_to_r3000a_hardware_irq2() {
     CHECK(report.interrupts_accepted == 1u);
 }
 
+static void test_jojo_pad_mirror_bypasses_commercial_padcard_irq_node() {
+    const std::vector<std::uint32_t> words{
+        // Enqueue priority-2 node at 80011000.
+        test_mips::i(0x09u, 0u, 4u, 2u),
+        test_mips::i(0x0Fu, 0u, 5u, 0x8001u),
+        test_mips::i(0x0Du, 5u, 5u, 0x1000u),
+        test_mips::i(0x09u, 0u, 9u, 0x0002u),
+        test_mips::i(0x09u, 0u, 10u, 0x00C0u),
+        test_mips::r(10u, 0u, 31u, 0u, 0x09u),
+        0x00000000u,
+        test_mips::j(0x02u, 0x8001001Cu >> 2),
+        0x00000000u,
+    };
+    auto runtime = make_runtime(words);
+
+    constexpr std::uint32_t node = 0x80011000u;
+    CHECK(runtime.bus().write32(node + 0u, 0u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(runtime.bus().write32(node + 4u, 0x8004DEECu).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(runtime.bus().write32(node + 8u, 0x8004DE84u).status ==
+          jojo::R3000aBusStatus::ok);
+    // Trap opcodes prove that the commercial callbacks were not executed.
+    CHECK(runtime.bus().write32(0x8004DE84u, 0x0000000Cu).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(runtime.bus().write32(0x8004DEECu, 0x0000000Cu).status ==
+          jojo::R3000aBusStatus::ok);
+
+    constexpr std::array<std::uint32_t, 5> signature{
+        0x8004F710u, 0x8004F758u, 0x8004F830u,
+        0x8004F8DCu, 0x8004F9A0u,
+    };
+    for (std::size_t i = 0u; i < signature.size(); ++i) {
+        CHECK(runtime.bus().write32(
+                  0x00063608u +
+                      static_cast<std::uint32_t>(i * 4u),
+                  signature[i]).status ==
+              jojo::R3000aBusStatus::ok);
+    }
+    constexpr std::uint32_t state_base = 0x80070000u;
+    constexpr std::uint32_t pad1 = 0x80071000u;
+    constexpr std::uint32_t pad2 = 0x80071100u;
+    CHECK(runtime.bus().write32(0x000635B4u, state_base).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(runtime.bus().write32(state_base + 0x3Cu, pad1).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(runtime.bus().write32(
+              state_base + 0xF0u + 0x3Cu, pad2).status ==
+          jojo::R3000aBusStatus::ok);
+    runtime.bus().hardware_services().sio0().set_digital_pad_buttons(
+        0u, 0xFFF7u);
+
+    const auto setup = runtime.run({16u});
+    CHECK(setup.stop_reason ==
+          jojo::Ps1BootStopReason::execution_budget_exhausted);
+    CHECK(runtime.bus().write16(0x1F801074u, 0x0001u).status ==
+          jojo::R3000aBusStatus::ok);
+    auto state = runtime.save_state();
+    state.cpu.cop0.status |= 0x00000401u;
+    CHECK(runtime.load_state(state));
+
+    runtime.signal_vblank();
+    const auto report = runtime.run({24u});
+    CHECK(report.stop_reason ==
+          jojo::Ps1BootStopReason::execution_budget_exhausted);
+    CHECK(report.interrupts_accepted >= 1u);
+    CHECK(runtime.bus().read8(pad1 + 0u).value == 0x00u);
+    CHECK(runtime.bus().read8(pad1 + 1u).value == 0x41u);
+    CHECK(runtime.bus().read8(pad1 + 2u).value == 0xF7u);
+    CHECK(runtime.bus().read8(pad1 + 3u).value == 0xFFu);
+    CHECK(runtime.cpu_state().pc != 0x8004DE84u);
+    CHECK(runtime.cpu_state().pc != 0x8004DEECu);
+}
+
 static void test_sysenqintrp_priority_chain_executes_first_then_second() {
     auto runtime = make_runtime({
         // Enqueue a priority-2 node at 80011000.
@@ -946,6 +1020,7 @@ static void test_deterministic_replay_matches_full_m3a_state() {
 int main() {
     test_runtime_starts_from_post_bios_cdrom_handoff();
     test_vblank_routes_to_r3000a_hardware_irq2();
+    test_jojo_pad_mirror_bypasses_commercial_padcard_irq_node();
     test_sysenqintrp_priority_chain_executes_first_then_second();
     test_runtime_continues_vblank_through_hookentryint();
     test_runtime_initializes_clean_room_c0_exception_entry();

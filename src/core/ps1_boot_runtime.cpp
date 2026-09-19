@@ -42,6 +42,8 @@ constexpr std::array<std::uint32_t, 5> kJojoPadTableSignature{
 constexpr std::uint32_t kJojoPadStateBasePointerPhysical = 0x000635B4u;
 constexpr std::uint32_t kJojoPadStateStride = 0xF0u;
 constexpr std::uint32_t kJojoPadBufferPointerOffset = 0x3Cu;
+constexpr std::uint32_t kJojoPadCardFirstHandler = 0x8004DE84u;
+constexpr std::uint32_t kJojoPadCardSecondHandler = 0x8004DEECu;
 constexpr std::uint64_t kFnvPrime = 1099511628211ull;
 
 bool is_bios_table(std::uint32_t physical) noexcept {
@@ -318,7 +320,16 @@ bool Ps1BootRuntime::enter_interrupt_chain_node() noexcept {
         interrupt_chain_.second_function = second.value;
         interrupt_chain_.phase = Ps1InterruptChainPhase::first;
 
-        if (first.value != 0u) {
+        // Once JoJo's Pad/Card structures exist, the compatibility mirror
+        // supplies the same final digital-pad packet the retail BIOS driver
+        // would leave in RAM. Skip only that expensive serial Pad/Card node;
+        // all other interrupt priorities and hooks still execute normally.
+        const bool bypass_jojo_pad_card =
+            first.value == kJojoPadCardFirstHandler &&
+            second.value == kJojoPadCardSecondHandler &&
+            mirror_jojo_pad_buffers();
+
+        if (first.value != 0u && !bypass_jojo_pad_card) {
             cpu_.gpr[31] = kInterruptChainReturnGuest;
             cpu_.pc = first.value;
             cpu_.next_pc = first.value + 4u;
