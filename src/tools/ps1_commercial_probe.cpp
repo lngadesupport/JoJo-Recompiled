@@ -1,10 +1,15 @@
 #include "core/ps1_commercial_evidence.h"
 #include "core/ps1_commercial_evidence_io.h"
+#include "core/ps1_commercial_frontier.h"
+#include "core/ps1_timing.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <limits>
+#include <optional>
 #include <string>
 
 namespace {
@@ -24,6 +29,270 @@ std::uint32_t parse_u32(const char* text, std::uint32_t fallback) {
     return static_cast<std::uint32_t>(value);
 }
 
+jojo::Ps1VideoTimingMode timing_mode_from_display(
+    const jojo::Ps1GpuDisplayState& display) noexcept {
+    if (display.pal) {
+        return display.interlaced
+            ? jojo::Ps1VideoTimingMode::pal_interlaced
+            : jojo::Ps1VideoTimingMode::pal_non_interlaced;
+    }
+    return display.interlaced
+        ? jojo::Ps1VideoTimingMode::ntsc_interlaced
+        : jojo::Ps1VideoTimingMode::ntsc_non_interlaced;
+}
+
+std::uint16_t scripted_buttons(std::uint64_t frame) noexcept {
+    std::uint16_t buttons = 0xFFFFu;
+    const auto press = [&](unsigned bit) {
+        buttons = static_cast<std::uint16_t>(
+            buttons & static_cast<std::uint16_t>(~(1u << bit)));
+    };
+
+    // Let the boot logos/title settle, then aggressively traverse the common
+    // title/menu/character-select path with short edge-like button pulses.
+    if (frame >= 120u) {
+        const auto phase = static_cast<std::uint32_t>((frame - 120u) % 120u);
+        if (phase < 2u) press(3u);                 // Start
+        if (phase >= 16u && phase < 18u) press(14u); // Cross / confirm
+        if (phase >= 32u && phase < 34u) press(14u); // Cross / confirm
+        if (phase >= 48u && phase < 50u) press(5u);  // Right
+        if (phase >= 64u && phase < 66u) press(14u); // Cross / confirm
+        if (phase >= 80u && phase < 82u) press(6u);  // Down
+        if (phase >= 96u && phase < 98u) press(14u); // Cross / confirm
+        if (phase >= 110u && phase < 112u) {         // Fight activity
+            press(14u); // Light
+            press(15u); // Medium
+            press(13u); // Heavy
+            press(12u); // Stand
+        }
+    }
+    return buttons;
+}
+
+bool save_ppm(
+    const std::filesystem::path& path,
+    const jojo::Ps1DisplayFrame& frame) {
+    if (frame.width == 0u || frame.height == 0u ||
+        frame.rgba8.size() !=
+            static_cast<std::size_t>(frame.width) *
+            static_cast<std::size_t>(frame.height)) {
+        return false;
+    }
+
+    std::ofstream out(path, std::ios::binary | std::ios::trunc);
+    if (!out) return false;
+    out << "P6\n" << frame.width << ' ' << frame.height << "\n255\n";
+    for (const auto pixel : frame.rgba8) {
+        const char rgb[3]{
+            static_cast<char>(pixel & 0xFFu),
+            static_cast<char>((pixel >> 8u) & 0xFFu),
+            static_cast<char>((pixel >> 16u) & 0xFFu),
+        };
+        out.write(rgb, 3);
+    }
+    return static_cast<bool>(out);
+}
+
+int run_gameplay_probe(
+    jojo::Ps1CommercialEvidenceRunner& runner,
+    const std::filesystem::path& report_path,
+    std::uint64_t segment_budget,
+    std::uint32_t gameplay_frames,
+    bool scripted_input,
+    bool memory_card) {
+    if (memory_card) {
+        auto card_path = report_path;
+        card_path += ".mcr";
+        std::error_code ec;
+        std::filesystem::remove(card_path, ec);
+        const auto card = runner.load_or_create_memory_card(0u, card_path);
+        if (!card) {
+            std::cerr << "memory_card_error="
+                      << static_cast<unsigned>(card.error) << "\n";
+            std::cerr << "memory_card_detail=" << card.detail << "\n";
+            return 5;
+        }
+    }
+
+    jojo::Ps1CommercialFrameProgress frame_progress;
+    jojo::Ps1VideoReferenceClock video_clock{
+        timing_mode_from_display(runner.gpu_display_state())};
+    std::uint64_t frame_ticks_remaining = video_clock.next_frame_ticks();
+    std::uint64_t total_execution_steps = 0u;
+    std::uint64_t total_instructions_retired = 0u;
+    std::uint64_t total_native_retired = 0u;
+    std::uint64_t total_reference_retired = 0u;
+    std::uint64_t completed_frames = 0u;
+    jojo::Ps1BootReport last_boot{};
+    auto frontier = jojo::Ps1CommercialFrontierClass::execution_budget;
+    std::optional<jojo::Ps1DisplayFrame> last_non_black_frame;
+
+    while (completed_frames < gameplay_frames) {
+        runner.set_pad_buttons(
+            0u,
+            scripted_input ? scripted_buttons(completed_frames) : 0xFFFFu);
+
+        jojo::Ps1BootOptions options{};
+        options.instruction_budget =
+            std::min<std::uint64_t>(
+                segment_budget,
+                frame_ticks_remaining);
+        options.trace_capacity = 4096u;
+        options.mmio_event_capacity = 2048u;
+        options.bios_event_capacity = 2048u;
+        options.stagnation_instruction_limit = 0u;
+
+        last_boot = runner.run_segment(options);
+        total_execution_steps += last_boot.execution_steps;
+        total_instructions_retired += last_boot.instructions_retired;
+        total_native_retired += last_boot.native_x64_instructions_retired;
+        total_reference_retired += last_boot.reference_instructions_retired;
+
+        frontier = jojo::classify_ps1_commercial_frontier(last_boot);
+        if (frontier != jojo::Ps1CommercialFrontierClass::execution_budget) {
+            break;
+        }
+        if (last_boot.execution_steps == 0u ||
+            last_boot.execution_steps > frame_ticks_remaining) {
+            break;
+        }
+
+        frame_ticks_remaining -= last_boot.execution_steps;
+        if (frame_ticks_remaining != 0u) continue;
+
+        runner.signal_vblank();
+        ++completed_frames;
+
+        const auto frame = runner.display_frame();
+        frame_progress.observe(frame);
+        if (jojo::make_ps1_commercial_frame_evidence(frame)) {
+            last_non_black_frame = frame;
+        }
+
+        // Keep the host-neutral PCM queue bounded. Validation counters are
+        // cumulative inside the SPU and survive draining.
+        static_cast<void>(runner.drain_audio_samples());
+
+        video_clock.set_mode(
+            timing_mode_from_display(runner.gpu_display_state()));
+        frame_ticks_remaining = video_clock.next_frame_ticks();
+    }
+
+    const auto counters = runner.validation_counters();
+    const auto validation_frame =
+        frame_progress.first_frame().has_value() ? 1 : 0;
+    const auto dynamic_video =
+        frame_progress.frame_change_count() != 0u ? 1 : 0;
+    const auto controller_poll =
+        (counters.pad_poll_count[0] != 0u ||
+         counters.pad_poll_count[1] != 0u) ? 1 : 0;
+    const auto controller_input =
+        (counters.pad_pressed_poll_count[0] != 0u ||
+         counters.pad_pressed_poll_count[1] != 0u) ? 1 : 0;
+    const auto audio_non_silent =
+        counters.spu_nonzero_samples != 0u ? 1 : 0;
+    const auto memory_read =
+        (counters.memory_card_read_sector_count[0] != 0u ||
+         counters.memory_card_read_sector_count[1] != 0u) ? 1 : 0;
+    const auto memory_write =
+        (counters.memory_card_write_sector_count[0] != 0u ||
+         counters.memory_card_write_sector_count[1] != 0u) ? 1 : 0;
+
+    auto frame_path = report_path;
+    frame_path += ".ppm";
+    bool frame_saved = false;
+    if (last_non_black_frame) {
+        frame_saved = save_ppm(frame_path, *last_non_black_frame);
+    }
+
+    std::ofstream report(report_path, std::ios::binary | std::ios::trunc);
+    if (!report) return 4;
+    report << "format=jojo-gameplay-probe-v1\n";
+    report << "revision_id=" << runner.disc_session().binding().revision_id << '\n';
+    report << "source_size=" << runner.disc_session().binding().source_size << '\n';
+    report << "source_hash_fnv1a64="
+           << runner.disc_session().binding().source_hash_fnv1a64 << '\n';
+    report << "frontier="
+           << jojo::ps1_commercial_frontier_class_name(frontier) << '\n';
+    report << "completed_frames=" << completed_frames << '\n';
+    report << "total_execution_steps=" << total_execution_steps << '\n';
+    report << "total_instructions_retired=" << total_instructions_retired << '\n';
+    report << "native_x64_instructions_retired=" << total_native_retired << '\n';
+    report << "reference_instructions_retired=" << total_reference_retired << '\n';
+    report << "last_pc=" << last_boot.last_pc << '\n';
+    report << "observed_non_black_frames="
+           << frame_progress.observed_non_black_frames() << '\n';
+    report << "frame_change_count=" << frame_progress.frame_change_count() << '\n';
+    report << "validation_frame_observed=" << validation_frame << '\n';
+    report << "validation_dynamic_video_observed=" << dynamic_video << '\n';
+    report << "pad0_poll_count=" << counters.pad_poll_count[0] << '\n';
+    report << "pad0_pressed_poll_count="
+           << counters.pad_pressed_poll_count[0] << '\n';
+    report << "validation_controller_poll_observed="
+           << controller_poll << '\n';
+    report << "validation_controller_input_observed="
+           << controller_input << '\n';
+    report << "spu_sample_frames=" << counters.spu_sample_frames << '\n';
+    report << "spu_nonzero_samples=" << counters.spu_nonzero_samples << '\n';
+    report << "validation_audio_non_silent_observed="
+           << audio_non_silent << '\n';
+    report << "memory_card0_read_sector_count="
+           << counters.memory_card_read_sector_count[0] << '\n';
+    report << "memory_card0_write_sector_count="
+           << counters.memory_card_write_sector_count[0] << '\n';
+    report << "memory_card0_changed_write_sector_count="
+           << counters.memory_card_changed_write_sector_count[0] << '\n';
+    report << "validation_memory_card_read_observed=" << memory_read << '\n';
+    report << "validation_memory_card_write_observed=" << memory_write << '\n';
+    report << "dma_transfer_count=" << counters.dma_transfer_count << '\n';
+    report << "cdrom_command_count=" << counters.cdrom_command_count << '\n';
+    report << "gpu_gp0_word_count=" << counters.gpu_gp0_word_count << '\n';
+    report << "gpu_gp1_command_count=" << counters.gpu_gp1_command_count << '\n';
+    report << "vram_write_count=" << counters.vram_write_count << '\n';
+    report << "vblank_count=" << counters.vblank_count << '\n';
+    report << "frame_saved=" << (frame_saved ? 1 : 0) << '\n';
+    if (frame_progress.first_frame()) {
+        report << "first_frame_width=" << frame_progress.first_frame()->width << '\n';
+        report << "first_frame_height=" << frame_progress.first_frame()->height << '\n';
+        report << "first_frame_non_black_pixels="
+               << frame_progress.first_frame()->non_black_pixels << '\n';
+        report << "first_frame_hash_fnv1a64="
+               << frame_progress.first_frame()->frame_hash_fnv1a64 << '\n';
+    }
+
+    if (memory_card) {
+        const auto flushed = runner.flush_memory_cards();
+        if (!flushed) {
+            std::cerr << "memory_card_flush_error="
+                      << static_cast<unsigned>(flushed.error) << "\n";
+        }
+    }
+
+    std::cout << "frontier="
+              << jojo::ps1_commercial_frontier_class_name(frontier) << "\n";
+    std::cout << "completed_frames=" << completed_frames << "\n";
+    std::cout << "observed_non_black_frames="
+              << frame_progress.observed_non_black_frames() << "\n";
+    std::cout << "frame_change_count="
+              << frame_progress.frame_change_count() << "\n";
+    std::cout << "pad0_poll_count=" << counters.pad_poll_count[0] << "\n";
+    std::cout << "pad0_pressed_poll_count="
+              << counters.pad_pressed_poll_count[0] << "\n";
+    std::cout << "spu_nonzero_samples="
+              << counters.spu_nonzero_samples << "\n";
+    std::cout << "memory_card0_read_sector_count="
+              << counters.memory_card_read_sector_count[0] << "\n";
+    std::cout << "memory_card0_write_sector_count="
+              << counters.memory_card_write_sector_count[0] << "\n";
+    std::cout << "report_path=" << report_path.string() << "\n";
+    if (frame_saved) {
+        std::cout << "frame_path=" << frame_path.string() << "\n";
+    }
+    return frontier == jojo::Ps1CommercialFrontierClass::execution_budget
+        ? 0
+        : 6;
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -31,7 +300,8 @@ int main(int argc, char** argv) {
         std::cerr
             << "usage: jojo_ps1_commercial_probe <source.bin|source.cue|source.iso> "
                "<report.txt> [segments=128] [instructions_per_segment=500000] "
-               "[native_x64=0|1]\n";
+               "[native_x64=0|1] [gameplay_frames=0] [scripted_input=0|1] "
+               "[memory_card=0|1]\n";
         return 2;
     }
 
@@ -42,6 +312,12 @@ int main(int argc, char** argv) {
         argc >= 5 ? parse_u64(argv[4], 500000u) : 500000u;
     const bool native_x64 =
         argc >= 6 ? parse_u32(argv[5], 0u) != 0u : false;
+    const auto gameplay_frames =
+        argc >= 7 ? parse_u32(argv[6], 0u) : 0u;
+    const bool scripted_input =
+        argc >= 8 ? parse_u32(argv[7], 0u) != 0u : false;
+    const bool memory_card =
+        argc >= 9 ? parse_u32(argv[8], 0u) != 0u : false;
 #if defined(_WIN32) && defined(_M_X64)
     constexpr bool native_x64_backend_available = true;
 #else
@@ -56,6 +332,16 @@ int main(int argc, char** argv) {
     }
 
     runner.value.set_native_x64_enabled(native_x64);
+
+    if (gameplay_frames != 0u) {
+        return run_gameplay_probe(
+            runner.value,
+            report_path,
+            segment_budget,
+            gameplay_frames,
+            scripted_input,
+            memory_card);
+    }
 
     jojo::Ps1CommercialEvidenceOptions options{};
     options.boot.instruction_budget = segment_budget;
