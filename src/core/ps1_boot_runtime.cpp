@@ -1173,8 +1173,16 @@ std::uint64_t Ps1BootRuntime::diagnostic_state_hash() const noexcept {
     return hash;
 }
 
+void Ps1BootRuntime::display_frame_into(Ps1DisplayFrame& frame) const {
+    capture_ps1_display_frame_into(
+        bus_.hardware_services().gpu(),
+        frame);
+}
+
 Ps1DisplayFrame Ps1BootRuntime::display_frame() const {
-    return capture_ps1_display_frame(bus_.hardware_services().gpu());
+    Ps1DisplayFrame frame{};
+    display_frame_into(frame);
+    return frame;
 }
 
 Ps1BootRuntimeState Ps1BootRuntime::save_state() const {
