@@ -182,7 +182,8 @@ void test_runner_continues_bounded_budget_until_real_frontier(const fs::path& te
     CHECK(report.total_native_x64_instructions_retired +
               report.total_reference_instructions_retired ==
           report.total_instructions_retired);
-#if defined(_WIN32) && defined(_M_X64)
+#if (defined(_WIN32) && defined(_M_X64)) || \
+    (defined(__linux__) && defined(__x86_64__))
     CHECK(report.total_native_x64_instructions_retired > 0u);
 #else
     CHECK(report.total_native_x64_instructions_retired == 0u);
