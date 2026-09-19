@@ -143,14 +143,15 @@ R3000aBusResult Ps1CdromController::write8(std::uint32_t physical,
             request_register_ = value;
             if ((value & 0x80u) == 0u) {
                 data_.clear();
-            } else {
-                data_.clear();
-                if (!sector_buffer_.empty()) {
-                    data_.assign(
-                        sector_buffer_.begin(),
-                        sector_buffer_.end());
-                    sector_buffer_.clear();
-                }
+            } else if (data_.empty() && !sector_buffer_.empty()) {
+                // Reasserting BFRD while a transfer is already in progress
+                // must not discard unread bytes. JoJo does this twice for a
+                // MODE2 sector: first for the 12-byte header/subheader DMA,
+                // then again for the 2048-byte payload DMA.
+                data_.assign(
+                    sector_buffer_.begin(),
+                    sector_buffer_.end());
+                sector_buffer_.clear();
             }
             return {R3000aBusStatus::ok, 0u};
         }

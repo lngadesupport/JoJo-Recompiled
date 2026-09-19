@@ -558,24 +558,35 @@ int main() {
               jojo::R3000aBusStatus::ok);
         CHECK(raw_cd.data_bytes_available() == 2340u);
 
-        std::vector<std::uint32_t> raw_words(512u, 0u);
-        CHECK(raw_cd.read_data_words(raw_words) == 512u);
-        CHECK(raw_cd.data_bytes_available() == 292u);
-        CHECK((raw_words[0] >> 24u) == 0x02u);
-        CHECK((raw_words[3] & 0xFFu) ==
+        // JoJo's MODE2 IRQ path first DMA-transfers three words of
+        // header/subheader, then reasserts BFRD=1 before a 512-word payload
+        // DMA. The second BFRD write must preserve the active transfer.
+        std::vector<std::uint32_t> raw_header_words(3u, 0u);
+        CHECK(raw_cd.read_data_words(raw_header_words) == 3u);
+        CHECK(raw_cd.data_bytes_available() == 2328u);
+        CHECK((raw_header_words[0] >> 24u) == 0x02u);
+
+        CHECK(raw_cd.write8(0x1F801803u, 0x80u).status ==
+              jojo::R3000aBusStatus::ok);
+        CHECK(raw_cd.data_bytes_available() == 2328u);
+
+        std::vector<std::uint32_t> raw_payload_words(512u, 0u);
+        CHECK(raw_cd.read_data_words(raw_payload_words) == 512u);
+        CHECK(raw_cd.data_bytes_available() == 280u);
+        CHECK((raw_payload_words[0] & 0xFFu) ==
               static_cast<std::uint32_t>('A'));
-        CHECK(((raw_words[3] >> 8u) & 0xFFu) ==
+        CHECK(((raw_payload_words[0] >> 8u) & 0xFFu) ==
               static_cast<std::uint32_t>('S'));
-        CHECK(((raw_words[3] >> 16u) & 0xFFu) ==
+        CHECK(((raw_payload_words[0] >> 16u) & 0xFFu) ==
               static_cast<std::uint32_t>('S'));
-        CHECK(((raw_words[3] >> 24u) & 0xFFu) ==
+        CHECK(((raw_payload_words[0] >> 24u) & 0xFFu) ==
               static_cast<std::uint32_t>('E'));
 
         // A final Pause must not discard the unread tail of the host FIFO.
-        CHECK(raw_cd.data_bytes_available() == 292u);
+        CHECK(raw_cd.data_bytes_available() == 280u);
         CHECK(raw_cd.write8(0x1F801801u, 0x09u).status ==
               jojo::R3000aBusStatus::ok);
-        CHECK(raw_cd.data_bytes_available() == 292u);
+        CHECK(raw_cd.data_bytes_available() == 280u);
         CHECK(raw_cd.read8(0x1F801801u).status ==
               jojo::R3000aBusStatus::ok);
         CHECK(raw_cd.write8(0x1F801800u, 0x01u).status ==
@@ -585,7 +596,7 @@ int main() {
         CHECK(raw_cd.write8(0x1F801800u, 0x00u).status ==
               jojo::R3000aBusStatus::ok);
         raw_cd.step(33869u);
-        CHECK(raw_cd.data_bytes_available() == 292u);
+        CHECK(raw_cd.data_bytes_available() == 280u);
 
         CHECK(raw_cd.write8(0x1F801803u, 0x00u).status ==
               jojo::R3000aBusStatus::ok);
