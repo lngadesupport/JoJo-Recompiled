@@ -25,4 +25,10 @@ struct LogicalSectorSource {
     std::uint64_t first_lba,
     std::uint32_t sector_count);
 
+[[nodiscard]] Result<std::vector<std::uint8_t>> read_cdrom_sectors(
+    const LogicalSectorSource& source,
+    std::uint64_t first_lba,
+    std::uint32_t sector_count,
+    bool whole_sector);
+
 }

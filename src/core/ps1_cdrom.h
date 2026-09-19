@@ -59,7 +59,7 @@ private:
 
     static constexpr std::size_t parameter_capacity = 16u;
     static constexpr std::size_t response_capacity = 16u;
-    static constexpr std::size_t data_capacity = 2048u;
+    static constexpr std::size_t data_capacity = 2340u;
     static constexpr std::size_t command_history_capacity = 64u;
 
     [[nodiscard]] bool push_response(std::uint8_t value) noexcept;

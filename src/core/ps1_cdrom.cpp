@@ -215,8 +215,12 @@ void Ps1CdromController::step(std::uint32_t cpu_cycles) noexcept {
         return;
     }
 
-    auto sector = disc_->read_sectors(current_lba_, 1u);
-    if (!sector || sector.value.size() != data_capacity) {
+    const bool whole_sector = (mode_ & 0x20u) != 0u;
+    const std::size_t expected_size =
+        whole_sector ? data_capacity : 2048u;
+    auto sector = disc_->read_cdrom_sectors(
+        current_lba_, 1u, whole_sector);
+    if (!sector || sector.value.size() != expected_size) {
         stop_read_stream();
         status_byte_ = static_cast<std::uint8_t>(
             status_byte_ & ~kStatRead);

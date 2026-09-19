@@ -33,6 +33,10 @@ static void test_cooked_iso_source() {
             CHECK(pvd.value[0] == 1);
             CHECK(std::string(reinterpret_cast<const char*>(pvd.value.data() + 1), 5) == "CD001");
         }
+        const auto whole =
+            jojo::read_cdrom_sectors(source.value, 16, 1, true);
+        CHECK(!whole);
+        CHECK(whole.error == jojo::ErrorCode::unsupported_format);
     }
     std::error_code ec;
     fs::remove(iso, ec);
@@ -71,6 +75,15 @@ static void test_raw_bin_mode2_form1_source() {
         const auto root = jojo::read_logical_sectors(source.value, 20, 1);
         CHECK(root);
         if (root) CHECK(root.value[0] >= 34);
+
+        const auto whole =
+            jojo::read_cdrom_sectors(source.value, 20, 1, true);
+        CHECK(whole);
+        if (whole) {
+            CHECK(whole.value.size() == 2340u);
+            CHECK(whole.value[3] == 2u);
+            CHECK(whole.value[12] == root.value[0]);
+        }
     }
     std::error_code ec;
     fs::remove(iso, ec);

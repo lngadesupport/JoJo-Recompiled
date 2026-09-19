@@ -10,6 +10,9 @@
 namespace jojo {
 namespace {
 constexpr std::uint64_t kLogicalSectorSize = 2048;
+constexpr std::uint64_t kRawSectorSize = 2352;
+constexpr std::uint64_t kWholeSectorPayloadOffset = 12;
+constexpr std::uint64_t kWholeSectorPayloadSize = 2340;
 constexpr std::uint64_t kPvdLba = 16;
 
 std::string lower_extension(std::filesystem::path path) {
@@ -244,6 +247,86 @@ Result<std::vector<std::uint8_t>> read_logical_sectors(const LogicalSectorSource
         if (in.gcount() != static_cast<std::streamsize>(kLogicalSectorSize)) {
             return Result<std::vector<std::uint8_t>>::failure(ErrorCode::io_error,
                                                                "short read from media track sector");
+        }
+    }
+    return Result<std::vector<std::uint8_t>>::success(std::move(result));
+}
+
+Result<std::vector<std::uint8_t>> read_cdrom_sectors(
+    const LogicalSectorSource& source,
+    std::uint64_t first_lba,
+    std::uint32_t sector_count,
+    bool whole_sector) {
+    if (!whole_sector) {
+        return read_logical_sectors(source, first_lba, sector_count);
+    }
+    if (sector_count == 0u) {
+        return Result<std::vector<std::uint8_t>>::success({});
+    }
+    if (source.physical_sector_size != kRawSectorSize) {
+        return Result<std::vector<std::uint8_t>>::failure(
+            ErrorCode::unsupported_format,
+            "2340-byte CD-ROM sectors require a raw 2352-byte track");
+    }
+    if (first_lba >= source.logical_sector_count ||
+        static_cast<std::uint64_t>(sector_count) >
+            source.logical_sector_count - first_lba) {
+        return Result<std::vector<std::uint8_t>>::failure(
+            ErrorCode::invalid_argument,
+            "CD-ROM sector read is outside the data track");
+    }
+    if (static_cast<std::uint64_t>(sector_count) >
+        std::numeric_limits<std::size_t>::max() / kWholeSectorPayloadSize) {
+        return Result<std::vector<std::uint8_t>>::failure(
+            ErrorCode::invalid_argument,
+            "CD-ROM sector read is too large");
+    }
+
+    std::ifstream in(source.file_path, std::ios::binary);
+    if (!in) {
+        return Result<std::vector<std::uint8_t>>::failure(
+            ErrorCode::io_error,
+            "cannot open media track");
+    }
+
+    std::vector<std::uint8_t> result(
+        static_cast<std::size_t>(sector_count) *
+        static_cast<std::size_t>(kWholeSectorPayloadSize));
+    for (std::uint32_t i = 0u; i < sector_count; ++i) {
+        const auto lba = first_lba + i;
+        if (!add_mul_fits(
+                source.file_offset,
+                lba,
+                source.physical_sector_size,
+                kWholeSectorPayloadOffset + kWholeSectorPayloadSize,
+                source.file_size)) {
+            return Result<std::vector<std::uint8_t>>::failure(
+                ErrorCode::invalid_argument,
+                "physical CD-ROM sector read is outside the track file");
+        }
+
+        const auto physical =
+            source.file_offset +
+            lba * source.physical_sector_size +
+            kWholeSectorPayloadOffset;
+        in.seekg(static_cast<std::streamoff>(physical));
+        if (!in) {
+            return Result<std::vector<std::uint8_t>>::failure(
+                ErrorCode::io_error,
+                "cannot seek media track sector");
+        }
+
+        auto* out = result.data() +
+            static_cast<std::size_t>(i) *
+            static_cast<std::size_t>(kWholeSectorPayloadSize);
+        in.read(
+            reinterpret_cast<char*>(out),
+            static_cast<std::streamsize>(kWholeSectorPayloadSize));
+        if (in.gcount() !=
+            static_cast<std::streamsize>(kWholeSectorPayloadSize)) {
+            return Result<std::vector<std::uint8_t>>::failure(
+                ErrorCode::io_error,
+                "short read from raw media track sector");
         }
     }
     return Result<std::vector<std::uint8_t>>::success(std::move(result));

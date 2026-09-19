@@ -33,6 +33,10 @@ public:
     [[nodiscard]] Result<std::vector<std::uint8_t>> read_sectors(
         std::uint64_t first_lba,
         std::uint32_t sector_count) const;
+    [[nodiscard]] Result<std::vector<std::uint8_t>> read_cdrom_sectors(
+        std::uint64_t first_lba,
+        std::uint32_t sector_count,
+        bool whole_sector) const;
     [[nodiscard]] std::uint64_t logical_sector_count() const noexcept;
 
 private:

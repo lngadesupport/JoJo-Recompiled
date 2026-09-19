@@ -285,6 +285,85 @@ int main() {
     CHECK(cd.data_bytes_available() == 0u);
     CHECK(cd.current_lba() == 27u);
 
+    // Mode bit 5 selects the PS1 924h-byte transfer window:
+    // bytes 12..2351 of a raw 2352-byte sector. This is the mode used by
+    // JoJo's P/MOJI.PAC loader (Setmode=A0h).
+    const auto raw_iso_path = root / "jojo-raw-source.iso";
+    const auto raw_bin_path = root / "jojo-mode2.bin";
+    test_ps1::write_mode2_bin(
+        raw_iso_path, raw_bin_path, fixture);
+    auto raw_disc = jojo::Ps1DiscSession::open(
+        raw_bin_path, open_options);
+    CHECK(static_cast<bool>(raw_disc));
+    if (raw_disc) {
+        jojo::Ps1CdromController raw_cd;
+        raw_cd.attach_disc(&raw_disc.value);
+
+        CHECK(raw_cd.write8(0x1F801802u, 0xA0u).status ==
+              jojo::R3000aBusStatus::ok);
+        CHECK(raw_cd.write8(0x1F801801u, 0x0Eu).status ==
+              jojo::R3000aBusStatus::ok);
+        CHECK(raw_cd.read8(0x1F801801u).status ==
+              jojo::R3000aBusStatus::ok);
+        CHECK(raw_cd.write8(0x1F801800u, 0x01u).status ==
+              jojo::R3000aBusStatus::ok);
+        CHECK(raw_cd.write8(0x1F801803u, 0x07u).status ==
+              jojo::R3000aBusStatus::ok);
+        CHECK(raw_cd.write8(0x1F801800u, 0x00u).status ==
+              jojo::R3000aBusStatus::ok);
+
+        CHECK(raw_cd.write8(0x1F801802u, 0x00u).status ==
+              jojo::R3000aBusStatus::ok);
+        CHECK(raw_cd.write8(0x1F801802u, 0x02u).status ==
+              jojo::R3000aBusStatus::ok);
+        CHECK(raw_cd.write8(0x1F801802u, 0x25u).status ==
+              jojo::R3000aBusStatus::ok);
+        CHECK(raw_cd.write8(0x1F801801u, 0x02u).status ==
+              jojo::R3000aBusStatus::ok);
+        CHECK(raw_cd.read8(0x1F801801u).status ==
+              jojo::R3000aBusStatus::ok);
+        CHECK(raw_cd.write8(0x1F801800u, 0x01u).status ==
+              jojo::R3000aBusStatus::ok);
+        CHECK(raw_cd.write8(0x1F801803u, 0x07u).status ==
+              jojo::R3000aBusStatus::ok);
+        CHECK(raw_cd.write8(0x1F801800u, 0x00u).status ==
+              jojo::R3000aBusStatus::ok);
+
+        CHECK(raw_cd.write8(0x1F801801u, 0x06u).status ==
+              jojo::R3000aBusStatus::ok);
+        CHECK(raw_cd.read8(0x1F801801u).status ==
+              jojo::R3000aBusStatus::ok);
+        CHECK(raw_cd.write8(0x1F801800u, 0x01u).status ==
+              jojo::R3000aBusStatus::ok);
+        CHECK(raw_cd.write8(0x1F801803u, 0x07u).status ==
+              jojo::R3000aBusStatus::ok);
+        CHECK(raw_cd.write8(0x1F801800u, 0x00u).status ==
+              jojo::R3000aBusStatus::ok);
+        raw_cd.step(225792u);
+        CHECK(raw_cd.data_bytes_available() == 2340u);
+        CHECK(raw_cd.write8(0x1F801800u, 0x01u).status ==
+              jojo::R3000aBusStatus::ok);
+        CHECK((raw_cd.read8(0x1F801803u).value & 0x07u) == 0x01u);
+        CHECK(raw_cd.read8(0x1F801801u).status ==
+              jojo::R3000aBusStatus::ok);
+        CHECK(raw_cd.write8(0x1F801803u, 0x07u).status ==
+              jojo::R3000aBusStatus::ok);
+        CHECK(raw_cd.write8(0x1F801800u, 0x00u).status ==
+              jojo::R3000aBusStatus::ok);
+
+        std::vector<std::uint32_t> raw_words(585u, 0u);
+        CHECK(raw_cd.read_data_words(raw_words) == 585u);
+        CHECK((raw_words[0] >> 24u) == 0x02u);
+        CHECK((raw_words[3] & 0xFFu) ==
+              static_cast<std::uint32_t>('A'));
+        CHECK(((raw_words[3] >> 8u) & 0xFFu) ==
+              static_cast<std::uint32_t>('S'));
+        CHECK(((raw_words[3] >> 16u) & 0xFFu) ==
+              static_cast<std::uint32_t>('S'));
+        CHECK(((raw_words[3] >> 24u) & 0xFFu) ==
+              static_cast<std::uint32_t>('E'));
+    }
+
     const auto cd_hash_before = cd.diagnostic_state_hash();
     CHECK(cd.write8(0x1F801800u, 0x01u).status ==
           jojo::R3000aBusStatus::ok);

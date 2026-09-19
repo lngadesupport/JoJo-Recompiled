@@ -106,6 +106,14 @@ Result<std::vector<std::uint8_t>> Ps1DiscSession::read_sectors(
     return read_logical_sectors(sectors_, first_lba, sector_count);
 }
 
+Result<std::vector<std::uint8_t>> Ps1DiscSession::read_cdrom_sectors(
+    std::uint64_t first_lba,
+    std::uint32_t sector_count,
+    bool whole_sector) const {
+    return jojo::read_cdrom_sectors(
+        sectors_, first_lba, sector_count, whole_sector);
+}
+
 std::uint64_t Ps1DiscSession::logical_sector_count() const noexcept {
     return sectors_.logical_sector_count;
 }
