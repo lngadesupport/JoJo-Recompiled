@@ -29,7 +29,8 @@ struct GraphicsSettings {
     TextureFilter texture_filter{TextureFilter::x16};
     Msaa msaa{Msaa::x4};
     DisplayMode display_mode{DisplayMode::windowed};
-    bool vsync{true};
+    bool vsync{false};
+    int frame_limit{240};
     UiScale ui_scale{UiScale::automatic};
     HudSafeArea hud_safe_area{HudSafeArea::safe_16_9};
     friend bool operator==(const GraphicsSettings&, const GraphicsSettings&) = default;
