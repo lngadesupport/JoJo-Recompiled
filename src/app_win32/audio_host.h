@@ -53,6 +53,7 @@ private:
 
     class VoiceCallback final : public IXAudio2VoiceCallback {
     public:
+        [[nodiscard]] OwnedBuffer* acquire();
         void track(OwnedBuffer* buffer);
         void discard(OwnedBuffer* buffer) noexcept;
         void release_all() noexcept;
@@ -68,6 +69,7 @@ private:
     private:
         std::mutex mutex_;
         std::unordered_set<OwnedBuffer*> outstanding_;
+        std::vector<OwnedBuffer*> free_buffers_;
     };
 
     XAudio2Ps1AudioHost() = default;
