@@ -126,6 +126,14 @@ int run_gameplay_probe(
     jojo::Ps1BootReport last_boot{};
     auto frontier = jojo::Ps1CommercialFrontierClass::execution_budget;
     std::optional<jojo::Ps1DisplayFrame> last_non_black_frame;
+    auto checkpoints_path = report_path;
+    checkpoints_path += ".checkpoints.txt";
+    std::ofstream checkpoints(
+        checkpoints_path,
+        std::ios::binary | std::ios::trunc);
+    if (checkpoints) {
+        checkpoints << "format=jojo-gameplay-checkpoints-v1\n";
+    }
 
     while (completed_frames < gameplay_frames) {
         runner.set_pad_buttons(
@@ -168,8 +176,62 @@ int run_gameplay_probe(
 
         const auto frame = runner.display_frame();
         frame_progress.observe(frame);
-        if (jojo::make_ps1_commercial_frame_evidence(frame)) {
+        const auto frame_evidence =
+            jojo::make_ps1_commercial_frame_evidence(frame);
+        if (frame_evidence) {
             last_non_black_frame = frame;
+        }
+
+        if (completed_frames % 300u == 0u) {
+            const auto checkpoint_counters =
+                runner.validation_counters();
+            if (checkpoints) {
+                checkpoints
+                    << "frame=" << completed_frames
+                    << " pc=" << last_boot.last_pc
+                    << " state_hash=" << runner.diagnostic_state_hash()
+                    << " frame_hash="
+                    << (frame_evidence
+                            ? frame_evidence->frame_hash_fnv1a64
+                            : 0u)
+                    << " non_black_pixels="
+                    << (frame_evidence
+                            ? frame_evidence->non_black_pixels
+                            : 0u)
+                    << " pad0_polls="
+                    << checkpoint_counters.pad_poll_count[0]
+                    << " pad0_pressed="
+                    << checkpoint_counters.pad_pressed_poll_count[0]
+                    << " spu_nonzero="
+                    << checkpoint_counters.spu_nonzero_samples
+                    << " dma="
+                    << checkpoint_counters.dma_transfer_count
+                    << " cd="
+                    << checkpoint_counters.cdrom_command_count
+                    << " gp0="
+                    << checkpoint_counters.gpu_gp0_word_count
+                    << " vram_writes="
+                    << checkpoint_counters.vram_write_count;
+                if (!last_boot.recent_bios_calls.empty()) {
+                    const auto& bios =
+                        last_boot.recent_bios_calls.back();
+                    checkpoints
+                        << " bios_table=" << bios.table_physical
+                        << " bios_selector=" << bios.selector;
+                }
+                checkpoints << '\n';
+                checkpoints.flush();
+            }
+
+            if (frame_evidence) {
+                auto checkpoint_frame_path = report_path;
+                checkpoint_frame_path +=
+                    ".frame" +
+                    std::to_string(completed_frames) +
+                    ".ppm";
+                static_cast<void>(
+                    save_ppm(checkpoint_frame_path, frame));
+            }
         }
 
         // Keep the host-neutral PCM queue bounded. Validation counters are
