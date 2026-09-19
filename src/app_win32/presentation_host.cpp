@@ -10,6 +10,7 @@
 #include <array>
 #include <cstring>
 #include <limits>
+#include <mutex>
 
 #pragma comment(lib, "d3d11.lib")
 #pragma comment(lib, "d3dcompiler.lib")
@@ -78,6 +79,169 @@ Result<ID3DBlob*> compile_d3d11_shader(const char* source, const char* target) {
     }
     if (diagnostics) diagnostics->Release();
     return Result<ID3DBlob*>::success(bytecode);
+}
+
+constexpr const char* kPresentationVertexShaderSource = R"(
+struct VSOutput {
+    float4 position : SV_Position;
+    float2 uv : TEXCOORD0;
+};
+
+VSOutput main(uint vertex_id : SV_VertexID) {
+    float2 uv = float2((vertex_id << 1) & 2, vertex_id & 2);
+    VSOutput output;
+    output.position = float4(
+        uv.x * 2.0f - 1.0f,
+        1.0f - uv.y * 2.0f,
+        0.0f,
+        1.0f);
+    output.uv = uv;
+    return output;
+}
+)";
+
+constexpr const char* kPresentationPixelShaderSource = R"(
+Texture2D frame_texture : register(t0);
+SamplerState frame_sampler : register(s0);
+
+cbuffer PresentationConstants : register(b0) {
+    float2 texel_size;
+    uint aa_samples;
+    float padding;
+};
+
+struct PSInput {
+    float4 position : SV_Position;
+    float2 uv : TEXCOORD0;
+};
+
+float4 main(PSInput input) : SV_Target {
+    if (aa_samples <= 1u) {
+        return frame_texture.Sample(frame_sampler, input.uv);
+    }
+
+    float4 accumulated = float4(0.0f, 0.0f, 0.0f, 0.0f);
+    const float tau = 6.28318530718f;
+    [loop]
+    for (uint i = 0u; i < aa_samples; ++i) {
+        const float fi = (float)i;
+        const float angle =
+            tau * (fi + 0.5f) / (float)aa_samples;
+        const float radius =
+            0.30f + 0.18f * frac((fi + 1.0f) * 0.61803398875f);
+        const float2 offset =
+            float2(cos(angle), sin(angle)) * radius * texel_size;
+        accumulated +=
+            frame_texture.Sample(frame_sampler, input.uv + offset);
+    }
+    return accumulated / (float)aa_samples;
+}
+)";
+
+constexpr const char* kBlitVertexShaderSource = R"(
+struct VSOutput {
+    float4 position : SV_Position;
+    float2 uv : TEXCOORD0;
+};
+
+VSOutput main(uint vertex_id : SV_VertexID) {
+    float2 uv = float2((vertex_id << 1) & 2, vertex_id & 2);
+    VSOutput output;
+    output.position = float4(
+        uv.x * 2.0f - 1.0f,
+        1.0f - uv.y * 2.0f,
+        0.0f,
+        1.0f);
+    output.uv = uv;
+    return output;
+}
+)";
+
+constexpr const char* kBlitPixelShaderSource = R"(
+Texture2D frame_texture : register(t0);
+SamplerState frame_sampler : register(s0);
+
+struct PSInput {
+    float4 position : SV_Position;
+    float2 uv : TEXCOORD0;
+};
+
+float4 main(PSInput input) : SV_Target {
+    return frame_texture.Sample(frame_sampler, input.uv);
+}
+)";
+
+struct PresentationShaderBytecodeCache {
+    Microsoft::WRL::ComPtr<ID3DBlob> presentation_vs{};
+    Microsoft::WRL::ComPtr<ID3DBlob> presentation_ps{};
+    Microsoft::WRL::ComPtr<ID3DBlob> blit_vs{};
+    Microsoft::WRL::ComPtr<ID3DBlob> blit_ps{};
+    ErrorCode error{ErrorCode::ok};
+    std::string detail{};
+    bool ready{};
+};
+
+PresentationShaderBytecodeCache& presentation_shader_cache() {
+    static PresentationShaderBytecodeCache cache{};
+    return cache;
+}
+
+std::once_flag& presentation_shader_once() {
+    static std::once_flag once{};
+    return once;
+}
+
+void initialize_presentation_shader_cache() {
+    auto& cache = presentation_shader_cache();
+    const auto compile_into = [&](const char* source,
+                                  const char* target,
+                                  Microsoft::WRL::ComPtr<ID3DBlob>& out) -> bool {
+        const auto compiled = compile_d3d11_shader(source, target);
+        if (!compiled) {
+            cache.error = compiled.error;
+            cache.detail = compiled.detail;
+            return false;
+        }
+        out.Attach(compiled.value);
+        return true;
+    };
+
+    if (!compile_into(
+            kPresentationVertexShaderSource,
+            "vs_4_0",
+            cache.presentation_vs) ||
+        !compile_into(
+            kPresentationPixelShaderSource,
+            "ps_4_0",
+            cache.presentation_ps) ||
+        !compile_into(
+            kBlitVertexShaderSource,
+            "vs_4_0",
+            cache.blit_vs) ||
+        !compile_into(
+            kBlitPixelShaderSource,
+            "ps_4_0",
+            cache.blit_ps)) {
+        cache.ready = false;
+        return;
+    }
+
+    cache.ready = true;
+}
+
+Result<PresentationShaderBytecodeCache*> ensure_presentation_shader_cache() {
+    std::call_once(
+        presentation_shader_once(),
+        initialize_presentation_shader_cache);
+    auto& cache = presentation_shader_cache();
+    if (!cache.ready) {
+        return Result<PresentationShaderBytecodeCache*>::failure(
+            cache.error,
+            cache.detail.empty()
+                ? "D3D11 presentation shader preload failed"
+                : cache.detail);
+    }
+    return Result<PresentationShaderBytecodeCache*>::success(&cache);
 }
 
 HRESULT create_probe_device(ID3D11Device** device, ID3D11DeviceContext** context) noexcept {
@@ -404,59 +568,27 @@ Result<void> blit_d3d11_ps1_frame(
             "D3D11 failed to create the PS1 display shader resource view");
     }
 
-    constexpr const char* kVertexShader = R"(
-struct VSOutput {
-    float4 position : SV_Position;
-    float2 uv : TEXCOORD0;
-};
-
-VSOutput main(uint vertex_id : SV_VertexID) {
-    float2 uv = float2((vertex_id << 1) & 2, vertex_id & 2);
-    VSOutput output;
-    output.position = float4(uv.x * 2.0f - 1.0f, 1.0f - uv.y * 2.0f, 0.0f, 1.0f);
-    output.uv = uv;
-    return output;
-}
-)";
-
-    constexpr const char* kPixelShader = R"(
-Texture2D frame_texture : register(t0);
-SamplerState frame_sampler : register(s0);
-
-struct PSInput {
-    float4 position : SV_Position;
-    float2 uv : TEXCOORD0;
-};
-
-float4 main(PSInput input) : SV_Target {
-    return frame_texture.Sample(frame_sampler, input.uv);
-}
-)";
-
-    const auto vertex_bytecode = compile_d3d11_shader(kVertexShader, "vs_4_0");
-    if (!vertex_bytecode) {
+    const auto shader_cache = ensure_presentation_shader_cache();
+    if (!shader_cache) {
         srv->Release();
         texture->Release();
-        return Result<void>::failure(vertex_bytecode.error, vertex_bytecode.detail);
+        return Result<void>::failure(
+            shader_cache.error,
+            shader_cache.detail);
     }
-    const auto pixel_bytecode = compile_d3d11_shader(kPixelShader, "ps_4_0");
-    if (!pixel_bytecode) {
-        vertex_bytecode.value->Release();
-        srv->Release();
-        texture->Release();
-        return Result<void>::failure(pixel_bytecode.error, pixel_bytecode.detail);
-    }
+    auto* const vertex_bytecode =
+        shader_cache.value->blit_vs.Get();
+    auto* const pixel_bytecode =
+        shader_cache.value->blit_ps.Get();
 
     ID3D11VertexShader* vertex_shader = nullptr;
     hr = device->CreateVertexShader(
-        vertex_bytecode.value->GetBufferPointer(),
-        vertex_bytecode.value->GetBufferSize(),
+        vertex_bytecode->GetBufferPointer(),
+        vertex_bytecode->GetBufferSize(),
         nullptr,
         &vertex_shader);
     if (FAILED(hr) || !vertex_shader) {
         if (vertex_shader) vertex_shader->Release();
-        pixel_bytecode.value->Release();
-        vertex_bytecode.value->Release();
         srv->Release();
         texture->Release();
         return Result<void>::failure(
@@ -466,12 +598,10 @@ float4 main(PSInput input) : SV_Target {
 
     ID3D11PixelShader* pixel_shader = nullptr;
     hr = device->CreatePixelShader(
-        pixel_bytecode.value->GetBufferPointer(),
-        pixel_bytecode.value->GetBufferSize(),
+        pixel_bytecode->GetBufferPointer(),
+        pixel_bytecode->GetBufferSize(),
         nullptr,
         &pixel_shader);
-    pixel_bytecode.value->Release();
-    vertex_bytecode.value->Release();
     if (FAILED(hr) || !pixel_shader) {
         if (pixel_shader) pixel_shader->Release();
         vertex_shader->Release();
@@ -751,98 +881,33 @@ Result<void> D3d11Ps1Presenter::initialize_pipeline() {
             "D3D11 presenter pipeline requires an active device");
     }
 
-    constexpr const char* kVertexShader = R"(
-struct VSOutput {
-    float4 position : SV_Position;
-    float2 uv : TEXCOORD0;
-};
-
-VSOutput main(uint vertex_id : SV_VertexID) {
-    float2 uv = float2((vertex_id << 1) & 2, vertex_id & 2);
-    VSOutput output;
-    output.position = float4(
-        uv.x * 2.0f - 1.0f,
-        1.0f - uv.y * 2.0f,
-        0.0f,
-        1.0f);
-    output.uv = uv;
-    return output;
-}
-)";
-
-    constexpr const char* kPixelShader = R"(
-Texture2D frame_texture : register(t0);
-SamplerState frame_sampler : register(s0);
-
-cbuffer PresentationConstants : register(b0) {
-    float2 texel_size;
-    uint aa_samples;
-    float padding;
-};
-
-struct PSInput {
-    float4 position : SV_Position;
-    float2 uv : TEXCOORD0;
-};
-
-float4 main(PSInput input) : SV_Target {
-    if (aa_samples <= 1u) {
-        return frame_texture.Sample(frame_sampler, input.uv);
-    }
-
-    float4 accumulated = float4(0.0f, 0.0f, 0.0f, 0.0f);
-    const float tau = 6.28318530718f;
-    [loop]
-    for (uint i = 0u; i < aa_samples; ++i) {
-        const float fi = (float)i;
-        const float angle =
-            tau * (fi + 0.5f) / (float)aa_samples;
-        const float radius =
-            0.30f + 0.18f * frac((fi + 1.0f) * 0.61803398875f);
-        const float2 offset =
-            float2(cos(angle), sin(angle)) * radius * texel_size;
-        accumulated +=
-            frame_texture.Sample(frame_sampler, input.uv + offset);
-    }
-    return accumulated / (float)aa_samples;
-}
-)";
-
-    const auto vertex_bytecode =
-        compile_d3d11_shader(kVertexShader, "vs_4_0");
-    if (!vertex_bytecode) {
+    const auto shader_cache = ensure_presentation_shader_cache();
+    if (!shader_cache) {
         return Result<void>::failure(
-            vertex_bytecode.error, vertex_bytecode.detail);
+            shader_cache.error,
+            shader_cache.detail);
     }
-
-    const auto pixel_bytecode =
-        compile_d3d11_shader(kPixelShader, "ps_4_0");
-    if (!pixel_bytecode) {
-        vertex_bytecode.value->Release();
-        return Result<void>::failure(
-            pixel_bytecode.error, pixel_bytecode.detail);
-    }
+    auto* const vertex_bytecode =
+        shader_cache.value->presentation_vs.Get();
+    auto* const pixel_bytecode =
+        shader_cache.value->presentation_ps.Get();
 
     const HRESULT vs_hr = device_->CreateVertexShader(
-        vertex_bytecode.value->GetBufferPointer(),
-        vertex_bytecode.value->GetBufferSize(),
+        vertex_bytecode->GetBufferPointer(),
+        vertex_bytecode->GetBufferSize(),
         nullptr,
         vertex_shader_.ReleaseAndGetAddressOf());
     if (FAILED(vs_hr) || !vertex_shader_) {
-        pixel_bytecode.value->Release();
-        vertex_bytecode.value->Release();
         return Result<void>::failure(
             ErrorCode::backend_unavailable,
             "D3D11 failed to create cached presentation vertex shader");
     }
 
     const HRESULT ps_hr = device_->CreatePixelShader(
-        pixel_bytecode.value->GetBufferPointer(),
-        pixel_bytecode.value->GetBufferSize(),
+        pixel_bytecode->GetBufferPointer(),
+        pixel_bytecode->GetBufferSize(),
         nullptr,
         pixel_shader_.ReleaseAndGetAddressOf());
-    pixel_bytecode.value->Release();
-    vertex_bytecode.value->Release();
     if (FAILED(ps_hr) || !pixel_shader_) {
         vertex_shader_.Reset();
         return Result<void>::failure(
@@ -1209,6 +1274,14 @@ std::uint32_t D3d11Ps1Presenter::back_buffer_width() const noexcept {
 
 std::uint32_t D3d11Ps1Presenter::back_buffer_height() const noexcept {
     return back_buffer_height_;
+}
+
+Result<void> preload_d3d11_presentation_shaders() {
+    const auto cache = ensure_presentation_shader_cache();
+    if (!cache) {
+        return Result<void>::failure(cache.error, cache.detail);
+    }
+    return Result<void>::success();
 }
 
 Result<RendererCapabilities> probe_d3d11_renderer_capabilities() {
