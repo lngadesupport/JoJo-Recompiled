@@ -27,7 +27,7 @@ void test_direct_branch_instruction_is_lowerable() {
 
 
 
-#if defined(_WIN32) && defined(_M_X64)
+#if (defined(_WIN32) && defined(_M_X64)) || (defined(__linux__) && defined(__x86_64__))
 void test_x64_direct_divisions_match_reference_for_safe_operands() {
     const std::array<std::uint32_t, 2> raws{
         test_mips::r(8u, 9u, 0u, 0u, 0x1Au), // DIV
@@ -104,7 +104,7 @@ void test_x64_division_host_trap_cases_fall_back_before_mutation() {
 }
 #endif
 
-#if defined(_WIN32) && defined(_M_X64)
+#if (defined(_WIN32) && defined(_M_X64)) || (defined(__linux__) && defined(__x86_64__))
 void test_x64_direct_byte_and_halfword_loads_match_reference() {
     struct Case {
         std::uint32_t raw;
@@ -203,7 +203,7 @@ void test_x64_direct_byte_and_halfword_stores_match_reference() {
 }
 #endif
 
-#if defined(_WIN32) && defined(_M_X64)
+#if (defined(_WIN32) && defined(_M_X64)) || (defined(__linux__) && defined(__x86_64__))
 void test_x64_direct_lw_main_ram_matches_reference_load_delay() {
     const auto raw = test_mips::i(0x23u, 8u, 9u, 0u); // LW $9,0($8)
     const auto decoded = jojo::decode_mips(raw);
@@ -314,7 +314,7 @@ void test_x64_memory_falls_back_before_mmio_or_misaligned_access() {
 }
 #endif
 
-#if defined(_WIN32) && defined(_M_X64)
+#if (defined(_WIN32) && defined(_M_X64)) || (defined(__linux__) && defined(__x86_64__))
 void test_x64_direct_branch_not_taken_matches_reference() {
     const auto raw = test_mips::i(0x05u, 8u, 9u, 2u); // BNE not taken
     const auto decoded = jojo::decode_mips(raw);
@@ -375,7 +375,7 @@ void test_x64_direct_jal_matches_reference() {
 }
 #endif
 
-#if defined(_WIN32) && defined(_M_X64)
+#if (defined(_WIN32) && defined(_M_X64)) || (defined(__linux__) && defined(__x86_64__))
 void test_x64_direct_branch_matches_reference() {
     const auto raw = test_mips::i(0x04u, 8u, 9u, 1u); // BEQ -> +8
     const auto decoded = jojo::decode_mips(raw);
@@ -456,7 +456,7 @@ void test_x64_emitter_accepts_only_v0_safe_subset() {
         CHECK(!code.value.bytes.empty());
         CHECK(code.value.instruction_count == words.size());
         CHECK(code.value.bytes.back() == 0xC3u);
-#if defined(_WIN32) && defined(_M_X64)
+#if (defined(_WIN32) && defined(_M_X64)) || (defined(__linux__) && defined(__x86_64__))
         CHECK(code.value.executable_owner != nullptr);
         CHECK(code.value.executable_entry != nullptr);
 #else
@@ -480,7 +480,7 @@ void test_x64_emitter_accepts_only_v0_safe_subset() {
 
 
 
-#if defined(_WIN32) && defined(_M_X64)
+#if (defined(_WIN32) && defined(_M_X64)) || (defined(__linux__) && defined(__x86_64__))
 void test_x64_mult_and_multu_match_reference() {
     const std::array<std::uint32_t, 6> words{
         test_mips::r(8u, 9u, 0u, 0u, 0x18u),   // MULT
@@ -526,7 +526,7 @@ void test_x64_mult_and_multu_match_reference() {
 }
 #endif
 
-#if defined(_WIN32) && defined(_M_X64)
+#if (defined(_WIN32) && defined(_M_X64)) || (defined(__linux__) && defined(__x86_64__))
 void test_x64_variable_shifts_and_hilo_match_reference() {
     const std::array<std::uint32_t, 7> words{
         test_mips::r(8u, 9u, 10u, 0u, 0x04u),  // SLLV
@@ -574,7 +574,7 @@ void test_x64_variable_shifts_and_hilo_match_reference() {
 }
 #endif
 
-#if defined(_WIN32) && defined(_M_X64)
+#if (defined(_WIN32) && defined(_M_X64)) || (defined(__linux__) && defined(__x86_64__))
 void test_x64_machine_code_matches_reference_executor() {
     const std::array<std::uint32_t, 4> words{
         test_mips::i(0x0Fu, 0u, 8u, 0x1234u),
@@ -629,7 +629,7 @@ void test_x64_machine_code_matches_reference_executor() {
 int main() {
     test_direct_branch_instruction_is_lowerable();
     test_x64_emitter_accepts_only_v0_safe_subset();
-#if defined(_WIN32) && defined(_M_X64)
+#if (defined(_WIN32) && defined(_M_X64)) || (defined(__linux__) && defined(__x86_64__))
     test_x64_direct_divisions_match_reference_for_safe_operands();
     test_x64_division_host_trap_cases_fall_back_before_mutation();
     test_x64_direct_byte_and_halfword_loads_match_reference();

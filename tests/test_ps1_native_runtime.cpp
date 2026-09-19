@@ -70,7 +70,7 @@ void test_opt_in_native_runtime_matches_reference_for_safe_alu() {
           native_report.instructions_retired);
     CHECK(reference_report.native_x64_instructions_retired == 0u);
     CHECK(reference_report.reference_instructions_retired == 4u);
-#if defined(_WIN32) && defined(_M_X64)
+#if (defined(_WIN32) && defined(_M_X64)) || (defined(__linux__) && defined(__x86_64__))
     CHECK(native_report.native_x64_instructions_retired == 4u);
     CHECK(native_report.reference_instructions_retired == 0u);
 #else
@@ -92,7 +92,7 @@ void test_branch_and_delay_slot_remain_reference() {
     auto runtime = make_runtime(words, true);
     const auto report = runtime.run({2u});
     CHECK(report.instructions_retired == 2u);
-#if defined(_WIN32) && defined(_M_X64)
+#if (defined(_WIN32) && defined(_M_X64)) || (defined(__linux__) && defined(__x86_64__))
     CHECK(report.native_x64_instructions_retired == 1u);
     CHECK(report.reference_instructions_retired == 1u);
 #else
@@ -113,7 +113,7 @@ void test_pending_load_forces_one_instruction_reference_fallback() {
     auto runtime = make_runtime(words, true);
     const auto report = runtime.run({4u});
     CHECK(report.instructions_retired == 4u);
-#if defined(_WIN32) && defined(_M_X64)
+#if (defined(_WIN32) && defined(_M_X64)) || (defined(__linux__) && defined(__x86_64__))
     CHECK(report.native_x64_instructions_retired == 3u);
     CHECK(report.reference_instructions_retired == 1u);
 #else

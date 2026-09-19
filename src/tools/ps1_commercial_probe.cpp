@@ -318,7 +318,8 @@ int main(int argc, char** argv) {
         argc >= 8 ? parse_u32(argv[7], 0u) != 0u : false;
     const bool memory_card =
         argc >= 9 ? parse_u32(argv[8], 0u) != 0u : false;
-#if defined(_WIN32) && defined(_M_X64)
+#if (defined(_WIN32) && defined(_M_X64)) || \
+    (defined(__linux__) && defined(__x86_64__))
     constexpr bool native_x64_backend_available = true;
 #else
     constexpr bool native_x64_backend_available = false;

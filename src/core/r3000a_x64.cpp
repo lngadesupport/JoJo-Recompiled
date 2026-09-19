@@ -12,6 +12,8 @@
 #if defined(_WIN32)
 #define NOMINMAX
 #include <windows.h>
+#elif defined(__linux__) && defined(__x86_64__)
+#include <sys/mman.h>
 #endif
 
 namespace jojo {
@@ -249,6 +251,59 @@ Result<void> materialize_executable(
         [](void* allocation) noexcept {
             if (allocation) {
                 VirtualFree(allocation, 0u, MEM_RELEASE);
+            }
+        });
+    code.executable_entry = memory;
+#elif defined(__linux__) && defined(__x86_64__)
+    // The emitter intentionally uses the Windows x64 register convention
+    // internally (RCX=state, RDX=main RAM). Linux callers use SysV
+    // (RDI/RSI), so prepend a tiny ABI adapter and then fall through into
+    // the same proven machine code.
+    constexpr std::array<std::uint8_t, 6> kSysvAdapter{
+        0x48u, 0x89u, 0xF9u, // mov rcx, rdi
+        0x48u, 0x89u, 0xF2u, // mov rdx, rsi
+    };
+    const auto allocation_size =
+        kSysvAdapter.size() + code.bytes.size();
+    void* memory = mmap(
+        nullptr,
+        allocation_size,
+        PROT_READ | PROT_WRITE,
+        MAP_PRIVATE | MAP_ANONYMOUS,
+        -1,
+        0);
+    if (memory == MAP_FAILED) {
+        return Result<void>::failure(
+            ErrorCode::backend_unavailable,
+            "failed to mmap executable memory for R3000A x64 code");
+    }
+
+    auto* bytes = static_cast<std::uint8_t*>(memory);
+    std::memcpy(
+        bytes,
+        kSysvAdapter.data(),
+        kSysvAdapter.size());
+    std::memcpy(
+        bytes + kSysvAdapter.size(),
+        code.bytes.data(),
+        code.bytes.size());
+
+    if (mprotect(memory, allocation_size, PROT_READ | PROT_EXEC) != 0) {
+        munmap(memory, allocation_size);
+        return Result<void>::failure(
+            ErrorCode::backend_unavailable,
+            "failed to protect R3000A x64 mmap as executable");
+    }
+
+    __builtin___clear_cache(
+        reinterpret_cast<char*>(memory),
+        reinterpret_cast<char*>(memory) + allocation_size);
+
+    code.executable_owner = std::shared_ptr<void>(
+        memory,
+        [allocation_size](void* allocation) noexcept {
+            if (allocation) {
+                munmap(allocation, allocation_size);
             }
         });
     code.executable_entry = memory;
@@ -927,7 +982,8 @@ R3000aX64ExecutionResult execute_r3000a_x64_block(
         (static_cast<std::uint32_t>(
              state.external_interrupt_pending & 0xFCu) << 8u);
 
-#if defined(_WIN32) && defined(_M_X64)
+#if (defined(_WIN32) && defined(_M_X64)) || \
+    (defined(__linux__) && defined(__x86_64__))
     if (!code.executable_owner || !code.executable_entry) {
         return {R3000aX64ExecutionStatus::host_error, 0u};
     }
