@@ -110,6 +110,10 @@ static void test_jojo_pad_mirror_bypasses_commercial_padcard_irq_node() {
     CHECK(runtime.load_state(state));
 
     runtime.signal_vblank();
+    CHECK(runtime.bus().write32(0x8007CE68u, 0x0307CE78u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(runtime.bus().write32(0x8007CE90u, 0x0307CEA0u).status ==
+          jojo::R3000aBusStatus::ok);
     const auto report = runtime.run({24u});
     CHECK(report.stop_reason ==
           jojo::Ps1BootStopReason::execution_budget_exhausted);
@@ -120,6 +124,8 @@ static void test_jojo_pad_mirror_bypasses_commercial_padcard_irq_node() {
     CHECK(runtime.bus().read8(pad1 + 3u).value == 0xFFu);
     CHECK(runtime.cpu_state().pc != 0x8004DE84u);
     CHECK(runtime.cpu_state().pc != 0x8004DEECu);
+    CHECK(runtime.bus().read32(0x8007CE68u).value == 0x0307CE78u);
+    CHECK(runtime.bus().read32(0x8007CE90u).value == 0x0307CEA0u);
 }
 
 static void test_sysenqintrp_priority_chain_executes_first_then_second() {
@@ -574,18 +580,45 @@ static void test_jojo_pad_buffer_compatibility_mirror() {
     CHECK(runtime.bus().read8(pad2_buffer + 1u).value == 0x41u);
     CHECK(runtime.bus().read8(pad2_buffer + 2u).value == 0xEFu);
     CHECK(runtime.bus().read8(pad2_buffer + 3u).value == 0xFFu);
+    // VBlank/IRQ mirroring must not touch JoJo's raw buffers because that
+    // RAM is reused later in the frame for GPU ordering-table packets.
+    CHECK(runtime.bus().read32(0x8007CE68u).value == 0u);
+    CHECK(runtime.bus().read32(0x8007CE90u).value == 0u);
+    CHECK(runtime.bus().hardware_services().sio0()
+              .digital_pad_poll_count(0u) == 0u);
+
+    // The packet is injected at the exact guest decoder entrypoint instead.
+    CHECK(runtime.bus().write32(0x80011020u, 0u).status ==
+          jojo::R3000aBusStatus::ok);
+    auto decode_state = runtime.save_state();
+    decode_state.cpu.pc = 0x80011020u;
+    decode_state.cpu.next_pc = 0x80011024u;
+    decode_state.cpu.gpr[5] = 0x8007CE68u;
+    CHECK(runtime.load_state(decode_state));
+    CHECK(runtime.run({1u}).stop_reason ==
+          jojo::Ps1BootStopReason::execution_budget_exhausted);
     CHECK(runtime.bus().read8(0x8007CE68u + 0u).value == 0x00u);
     CHECK(runtime.bus().read8(0x8007CE68u + 1u).value == 0x41u);
     CHECK(runtime.bus().read8(0x8007CE68u + 2u).value == 0xF7u);
     CHECK(runtime.bus().read8(0x8007CE68u + 3u).value == 0xFFu);
+    CHECK(runtime.bus().hardware_services().sio0()
+              .digital_pad_poll_count(0u) == 1u);
+    CHECK(runtime.bus().hardware_services().sio0()
+              .digital_pad_pressed_poll_count(0u) == 1u);
+
+    decode_state = runtime.save_state();
+    decode_state.cpu.pc = 0x80011020u;
+    decode_state.cpu.next_pc = 0x80011024u;
+    decode_state.cpu.gpr[5] = 0x8007CE90u;
+    CHECK(runtime.load_state(decode_state));
+    CHECK(runtime.run({1u}).stop_reason ==
+          jojo::Ps1BootStopReason::execution_budget_exhausted);
     CHECK(runtime.bus().read8(0x8007CE90u + 0u).value == 0x00u);
     CHECK(runtime.bus().read8(0x8007CE90u + 1u).value == 0x41u);
     CHECK(runtime.bus().read8(0x8007CE90u + 2u).value == 0xEFu);
     CHECK(runtime.bus().read8(0x8007CE90u + 3u).value == 0xFFu);
     CHECK(runtime.bus().hardware_services().sio0()
-              .digital_pad_poll_count(0u) == 1u);
-    CHECK(runtime.bus().hardware_services().sio0()
-              .digital_pad_pressed_poll_count(0u) == 1u);
+              .digital_pad_poll_count(1u) == 1u);
 }
 
 static void test_internal_pad_enable_routines_gate_vblank_polling() {
