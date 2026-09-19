@@ -435,6 +435,16 @@ Ps1CommercialEvidenceRunner::validation_counters() const noexcept {
         runtime_.bios_pad_internal_set_call_count();
     counters.pad_internal_clear_call_count =
         runtime_.bios_pad_internal_clear_call_count();
+    counters.sio_data_read_count = sio0.raw_data_read_count();
+    counters.sio_data_write_count = sio0.raw_data_write_count();
+    counters.sio_status_read_count = sio0.raw_status_read_count();
+    counters.sio_control_write_count = sio0.raw_control_write_count();
+    counters.sio_controller_address_byte_count =
+        sio0.controller_address_byte_count();
+    counters.sio_controller_command_byte_count =
+        sio0.controller_command_byte_count();
+    counters.sio_memory_card_address_byte_count =
+        sio0.memory_card_address_byte_count();
     counters.dma_transfer_count =
         hardware.completed_dma_transfer_count();
     counters.cdrom_command_count = hardware.cdrom().command_count();

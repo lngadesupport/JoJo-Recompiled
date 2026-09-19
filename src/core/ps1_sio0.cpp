@@ -333,6 +333,7 @@ R3000aBusResult Ps1Sio0::read8(std::uint32_t physical) noexcept {
         return {R3000aBusStatus::unsupported, 0u};
     }
 
+    ++raw_data_read_count_;
     if (rx_fifo_.empty()) {
         return {R3000aBusStatus::ok, 0xFFu};
     }
@@ -343,6 +344,7 @@ R3000aBusResult Ps1Sio0::read8(std::uint32_t physical) noexcept {
 
 R3000aBusResult Ps1Sio0::read16(std::uint32_t physical) noexcept {
     if (physical == data_address) {
+        ++raw_data_read_count_;
         if (rx_fifo_.empty()) {
             return {R3000aBusStatus::ok, 0xFFFFu};
         }
@@ -369,9 +371,11 @@ R3000aBusResult Ps1Sio0::read16(std::uint32_t physical) noexcept {
 
 R3000aBusResult Ps1Sio0::read32(std::uint32_t physical) noexcept {
     if (physical == status_address) {
+        ++raw_status_read_count_;
         return {R3000aBusStatus::ok, status_value()};
     }
     if (physical == data_address) {
+        ++raw_data_read_count_;
         std::uint32_t value = 0xFFFFFFFFu;
         const auto count = std::min<std::size_t>(4u, rx_fifo_.size());
         for (std::size_t i = 0u; i < count; ++i) {
@@ -393,6 +397,11 @@ R3000aBusResult Ps1Sio0::write8(
     if (physical != data_address) {
         return {R3000aBusStatus::unsupported, 0u};
     }
+
+    ++raw_data_write_count_;
+    if (value == 0x01u) ++controller_address_byte_count_;
+    if (value == 0x42u) ++controller_command_byte_count_;
+    if (value == 0x81u) ++memory_card_address_byte_count_;
 
     if ((control_ & kControlTxEnable) == 0u ||
         (control_ & kControlDtr) == 0u) {
@@ -418,6 +427,7 @@ R3000aBusResult Ps1Sio0::write16(
         return {R3000aBusStatus::unsupported, 0u};
     }
 
+    ++raw_control_write_count_;
     if ((value & kControlReset) != 0u) {
         reset_registers();
         return {R3000aBusStatus::ok, 0u};
@@ -518,6 +528,28 @@ std::uint64_t Ps1Sio0::memory_card_changed_write_sector_count(
     return port < memory_card_changed_write_sector_count_.size()
         ? memory_card_changed_write_sector_count_[port]
         : 0u;
+}
+
+std::uint64_t Ps1Sio0::raw_data_read_count() const noexcept {
+    return raw_data_read_count_;
+}
+std::uint64_t Ps1Sio0::raw_data_write_count() const noexcept {
+    return raw_data_write_count_;
+}
+std::uint64_t Ps1Sio0::raw_status_read_count() const noexcept {
+    return raw_status_read_count_;
+}
+std::uint64_t Ps1Sio0::raw_control_write_count() const noexcept {
+    return raw_control_write_count_;
+}
+std::uint64_t Ps1Sio0::controller_address_byte_count() const noexcept {
+    return controller_address_byte_count_;
+}
+std::uint64_t Ps1Sio0::controller_command_byte_count() const noexcept {
+    return controller_command_byte_count_;
+}
+std::uint64_t Ps1Sio0::memory_card_address_byte_count() const noexcept {
+    return memory_card_address_byte_count_;
 }
 
 bool Ps1Sio0::irq_pending() const noexcept {

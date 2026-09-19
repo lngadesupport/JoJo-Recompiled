@@ -70,6 +70,13 @@ struct Ps1CommercialRuntimeCounters {
     std::array<std::uint64_t, 5> pad_bios_call_count{};
     std::uint64_t pad_internal_set_call_count{};
     std::uint64_t pad_internal_clear_call_count{};
+    std::uint64_t sio_data_read_count{};
+    std::uint64_t sio_data_write_count{};
+    std::uint64_t sio_status_read_count{};
+    std::uint64_t sio_control_write_count{};
+    std::uint64_t sio_controller_address_byte_count{};
+    std::uint64_t sio_controller_command_byte_count{};
+    std::uint64_t sio_memory_card_address_byte_count{};
     std::array<std::uint64_t, 2> memory_card_read_sector_count{};
     std::array<std::uint64_t, 2> memory_card_write_sector_count{};
     std::array<std::uint64_t, 2> memory_card_changed_write_sector_count{};

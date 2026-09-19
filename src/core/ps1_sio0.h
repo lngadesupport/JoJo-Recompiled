@@ -47,6 +47,13 @@ public:
         std::uint32_t port) const noexcept;
     [[nodiscard]] std::uint64_t memory_card_changed_write_sector_count(
         std::uint32_t port) const noexcept;
+    [[nodiscard]] std::uint64_t raw_data_read_count() const noexcept;
+    [[nodiscard]] std::uint64_t raw_data_write_count() const noexcept;
+    [[nodiscard]] std::uint64_t raw_status_read_count() const noexcept;
+    [[nodiscard]] std::uint64_t raw_control_write_count() const noexcept;
+    [[nodiscard]] std::uint64_t controller_address_byte_count() const noexcept;
+    [[nodiscard]] std::uint64_t controller_command_byte_count() const noexcept;
+    [[nodiscard]] std::uint64_t memory_card_address_byte_count() const noexcept;
 
     [[nodiscard]] bool irq_pending() const noexcept;
     [[nodiscard]] std::uint64_t diagnostic_state_hash() const noexcept;
@@ -83,6 +90,15 @@ private:
     std::array<std::uint64_t, 2> memory_card_read_sector_count_{};
     std::array<std::uint64_t, 2> memory_card_write_sector_count_{};
     std::array<std::uint64_t, 2> memory_card_changed_write_sector_count_{};
+    // Observation-only access telemetry. These counters intentionally do not
+    // participate in diagnostic_state_hash().
+    std::uint64_t raw_data_read_count_{};
+    std::uint64_t raw_data_write_count_{};
+    std::uint64_t raw_status_read_count_{};
+    std::uint64_t raw_control_write_count_{};
+    std::uint64_t controller_address_byte_count_{};
+    std::uint64_t controller_command_byte_count_{};
+    std::uint64_t memory_card_address_byte_count_{};
     std::deque<std::uint8_t> rx_fifo_{};
     TransactionState transaction_{TransactionState::idle};
     std::uint8_t memory_command_{};

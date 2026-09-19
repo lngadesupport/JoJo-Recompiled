@@ -242,6 +242,13 @@ int run_gameplay_probe(
                     << " bios_b16=" << checkpoint_counters.pad_bios_call_count[4]
                     << " pad_internal_set=" << checkpoint_counters.pad_internal_set_call_count
                     << " pad_internal_clear=" << checkpoint_counters.pad_internal_clear_call_count
+                    << " sio_data_reads=" << checkpoint_counters.sio_data_read_count
+                    << " sio_data_writes=" << checkpoint_counters.sio_data_write_count
+                    << " sio_status_reads=" << checkpoint_counters.sio_status_read_count
+                    << " sio_control_writes=" << checkpoint_counters.sio_control_write_count
+                    << " sio_pad_addr_bytes=" << checkpoint_counters.sio_controller_address_byte_count
+                    << " sio_pad_cmd_bytes=" << checkpoint_counters.sio_controller_command_byte_count
+                    << " sio_card_addr_bytes=" << checkpoint_counters.sio_memory_card_address_byte_count
                     << " first_pad_poll_frame="
                     << (first_pad_poll_frame
                             ? std::to_string(*first_pad_poll_frame)
@@ -342,6 +349,16 @@ int run_gameplay_probe(
     report << "bios_b16_pad_dr_calls=" << pad_bios_calls[4] << '\n';
     report << "bios_pad_internal_set_calls=" << pad_internal_set_calls << '\n';
     report << "bios_pad_internal_clear_calls=" << pad_internal_clear_calls << '\n';
+    report << "sio_data_read_count=" << counters.sio_data_read_count << '\n';
+    report << "sio_data_write_count=" << counters.sio_data_write_count << '\n';
+    report << "sio_status_read_count=" << counters.sio_status_read_count << '\n';
+    report << "sio_control_write_count=" << counters.sio_control_write_count << '\n';
+    report << "sio_controller_address_byte_count="
+           << counters.sio_controller_address_byte_count << '\n';
+    report << "sio_controller_command_byte_count="
+           << counters.sio_controller_command_byte_count << '\n';
+    report << "sio_memory_card_address_byte_count="
+           << counters.sio_memory_card_address_byte_count << '\n';
     report << "spu_sample_frames=" << counters.spu_sample_frames << '\n';
     report << "spu_nonzero_samples=" << counters.spu_nonzero_samples << '\n';
     report << "validation_audio_non_silent_observed="
@@ -399,6 +416,16 @@ int run_gameplay_probe(
     std::cout << "bios_b16_pad_dr_calls=" << pad_bios_calls[4] << "\n";
     std::cout << "bios_pad_internal_set_calls=" << pad_internal_set_calls << "\n";
     std::cout << "bios_pad_internal_clear_calls=" << pad_internal_clear_calls << "\n";
+    std::cout << "sio_data_read_count=" << counters.sio_data_read_count << "\n";
+    std::cout << "sio_data_write_count=" << counters.sio_data_write_count << "\n";
+    std::cout << "sio_status_read_count=" << counters.sio_status_read_count << "\n";
+    std::cout << "sio_control_write_count=" << counters.sio_control_write_count << "\n";
+    std::cout << "sio_controller_address_byte_count="
+              << counters.sio_controller_address_byte_count << "\n";
+    std::cout << "sio_controller_command_byte_count="
+              << counters.sio_controller_command_byte_count << "\n";
+    std::cout << "sio_memory_card_address_byte_count="
+              << counters.sio_memory_card_address_byte_count << "\n";
     std::cout << "spu_nonzero_samples="
               << counters.spu_nonzero_samples << "\n";
     std::cout << "memory_card0_read_sector_count="

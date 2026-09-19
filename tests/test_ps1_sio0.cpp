@@ -60,6 +60,9 @@ int main() {
     CHECK(exchange(sio, 0x00u) == 0xEFu);
     CHECK(exchange(sio, 0x00u) == 0xBFu);
     CHECK(sio.digital_pad_poll_count(0u) == 1u);
+    CHECK(sio.raw_data_write_count() >= 5u);
+    CHECK(sio.controller_address_byte_count() >= 1u);
+    CHECK(sio.controller_command_byte_count() >= 1u);
     CHECK(sio.digital_pad_pressed_poll_count(0u) == 1u);
     CHECK(sio.digital_pad_poll_count(1u) == 0u);
     CHECK(sio.digital_pad_pressed_poll_count(1u) == 0u);
