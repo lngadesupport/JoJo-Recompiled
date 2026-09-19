@@ -285,7 +285,7 @@ GameAction LauncherUi::selected_control_action() const noexcept {
 
 std::size_t LauncherUi::row_count() const noexcept {
     switch (page_) {
-        case SettingsPage::graphics: return 6;
+        case SettingsPage::graphics: return 7;
         case SettingsPage::audio: return 2;
         case SettingsPage::controls: return 1 + all_game_actions().size();
         case SettingsPage::accessibility: return 2;
@@ -379,6 +379,21 @@ LauncherUiAction LauncherUi::adjust_setting(
                 settings.graphics.vsync = !settings.graphics.vsync;
                 break;
             case 3: {
+                constexpr std::array<int, 7> limits{
+                    60, 120, 144, 165, 240, 360, 0,
+                };
+                std::size_t current=0u;
+                for(std::size_t i=0u;i<limits.size();++i){
+                    if(limits[i]==settings.graphics.frame_limit){
+                        current=i;
+                        break;
+                    }
+                }
+                settings.graphics.frame_limit=
+                    limits[wrap_index(current,direction,limits.size())];
+                break;
+            }
+            case 4: {
                 constexpr std::array modes{
                     Msaa::off, Msaa::x2, Msaa::x4,
                     Msaa::x8, Msaa::x16,
@@ -387,7 +402,7 @@ LauncherUiAction LauncherUi::adjust_setting(
                     cycle_value(settings.graphics.msaa, direction, modes);
                 break;
             }
-            case 4: {
+            case 5: {
                 constexpr std::array modes{
                     TextureFilter::off, TextureFilter::x2,
                     TextureFilter::x4, TextureFilter::x8,
@@ -397,7 +412,7 @@ LauncherUiAction LauncherUi::adjust_setting(
                     cycle_value(settings.graphics.texture_filter, direction, modes);
                 break;
             }
-            case 5: {
+            case 6: {
                 constexpr std::array modes{
                     AspectRatio::ratio_4_3,
                     AspectRatio::ratio_16_9,
@@ -680,6 +695,9 @@ void LauncherUi::paint(
             {L"RESOLUTION",std::to_wstring(settings.graphics.width)+L" x "+
                 std::to_wstring(settings.graphics.height)},
             {L"V-SYNC",on_off(settings.graphics.vsync)},
+            {L"FRAME LIMIT",settings.graphics.frame_limit==0
+                ?L"UNLIMITED"
+                :std::to_wstring(settings.graphics.frame_limit)+L" FPS"},
             {L"ANTI-ALIASING",msaa_name(settings.graphics.msaa)},
             {L"TEXTURE FILTER",filter_name(settings.graphics.texture_filter)},
             {L"ASPECT RATIO",aspect_name(settings.graphics.aspect_ratio)},
