@@ -129,6 +129,8 @@ int main() {
     CHECK(bus_status16.value ==
           (bus.read32(0x1F801044u).value & 0xFFFFu));
 
+    CHECK((bus.hardware_services().interrupt_status() & 0x0080u) == 0u);
+    bus.hardware_services().step(64u);
     CHECK((bus.hardware_services().interrupt_status() & 0x0080u) != 0u);
     CHECK(bus.write16(0x1F801070u, 0x077Fu).status == jojo::R3000aBusStatus::ok);
     CHECK((bus.hardware_services().interrupt_status() & 0x0080u) == 0u);

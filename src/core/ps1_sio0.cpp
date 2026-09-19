@@ -267,6 +267,14 @@ void Ps1Sio0::transfer_byte(std::uint8_t value) noexcept {
     std::uint8_t response = 0xFFu;
     bool more_data = false;
 
+    if (transaction_ == TransactionState::controller_id_high) {
+        ++controller_id_high_stage_byte_count_;
+    } else if (transaction_ == TransactionState::controller_buttons_low) {
+        ++controller_buttons_low_stage_byte_count_;
+    } else if (transaction_ == TransactionState::controller_buttons_high) {
+        ++controller_buttons_high_stage_byte_count_;
+    }
+
     switch (transaction_) {
         case TransactionState::idle:
             if (value == 0x01u) {
@@ -438,6 +446,7 @@ R3000aBusResult Ps1Sio0::write16(
 
     ++raw_control_write_count_;
     if ((value & kControlReset) != 0u) {
+        ++control_reset_count_;
         reset_registers();
         return {R3000aBusStatus::ok, 0u};
     }
@@ -454,6 +463,8 @@ R3000aBusResult Ps1Sio0::write16(
         (control_ & kControlDtr) == 0u;
     const bool port_changed =
         ((previous_control ^ control_) & kControlPortSelect) != 0u;
+    if (dtr_fell) ++dtr_fall_reset_count_;
+    if (port_changed) ++port_change_reset_count_;
     if (dtr_fell || port_changed) {
         reset_transaction();
     }
@@ -570,6 +581,24 @@ std::uint64_t Ps1Sio0::controller_command_byte_count() const noexcept {
 }
 std::uint64_t Ps1Sio0::memory_card_address_byte_count() const noexcept {
     return memory_card_address_byte_count_;
+}
+std::uint64_t Ps1Sio0::controller_id_high_stage_byte_count() const noexcept {
+    return controller_id_high_stage_byte_count_;
+}
+std::uint64_t Ps1Sio0::controller_buttons_low_stage_byte_count() const noexcept {
+    return controller_buttons_low_stage_byte_count_;
+}
+std::uint64_t Ps1Sio0::controller_buttons_high_stage_byte_count() const noexcept {
+    return controller_buttons_high_stage_byte_count_;
+}
+std::uint64_t Ps1Sio0::dtr_fall_reset_count() const noexcept {
+    return dtr_fall_reset_count_;
+}
+std::uint64_t Ps1Sio0::port_change_reset_count() const noexcept {
+    return port_change_reset_count_;
+}
+std::uint64_t Ps1Sio0::control_reset_count() const noexcept {
+    return control_reset_count_;
 }
 
 bool Ps1Sio0::irq_pending() const noexcept {

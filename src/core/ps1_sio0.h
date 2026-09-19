@@ -55,6 +55,12 @@ public:
     [[nodiscard]] std::uint64_t controller_address_byte_count() const noexcept;
     [[nodiscard]] std::uint64_t controller_command_byte_count() const noexcept;
     [[nodiscard]] std::uint64_t memory_card_address_byte_count() const noexcept;
+    [[nodiscard]] std::uint64_t controller_id_high_stage_byte_count() const noexcept;
+    [[nodiscard]] std::uint64_t controller_buttons_low_stage_byte_count() const noexcept;
+    [[nodiscard]] std::uint64_t controller_buttons_high_stage_byte_count() const noexcept;
+    [[nodiscard]] std::uint64_t dtr_fall_reset_count() const noexcept;
+    [[nodiscard]] std::uint64_t port_change_reset_count() const noexcept;
+    [[nodiscard]] std::uint64_t control_reset_count() const noexcept;
 
     [[nodiscard]] bool irq_pending() const noexcept;
     [[nodiscard]] std::uint64_t diagnostic_state_hash() const noexcept;
@@ -100,6 +106,12 @@ private:
     std::uint64_t controller_address_byte_count_{};
     std::uint64_t controller_command_byte_count_{};
     std::uint64_t memory_card_address_byte_count_{};
+    std::uint64_t controller_id_high_stage_byte_count_{};
+    std::uint64_t controller_buttons_low_stage_byte_count_{};
+    std::uint64_t controller_buttons_high_stage_byte_count_{};
+    std::uint64_t dtr_fall_reset_count_{};
+    std::uint64_t port_change_reset_count_{};
+    std::uint64_t control_reset_count_{};
     std::deque<std::uint8_t> rx_fifo_{};
     TransactionState transaction_{TransactionState::idle};
     std::uint8_t memory_command_{};

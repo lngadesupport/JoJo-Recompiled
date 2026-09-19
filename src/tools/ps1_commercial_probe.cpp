@@ -248,6 +248,12 @@ int run_gameplay_probe(
                     << " sio_control_writes=" << checkpoint_counters.sio_control_write_count
                     << " sio_pad_addr_bytes=" << checkpoint_counters.sio_controller_address_byte_count
                     << " sio_pad_cmd_bytes=" << checkpoint_counters.sio_controller_command_byte_count
+                    << " sio_id_stage=" << checkpoint_counters.sio_controller_id_high_stage_byte_count
+                    << " sio_btn_lo_stage=" << checkpoint_counters.sio_controller_buttons_low_stage_byte_count
+                    << " sio_btn_hi_stage=" << checkpoint_counters.sio_controller_buttons_high_stage_byte_count
+                    << " sio_dtr_resets=" << checkpoint_counters.sio_dtr_fall_reset_count
+                    << " sio_port_resets=" << checkpoint_counters.sio_port_change_reset_count
+                    << " sio_ctrl_resets=" << checkpoint_counters.sio_control_reset_count
                     << " sio_card_addr_bytes=" << checkpoint_counters.sio_memory_card_address_byte_count
                     << " first_pad_poll_frame="
                     << (first_pad_poll_frame

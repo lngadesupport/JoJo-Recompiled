@@ -445,6 +445,15 @@ Ps1CommercialEvidenceRunner::validation_counters() const noexcept {
         sio0.controller_command_byte_count();
     counters.sio_memory_card_address_byte_count =
         sio0.memory_card_address_byte_count();
+    counters.sio_controller_id_high_stage_byte_count =
+        sio0.controller_id_high_stage_byte_count();
+    counters.sio_controller_buttons_low_stage_byte_count =
+        sio0.controller_buttons_low_stage_byte_count();
+    counters.sio_controller_buttons_high_stage_byte_count =
+        sio0.controller_buttons_high_stage_byte_count();
+    counters.sio_dtr_fall_reset_count = sio0.dtr_fall_reset_count();
+    counters.sio_port_change_reset_count = sio0.port_change_reset_count();
+    counters.sio_control_reset_count = sio0.control_reset_count();
     counters.dma_transfer_count =
         hardware.completed_dma_transfer_count();
     counters.cdrom_command_count = hardware.cdrom().command_count();

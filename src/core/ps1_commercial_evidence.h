@@ -77,6 +77,12 @@ struct Ps1CommercialRuntimeCounters {
     std::uint64_t sio_controller_address_byte_count{};
     std::uint64_t sio_controller_command_byte_count{};
     std::uint64_t sio_memory_card_address_byte_count{};
+    std::uint64_t sio_controller_id_high_stage_byte_count{};
+    std::uint64_t sio_controller_buttons_low_stage_byte_count{};
+    std::uint64_t sio_controller_buttons_high_stage_byte_count{};
+    std::uint64_t sio_dtr_fall_reset_count{};
+    std::uint64_t sio_port_change_reset_count{};
+    std::uint64_t sio_control_reset_count{};
     std::array<std::uint64_t, 2> memory_card_read_sector_count{};
     std::array<std::uint64_t, 2> memory_card_write_sector_count{};
     std::array<std::uint64_t, 2> memory_card_changed_write_sector_count{};
