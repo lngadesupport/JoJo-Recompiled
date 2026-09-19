@@ -687,15 +687,21 @@ void game_tick(){
     if(!app_settings.graphics.vsync &&
        game_presenter &&
        !game_frame.rgba8.empty()){
+        const int requested_host_fps=app_settings.graphics.frame_limit;
         const auto present_period=
-            std::chrono::duration_cast<std::chrono::steady_clock::duration>(
-                std::chrono::duration<double>(1.0/240.0));
+            requested_host_fps>0
+                ?std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+                    std::chrono::duration<double>(
+                        1.0/static_cast<double>(requested_host_fps)))
+                :std::chrono::steady_clock::duration::zero();
         if(next_present_tick.time_since_epoch().count()==0){
             next_present_tick=now;
         }
-        if(now>=next_present_tick){
-            if(now-next_present_tick>present_period*4) next_present_tick=now;
-            next_present_tick+=present_period;
+        if(requested_host_fps==0 || now>=next_present_tick){
+            if(requested_host_fps>0){
+                if(now-next_present_tick>present_period*4) next_present_tick=now;
+                next_present_tick+=present_period;
+            }
             const auto presented=game_presenter->present(
                 game_frame,
                 false,
@@ -829,7 +835,11 @@ void game_tick(){
             L" • x64 "+std::to_wstring(native_percent)+L"% • "+
             (app_settings.graphics.vsync
                 ?L"VSync"
-                :L"host 240 Hz");
+                :(app_settings.graphics.frame_limit==0
+                    ?L"host unlimited"
+                    :L"host "+
+                        std::to_wstring(app_settings.graphics.frame_limit)+
+                        L" Hz"));
         InvalidateRect(win,nullptr,FALSE);
     }
 }
