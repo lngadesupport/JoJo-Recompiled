@@ -344,8 +344,14 @@ int main() {
               jojo::R3000aBusStatus::ok);
         CHECK(raw_cd.write8(0x1F801800u, 0x00u).status ==
               jojo::R3000aBusStatus::ok);
-        raw_cd.step(225792u);
+
+        // BFRD may be armed before the incoming INT1/datablock. The real
+        // controller latches that request and asserts DRQSTS when data lands.
+        CHECK(raw_cd.write8(0x1F801803u, 0x80u).status ==
+              jojo::R3000aBusStatus::ok);
         CHECK(raw_cd.data_bytes_available() == 0u);
+        raw_cd.step(225792u);
+        CHECK(raw_cd.data_bytes_available() == 2340u);
         CHECK(raw_cd.write8(0x1F801800u, 0x01u).status ==
               jojo::R3000aBusStatus::ok);
         CHECK((raw_cd.read8(0x1F801803u).value & 0x07u) == 0x01u);
@@ -354,8 +360,6 @@ int main() {
         CHECK(raw_cd.write8(0x1F801803u, 0x07u).status ==
               jojo::R3000aBusStatus::ok);
         CHECK(raw_cd.write8(0x1F801800u, 0x00u).status ==
-              jojo::R3000aBusStatus::ok);
-        CHECK(raw_cd.write8(0x1F801803u, 0x80u).status ==
               jojo::R3000aBusStatus::ok);
         CHECK(raw_cd.data_bytes_available() == 2340u);
 

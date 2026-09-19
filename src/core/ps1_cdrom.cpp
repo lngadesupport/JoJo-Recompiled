@@ -247,9 +247,16 @@ void Ps1CdromController::step(std::uint32_t cpu_cycles) noexcept {
     }
 
     status_byte_ = reading_status;
-    sector_buffer_.assign(
-        sector.value.begin(),
-        sector.value.end());
+    if ((request_register_ & 0x80u) != 0u && data_.empty()) {
+        data_.assign(
+            sector.value.begin(),
+            sector.value.end());
+        sector_buffer_.clear();
+    } else {
+        sector_buffer_.assign(
+            sector.value.begin(),
+            sector.value.end());
+    }
     ++current_lba_;
     read_cycles_remaining_ = sector_cycles();
     interrupt_flags_ = 0x01u;
