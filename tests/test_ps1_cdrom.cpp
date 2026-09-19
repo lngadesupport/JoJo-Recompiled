@@ -292,6 +292,92 @@ int main() {
     CHECK(cd.data_bytes_available() == 0u);
     CHECK(cd.current_lba() == 27u);
 
+    // Pause is asynchronous: a sector already in flight when command 09h
+    // is issued must be allowed to arrive before the delayed INT2 stops ReadN.
+    jojo::Ps1CdromController pause_inflight_cd;
+    pause_inflight_cd.attach_disc(&disc.value);
+    CHECK(pause_inflight_cd.write8(0x1F801802u, 0x80u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(pause_inflight_cd.write8(0x1F801801u, 0x0Eu).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(pause_inflight_cd.read8(0x1F801801u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(pause_inflight_cd.write8(0x1F801800u, 0x01u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(pause_inflight_cd.write8(0x1F801803u, 0x07u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(pause_inflight_cd.write8(0x1F801800u, 0x00u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(pause_inflight_cd.write8(0x1F801802u, 0x00u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(pause_inflight_cd.write8(0x1F801802u, 0x02u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(pause_inflight_cd.write8(0x1F801802u, 0x20u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(pause_inflight_cd.write8(0x1F801801u, 0x02u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(pause_inflight_cd.read8(0x1F801801u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(pause_inflight_cd.write8(0x1F801800u, 0x01u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(pause_inflight_cd.write8(0x1F801803u, 0x07u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(pause_inflight_cd.write8(0x1F801800u, 0x00u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(pause_inflight_cd.write8(0x1F801801u, 0x06u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(pause_inflight_cd.read8(0x1F801801u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(pause_inflight_cd.write8(0x1F801800u, 0x01u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(pause_inflight_cd.write8(0x1F801803u, 0x07u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(pause_inflight_cd.write8(0x1F801800u, 0x00u).status ==
+          jojo::R3000aBusStatus::ok);
+
+    // Leave only 100 CPU cycles before the first double-speed sector arrives.
+    pause_inflight_cd.step(225692u);
+    CHECK(pause_inflight_cd.current_lba() == 20u);
+    CHECK(pause_inflight_cd.write8(0x1F801801u, 0x09u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(pause_inflight_cd.read8(0x1F801801u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(pause_inflight_cd.write8(0x1F801800u, 0x01u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(pause_inflight_cd.write8(0x1F801803u, 0x07u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(pause_inflight_cd.write8(0x1F801800u, 0x00u).status ==
+          jojo::R3000aBusStatus::ok);
+
+    // The in-flight sector lands while Pause completion is still pending.
+    pause_inflight_cd.step(100u);
+    CHECK(pause_inflight_cd.current_lba() == 21u);
+    CHECK(pause_inflight_cd.deferred_response_count() == 1u);
+    pause_inflight_cd.step(33769u);
+    CHECK(pause_inflight_cd.deferred_response_count() == 0u);
+    CHECK(pause_inflight_cd.read8(0x1F801801u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(pause_inflight_cd.write8(0x1F801800u, 0x01u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK((pause_inflight_cd.read8(0x1F801803u).value & 0x07u) == 0x02u);
+    CHECK(pause_inflight_cd.write8(0x1F801803u, 0x07u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(pause_inflight_cd.write8(0x1F801800u, 0x00u).status ==
+          jojo::R3000aBusStatus::ok);
+    pause_inflight_cd.step(0u);
+    CHECK(pause_inflight_cd.write8(0x1F801800u, 0x01u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK((pause_inflight_cd.read8(0x1F801803u).value & 0x07u) == 0x01u);
+    CHECK(pause_inflight_cd.read8(0x1F801801u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(pause_inflight_cd.write8(0x1F801803u, 0x07u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(pause_inflight_cd.write8(0x1F801800u, 0x00u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(pause_inflight_cd.write8(0x1F801803u, 0x80u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(pause_inflight_cd.data_bytes_available() == 2048u);
+
     // The physical drive must continue advancing while the ReadN command
     // acknowledge/INT3 is still pending. Buffer several sectors without host
     // acknowledgement, then expose them through serialized INT1 delivery.

@@ -61,6 +61,7 @@ private:
         std::vector<std::uint8_t> data{};
         bool advance_lba{};
         bool apply_response_to_status{};
+        bool stop_read_stream_on_completion{};
     };
 
     static constexpr std::size_t parameter_capacity = 16u;

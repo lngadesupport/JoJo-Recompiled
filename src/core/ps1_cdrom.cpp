@@ -253,6 +253,9 @@ void Ps1CdromController::step(std::uint32_t cpu_cycles) noexcept {
         if (pending.advance_lba) {
             ++current_lba_;
         }
+        if (pending.stop_read_stream_on_completion) {
+            stop_read_stream();
+        }
         interrupt_flags_ = pending.interrupt_code;
         deferred_responses_.pop_front();
         return;
@@ -385,6 +388,8 @@ std::uint64_t Ps1CdromController::diagnostic_state_hash() const noexcept {
             pending.advance_lba ? 1u : 0u));
         hash_byte(hash, static_cast<std::uint8_t>(
             pending.apply_response_to_status ? 1u : 0u));
+        hash_byte(hash, static_cast<std::uint8_t>(
+            pending.stop_read_stream_on_completion ? 1u : 0u));
     }
     hash_u64(hash, command_count_);
     hash_u64(hash, recent_commands_.size());
@@ -557,10 +562,9 @@ R3000aBusResult Ps1CdromController::execute_command(std::uint8_t command) noexce
         }
 
         case 0x09u: { // Pause
-            // Pause stops future ReadN/ReadS delivery but does not destroy a
-            // datablock already exposed to the host. Software may issue Pause
-            // while the final DMA is still draining the Data FIFO.
-            stop_read_stream();
+            // Pause is asynchronous. Keep the physical ReadN/ReadS stream
+            // alive until the delayed INT2 completion so an in-flight sector
+            // can still reach the drive buffers after the INT3 acknowledge.
             const auto completed_status = static_cast<std::uint8_t>(
                 (status_byte_ & ~kStatActivityMask) |
                 (status_byte_ & kStatMotor));
@@ -570,6 +574,7 @@ R3000aBusResult Ps1CdromController::execute_command(std::uint8_t command) noexce
                 kCdCommandCompletionCycles,
                 {},
                 false,
+                true,
                 true,
             });
             if (!push_response(status_byte_)) return {R3000aBusStatus::unsupported, 0u};
