@@ -145,9 +145,7 @@ R3000aStepResult enter_exception(
 R3000aStepResult step_r3000a_impl(
     R3000aState& state,
     R3000aBus& bus,
-    const std::uint32_t* prefetched_opcode,
-    std::uint8_t* main_ram,
-    std::size_t main_ram_size) noexcept {
+    const std::uint32_t* prefetched_opcode) noexcept {
     state.gpr[0] = 0u;
     const std::uint32_t instruction_pc = state.pc;
     const R3000aDelaySlot current_delay = state.delay_slot;
@@ -264,83 +262,6 @@ R3000aStepResult step_r3000a_impl(
                         R3000aStage::cop0, instruction_pc, instruction.raw);
     };
 
-
-    const auto fast_ram_offset =
-        [&](std::uint32_t guest, std::size_t width)
-            -> std::optional<std::size_t> {
-        if(!main_ram || main_ram_size==0u) return std::nullopt;
-        std::uint32_t physical=guest;
-        if(guest>=0x80000000u){
-            if(guest>=0xC0000000u) return std::nullopt;
-            physical=guest&0x1FFFFFFFu;
-        }
-        const auto offset=static_cast<std::size_t>(physical);
-        if(offset>=main_ram_size || width>main_ram_size-offset){
-            return std::nullopt;
-        }
-        return offset;
-    };
-    const auto data_read8 = [&](std::uint32_t address) noexcept {
-        if(const auto offset=fast_ram_offset(address,1u);offset){
-            return R3000aBusResult{
-                R3000aBusStatus::ok,
-                static_cast<std::uint32_t>(main_ram[*offset])};
-        }
-        return bus.read8(address);
-    };
-    const auto data_read16 = [&](std::uint32_t address) noexcept {
-        if(const auto offset=fast_ram_offset(address,2u);offset){
-            const auto* p=main_ram+*offset;
-            return R3000aBusResult{
-                R3000aBusStatus::ok,
-                static_cast<std::uint32_t>(p[0]) |
-                    (static_cast<std::uint32_t>(p[1])<<8u)};
-        }
-        return bus.read16(address);
-    };
-    const auto data_read32 = [&](std::uint32_t address) noexcept {
-        if(const auto offset=fast_ram_offset(address,4u);offset){
-            const auto* p=main_ram+*offset;
-            return R3000aBusResult{
-                R3000aBusStatus::ok,
-                static_cast<std::uint32_t>(p[0]) |
-                    (static_cast<std::uint32_t>(p[1])<<8u) |
-                    (static_cast<std::uint32_t>(p[2])<<16u) |
-                    (static_cast<std::uint32_t>(p[3])<<24u)};
-        }
-        return bus.read32(address);
-    };
-    const auto data_write8 =
-        [&](std::uint32_t address,std::uint8_t value) noexcept {
-        if(const auto offset=fast_ram_offset(address,1u);offset){
-            main_ram[*offset]=value;
-            return R3000aBusResult{R3000aBusStatus::ok,0u};
-        }
-        return bus.write8(address,value);
-    };
-    const auto data_write16 =
-        [&](std::uint32_t address,std::uint16_t value) noexcept {
-        if(const auto offset=fast_ram_offset(address,2u);offset){
-            auto* p=main_ram+*offset;
-            p[0]=static_cast<std::uint8_t>(value);
-            p[1]=static_cast<std::uint8_t>(value>>8u);
-            return R3000aBusResult{R3000aBusStatus::ok,0u};
-        }
-        return bus.write16(address,value);
-    };
-    const auto data_write32 =
-        [&](std::uint32_t address,std::uint32_t value) noexcept {
-        if(const auto offset=fast_ram_offset(address,4u);offset){
-            auto* p=main_ram+*offset;
-            p[0]=static_cast<std::uint8_t>(value);
-            p[1]=static_cast<std::uint8_t>(value>>8u);
-            p[2]=static_cast<std::uint8_t>(value>>16u);
-            p[3]=static_cast<std::uint8_t>(value>>24u);
-            return R3000aBusResult{R3000aBusStatus::ok,0u};
-        }
-        return bus.write32(address,value);
-    };
-
     switch (instruction.op) {
         case MipsOp::sll: queue_gpr_write(instruction.rd, rt << instruction.sa); break;
         case MipsOp::srl: queue_gpr_write(instruction.rd, rt >> instruction.sa); break;
@@ -452,7 +373,7 @@ R3000aStepResult step_r3000a_impl(
         case MipsOp::lb:
         case MipsOp::lbu: {
             const auto address = rs + sign_extend16(instruction.immediate);
-            const auto in = data_read8(address);
+            const auto in = bus.read8(address);
             if (in.status == R3000aBusStatus::unsupported) return data_boundary(address, 1u);
             if (in.status == R3000aBusStatus::bus_error) return data_bus_error(address, 1u);
             const auto value = instruction.op == MipsOp::lb
@@ -465,7 +386,7 @@ R3000aStepResult step_r3000a_impl(
         case MipsOp::lhu: {
             const auto address = rs + sign_extend16(instruction.immediate);
             if ((address & 1u) != 0u) return address_exception(R3000aExceptionCode::adel, address, 2u);
-            const auto in = data_read16(address);
+            const auto in = bus.read16(address);
             if (in.status == R3000aBusStatus::unsupported) return data_boundary(address, 2u);
             if (in.status == R3000aBusStatus::bus_error) return data_bus_error(address, 2u);
             const auto value = instruction.op == MipsOp::lh
@@ -477,7 +398,7 @@ R3000aStepResult step_r3000a_impl(
         case MipsOp::lw: {
             const auto address = rs + sign_extend16(instruction.immediate);
             if ((address & 3u) != 0u) return address_exception(R3000aExceptionCode::adel, address, 4u);
-            const auto in = data_read32(address);
+            const auto in = bus.read32(address);
             if (in.status == R3000aBusStatus::unsupported) return data_boundary(address, 4u);
             if (in.status == R3000aBusStatus::bus_error) return data_bus_error(address, 4u);
             queue_load(instruction.rt, in.value);
@@ -486,7 +407,7 @@ R3000aStepResult step_r3000a_impl(
         case MipsOp::sb: {
             const auto address = rs + sign_extend16(instruction.immediate);
             const auto value = static_cast<std::uint8_t>(rt & 0xffu);
-            const auto out = data_write8(address, value);
+            const auto out = bus.write8(address, value);
             if (out.status == R3000aBusStatus::unsupported) return data_boundary(address, 1u, rt & 0xffu);
             if (out.status == R3000aBusStatus::bus_error) return data_bus_error(address, 1u, rt & 0xffu);
             break;
@@ -495,7 +416,7 @@ R3000aStepResult step_r3000a_impl(
             const auto address = rs + sign_extend16(instruction.immediate);
             if ((address & 1u) != 0u) return address_exception(R3000aExceptionCode::ades, address, 2u);
             const auto value = static_cast<std::uint16_t>(rt & 0xffffu);
-            const auto out = data_write16(address, value);
+            const auto out = bus.write16(address, value);
             if (out.status == R3000aBusStatus::unsupported) return data_boundary(address, 2u, rt & 0xffffu);
             if (out.status == R3000aBusStatus::bus_error) return data_bus_error(address, 2u, rt & 0xffffu);
             break;
@@ -503,7 +424,7 @@ R3000aStepResult step_r3000a_impl(
         case MipsOp::sw: {
             const auto address = rs + sign_extend16(instruction.immediate);
             if ((address & 3u) != 0u) return address_exception(R3000aExceptionCode::ades, address, 4u);
-            const auto out = data_write32(address, rt);
+            const auto out = bus.write32(address, rt);
             if (out.status == R3000aBusStatus::unsupported) return data_boundary(address, 4u, rt);
             if (out.status == R3000aBusStatus::bus_error) return data_bus_error(address, 4u, rt);
             break;
@@ -512,7 +433,7 @@ R3000aStepResult step_r3000a_impl(
         case MipsOp::lwr: {
             const auto effective = rs + sign_extend16(instruction.immediate);
             const auto aligned = effective & ~3u;
-            const auto in = data_read32(aligned);
+            const auto in = bus.read32(aligned);
             if (in.status == R3000aBusStatus::unsupported) return data_boundary(effective, 4u);
             if (in.status == R3000aBusStatus::bus_error) return data_bus_error(effective, 4u);
             const std::uint32_t base = prior_pending.valid && prior_pending.reg == instruction.rt
@@ -541,7 +462,7 @@ R3000aStepResult step_r3000a_impl(
         case MipsOp::swr: {
             const auto effective = rs + sign_extend16(instruction.immediate);
             const auto aligned = effective & ~3u;
-            const auto in = data_read32(aligned);
+            const auto in = bus.read32(aligned);
             if (in.status == R3000aBusStatus::unsupported) return data_boundary(effective, 4u, rt);
             if (in.status == R3000aBusStatus::bus_error) return data_bus_error(effective, 4u, rt);
             const auto lane = effective & 3u;
@@ -561,7 +482,7 @@ R3000aStepResult step_r3000a_impl(
                     case 3u: merged = (in.value & 0x00FFFFFFu) | (rt << 24); break;
                 }
             }
-            const auto out = data_write32(aligned, merged);
+            const auto out = bus.write32(aligned, merged);
             if (out.status == R3000aBusStatus::unsupported) return data_boundary(effective, 4u, merged);
             if (out.status == R3000aBusStatus::bus_error) return data_bus_error(effective, 4u, merged);
             break;
@@ -624,7 +545,7 @@ R3000aStepResult step_r3000a_impl(
                     4u);
             }
             if (instruction.op == MipsOp::lwc2) {
-                const auto in = data_read32(address);
+                const auto in = bus.read32(address);
                 if (in.status == R3000aBusStatus::unsupported) {
                     return data_boundary(address, 4u);
                 }
@@ -634,7 +555,7 @@ R3000aStepResult step_r3000a_impl(
                 write_ps1_gte_data(state.gte, instruction.rt, in.value);
             } else {
                 const auto value = read_ps1_gte_data(state.gte, instruction.rt);
-                const auto out = data_write32(address, value);
+                const auto out = bus.write32(address, value);
                 if (out.status == R3000aBusStatus::unsupported) {
                     return data_boundary(address, 4u, value);
                 }
@@ -717,17 +638,14 @@ R3000aStepResult step_r3000a_impl(
 R3000aStepResult step_r3000a(
     R3000aState& state,
     R3000aBus& bus) noexcept {
-    return step_r3000a_impl(state,bus,nullptr,nullptr,0u);
+    return step_r3000a_impl(state,bus,nullptr);
 }
 
 R3000aStepResult step_r3000a_prefetched(
     R3000aState& state,
     R3000aBus& bus,
-    std::uint32_t raw_opcode,
-    std::uint8_t* main_ram,
-    std::size_t main_ram_size) noexcept {
-    return step_r3000a_impl(
-        state,bus,&raw_opcode,main_ram,main_ram_size);
+    std::uint32_t raw_opcode) noexcept {
+    return step_r3000a_impl(state,bus,&raw_opcode);
 }
 
 R3000aState initialize_r3000a_for_psx_exe(const Ps1ExeMetadata& metadata) noexcept {
