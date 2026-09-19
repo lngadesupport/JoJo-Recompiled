@@ -144,7 +144,8 @@ bool validate_graphics(const GraphicsSettings& s) noexcept {
     return s.width >= 640 && s.width <= 7680 && s.height >= 480 && s.height <= 4320 &&
            valid_aspect(s.aspect_ratio) && valid_filter(s.texture_filter) && valid_msaa(s.msaa) &&
            valid_display_mode(s.display_mode) && valid_ui_scale(s.ui_scale) &&
-           valid_hud_safe_area(s.hud_safe_area);
+           valid_hud_safe_area(s.hud_safe_area) &&
+           (s.frame_limit == 0 || (s.frame_limit >= 30 && s.frame_limit <= 1000));
 }
 
 bool validate_audio(const AudioSettings& s) noexcept {
@@ -265,6 +266,8 @@ Result<AppSettings> load_settings(const std::filesystem::path& path) {
             auto p = hud_safe_area_from_string(value); if (!p) return Result<AppSettings>::failure(p.error, p.detail); result.graphics.hud_safe_area = p.value;
         } else if (key == "vsync") {
             auto p = parse_bool(value); if (!p) return Result<AppSettings>::failure(p.error, p.detail); result.graphics.vsync = p.value;
+        } else if (key == "frame_limit") {
+            auto p = parse_int(value); if (!p) return Result<AppSettings>::failure(p.error, p.detail); result.graphics.frame_limit = p.value;
         } else if (key == "master_volume") {
             auto p = parse_int(value); if (!p) return Result<AppSettings>::failure(p.error, p.detail); result.audio.master_volume = p.value;
         } else if (key == "music_volume") {
@@ -334,6 +337,7 @@ Result<void> save_settings_atomic(const std::filesystem::path& path, const AppSe
         out << "msaa=" << static_cast<int>(settings.graphics.msaa) << '\n';
         out << "display_mode=" << to_string(settings.graphics.display_mode) << '\n';
         out << "vsync=" << (settings.graphics.vsync ? 1 : 0) << '\n';
+        out << "frame_limit=" << settings.graphics.frame_limit << '\n';
         out << "ui_scale=" << static_cast<int>(settings.graphics.ui_scale) << '\n';
         out << "hud_safe_area=" << to_string(settings.graphics.hud_safe_area) << '\n';
         out << "master_volume=" << settings.audio.master_volume << '\n';
