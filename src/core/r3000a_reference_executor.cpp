@@ -142,7 +142,10 @@ R3000aStepResult enter_exception(
 
 } // namespace
 
-R3000aStepResult step_r3000a(R3000aState& state, R3000aBus& bus) noexcept {
+R3000aStepResult step_r3000a_impl(
+    R3000aState& state,
+    R3000aBus& bus,
+    const std::uint32_t* prefetched_opcode) noexcept {
     state.gpr[0] = 0u;
     const std::uint32_t instruction_pc = state.pc;
     const R3000aDelaySlot current_delay = state.delay_slot;
@@ -166,25 +169,31 @@ R3000aStepResult step_r3000a(R3000aState& state, R3000aBus& bus) noexcept {
         return result;
     }
 
-    const auto fetched = bus.read32(instruction_pc);
-    if (fetched.status == R3000aBusStatus::unsupported) {
-        retire_pending_load(state);
-        auto result = boundary(state, R3000aBoundaryCode::unsupported_address_space,
-                               R3000aStage::fetch, instruction_pc);
-        result.diagnostic.address = instruction_pc;
-        result.diagnostic.access_width = 4u;
-        return result;
-    }
-    if (fetched.status == R3000aBusStatus::bus_error) {
-        retire_pending_load(state);
-        auto result = enter_exception(state, R3000aExceptionCode::ibe, R3000aStage::fetch,
-                                      instruction_pc, current_delay);
-        result.diagnostic.address = instruction_pc;
-        result.diagnostic.access_width = 4u;
-        return result;
+    std::uint32_t raw_opcode=0u;
+    if(prefetched_opcode){
+        raw_opcode=*prefetched_opcode;
+    }else{
+        const auto fetched = bus.read32(instruction_pc);
+        if (fetched.status == R3000aBusStatus::unsupported) {
+            retire_pending_load(state);
+            auto result = boundary(state, R3000aBoundaryCode::unsupported_address_space,
+                                   R3000aStage::fetch, instruction_pc);
+            result.diagnostic.address = instruction_pc;
+            result.diagnostic.access_width = 4u;
+            return result;
+        }
+        if (fetched.status == R3000aBusStatus::bus_error) {
+            retire_pending_load(state);
+            auto result = enter_exception(state, R3000aExceptionCode::ibe, R3000aStage::fetch,
+                                          instruction_pc, current_delay);
+            result.diagnostic.address = instruction_pc;
+            result.diagnostic.access_width = 4u;
+            return result;
+        }
+        raw_opcode=fetched.value;
     }
 
-    const auto instruction = decode_mips(fetched.value);
+    const auto instruction = decode_mips(raw_opcode);
     if (current_delay.active && is_control_transfer(instruction.op)) {
         return boundary(state, R3000aBoundaryCode::unpredictable_delay_slot_control_transfer,
                         R3000aStage::execute, instruction_pc, instruction.raw);
@@ -624,6 +633,19 @@ R3000aStepResult step_r3000a(R3000aState& state, R3000aBus& bus) noexcept {
     }
     state.gpr[0] = 0u;
     return {};
+}
+
+R3000aStepResult step_r3000a(
+    R3000aState& state,
+    R3000aBus& bus) noexcept {
+    return step_r3000a_impl(state,bus,nullptr);
+}
+
+R3000aStepResult step_r3000a_prefetched(
+    R3000aState& state,
+    R3000aBus& bus,
+    std::uint32_t raw_opcode) noexcept {
+    return step_r3000a_impl(state,bus,&raw_opcode);
 }
 
 R3000aState initialize_r3000a_for_psx_exe(const Ps1ExeMetadata& metadata) noexcept {
