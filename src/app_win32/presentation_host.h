@@ -132,6 +132,7 @@ private:
     std::uint32_t back_buffer_height_{};
 };
 
+[[nodiscard]] Result<void> preload_d3d11_presentation_shaders();
 [[nodiscard]] Result<RendererCapabilities> probe_d3d11_renderer_capabilities();
 
 }
