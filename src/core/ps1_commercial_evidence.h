@@ -198,6 +198,7 @@ public:
     void signal_vblank() noexcept;
 
     [[nodiscard]] const Ps1DiscSession& disc_session() const noexcept;
+    void display_frame_into(Ps1DisplayFrame& frame) const;
     [[nodiscard]] Ps1DisplayFrame display_frame() const;
     [[nodiscard]] Ps1GpuDisplayState gpu_display_state() const noexcept;
     [[nodiscard]] Ps1CommercialRuntimeCounters validation_counters() const noexcept;
