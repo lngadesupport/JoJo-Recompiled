@@ -1145,6 +1145,18 @@ Result<void> D3d11Ps1Presenter::draw_frame(
     TextureFilter texture_filter,
     Msaa anti_aliasing,
     AspectRatio aspect_ratio) {
+    const auto uploaded = update_source_texture(frame);
+    if (!uploaded) return uploaded;
+    return draw_cached_frame(
+        texture_filter,
+        anti_aliasing,
+        aspect_ratio);
+}
+
+Result<void> D3d11Ps1Presenter::draw_cached_frame(
+    TextureFilter texture_filter,
+    Msaa anti_aliasing,
+    AspectRatio aspect_ratio) {
     if (!context_ || !render_target_ ||
         !vertex_shader_ || !pixel_shader_ ||
         !pixel_constants_) {
@@ -1153,8 +1165,12 @@ Result<void> D3d11Ps1Presenter::draw_frame(
             "D3D11 cached presentation pipeline is incomplete");
     }
 
-    const auto uploaded = update_source_texture(frame);
-    if (!uploaded) return uploaded;
+    if (!source_texture_ || !source_srv_ ||
+        source_width_ == 0u || source_height_ == 0u) {
+        return Result<void>::failure(
+            ErrorCode::backend_unavailable,
+            "D3D11 cached presentation source is unavailable");
+    }
 
     const auto sampler_ready = update_sampler(texture_filter);
     if (!sampler_ready) return sampler_ready;
@@ -1264,6 +1280,31 @@ Result<void> D3d11Ps1Presenter::present(
         return Result<void>::failure(
             ErrorCode::backend_unavailable,
             "D3D11 swap-chain presentation failed");
+    }
+    return Result<void>::success();
+}
+
+Result<void> D3d11Ps1Presenter::present_cached(
+    bool vsync,
+    TextureFilter texture_filter,
+    Msaa anti_aliasing,
+    AspectRatio aspect_ratio) {
+    const auto resized = resize_to_client();
+    if (!resized) return resized;
+
+    const auto drawn = draw_cached_frame(
+        texture_filter,
+        anti_aliasing,
+        aspect_ratio);
+    if (!drawn) return drawn;
+
+    const HRESULT hr = swap_chain_->Present(
+        vsync ? 1u : 0u,
+        0u);
+    if (FAILED(hr)) {
+        return Result<void>::failure(
+            ErrorCode::backend_unavailable,
+            "D3D11 cached-frame presentation failed");
     }
     return Result<void>::success();
 }
