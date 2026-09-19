@@ -796,6 +796,14 @@ void LauncherUi::paint(
             Gdiplus::StringAlignmentCenter);
     }
 
+    draw_string(
+        graphics,
+        L"BACK  /  ESC",
+        Gdiplus::RectF(72.0f,620.0f,210.0f,32.0f),
+        14.0f,
+        kJojoIce,
+        Gdiplus::FontStyleBold);
+
     const std::wstring help=
         page_==SettingsPage::controls
             ?(capture_status.empty()
