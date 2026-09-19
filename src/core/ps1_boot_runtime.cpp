@@ -205,6 +205,12 @@ Ps1BootReport Ps1BootRuntime::run(const Ps1BootOptions& options) noexcept {
                 event.status,
                 event.lba,
                 event.mode,
+                event.request,
+                event.interrupt_flags,
+                event.data_bytes,
+                event.sector_buffer_bytes,
+                event.drive_queue_depth,
+                event.read_stream_active,
             });
         }
         report.gpu_gp0_command_count =

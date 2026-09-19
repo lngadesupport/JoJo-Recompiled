@@ -439,6 +439,12 @@ Ps1CommercialEvidenceRunner::recent_cdrom_commands() const {
             event.status,
             event.lba,
             event.mode,
+            event.request,
+            event.interrupt_flags,
+            event.data_bytes,
+            event.sector_buffer_bytes,
+            event.drive_queue_depth,
+            event.read_stream_active,
         });
     }
     return out;

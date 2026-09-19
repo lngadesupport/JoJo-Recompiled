@@ -53,6 +53,12 @@ struct Ps1CdromCommandSummary {
     std::uint8_t status{};
     std::uint64_t lba{};
     std::uint8_t mode{};
+    std::uint8_t request{};
+    std::uint8_t interrupt_flags{};
+    std::uint32_t data_bytes{};
+    std::uint32_t sector_buffer_bytes{};
+    std::uint8_t drive_queue_depth{};
+    bool read_stream_active{};
 };
 
 struct Ps1TraceSample {

@@ -323,6 +323,12 @@ std::string format_ps1_commercial_evidence_report(
         out << "cdrom_event_" << i << "_status=" << static_cast<unsigned>(event.status) << '\n';
         out << "cdrom_event_" << i << "_lba=" << event.lba << '\n';
         out << "cdrom_event_" << i << "_mode=" << static_cast<unsigned>(event.mode) << '\n';
+        out << "cdrom_event_" << i << "_request=" << static_cast<unsigned>(event.request) << '\n';
+        out << "cdrom_event_" << i << "_interrupt_flags=" << static_cast<unsigned>(event.interrupt_flags) << '\n';
+        out << "cdrom_event_" << i << "_data_bytes=" << event.data_bytes << '\n';
+        out << "cdrom_event_" << i << "_sector_buffer_bytes=" << event.sector_buffer_bytes << '\n';
+        out << "cdrom_event_" << i << "_drive_queue_depth=" << static_cast<unsigned>(event.drive_queue_depth) << '\n';
+        out << "cdrom_event_" << i << "_read_stream_active=" << (event.read_stream_active ? 1 : 0) << '\n';
     }
 
     if (report.boot.unsupported_access) {

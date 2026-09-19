@@ -394,6 +394,13 @@ std::uint64_t Ps1CdromController::diagnostic_state_hash() const noexcept {
         hash_byte(hash, event.status);
         hash_u64(hash, event.lba);
         hash_byte(hash, event.mode);
+        hash_byte(hash, event.request);
+        hash_byte(hash, event.interrupt_flags);
+        hash_u64(hash, event.data_bytes);
+        hash_u64(hash, event.sector_buffer_bytes);
+        hash_byte(hash, event.drive_queue_depth);
+        hash_byte(hash, static_cast<std::uint8_t>(
+            event.read_stream_active ? 1u : 0u));
     }
     hash_byte(
         hash,
@@ -452,6 +459,12 @@ R3000aBusResult Ps1CdromController::execute_command(std::uint8_t command) noexce
         status_byte_,
         current_lba_,
         mode_,
+        request_register_,
+        interrupt_flags_,
+        static_cast<std::uint32_t>(data_.size()),
+        static_cast<std::uint32_t>(sector_buffer_.size()),
+        static_cast<std::uint8_t>(drive_sector_queue_.size()),
+        read_stream_active_,
     });
 
     switch (command) {
