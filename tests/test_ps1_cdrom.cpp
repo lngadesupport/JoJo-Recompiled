@@ -221,7 +221,7 @@ int main() {
           jojo::R3000aBusStatus::ok);
     CHECK(cd.write8(0x1F801803u, 0x07u).status == jojo::R3000aBusStatus::ok);
     CHECK(cd.write8(0x1F801800u, 0x00u).status == jojo::R3000aBusStatus::ok);
-    cd.step(451584u);
+    cd.step(225792u);
     CHECK(cd.data_bytes_available() == 0u);
     CHECK(cd.write8(0x1F801800u, 0x01u).status == jojo::R3000aBusStatus::ok);
     CHECK((cd.read8(0x1F801803u).value & 0x07u) == 0x01u);
