@@ -686,7 +686,7 @@ Result<D3d11Ps1Presenter> D3d11Ps1Presenter::create(HWND window) {
     desc.BufferCount = 2u;
     desc.OutputWindow = window;
     desc.Windowed = TRUE;
-    desc.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
+    desc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
 
     constexpr std::array<D3D_FEATURE_LEVEL, 4> levels{
         D3D_FEATURE_LEVEL_11_1,
@@ -753,6 +753,34 @@ Result<D3d11Ps1Presenter> D3d11Ps1Presenter::create(HWND window) {
             device.GetAddressOf(),
             context.GetAddressOf());
         if (hr == E_INVALIDARG) {
+            swap_chain.Reset();
+            device.Reset();
+            context.Reset();
+            hr = create_device(
+                D3D_DRIVER_TYPE_WARP,
+                levels.data() + 1,
+                static_cast<UINT>(levels.size() - 1u),
+                swap_chain.GetAddressOf(),
+                device.GetAddressOf(),
+                context.GetAddressOf());
+        }
+    }
+
+    if (FAILED(hr) || !swap_chain || !device || !context) {
+        // Compatibility fallback for drivers that reject flip-model swap
+        // chains. The normal Windows 10/11 path uses FLIP_DISCARD.
+        desc.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
+        swap_chain.Reset();
+        device.Reset();
+        context.Reset();
+        hr = create_device(
+            D3D_DRIVER_TYPE_HARDWARE,
+            levels.data() + 1,
+            static_cast<UINT>(levels.size() - 1u),
+            swap_chain.GetAddressOf(),
+            device.GetAddressOf(),
+            context.GetAddressOf());
+        if (FAILED(hr)) {
             swap_chain.Reset();
             device.Reset();
             context.Reset();
@@ -1324,9 +1352,16 @@ Result<void> D3d11Ps1Presenter::present_cached(
         aspect_ratio);
     if (!drawn) return drawn;
 
+    const UINT present_flags =
+        vsync ? 0u : DXGI_PRESENT_DO_NOT_WAIT;
     const HRESULT hr = swap_chain_->Present(
         vsync ? 1u : 0u,
-        0u);
+        present_flags);
+    if (hr == DXGI_ERROR_WAS_STILL_DRAWING) {
+        // A duplicate high-refresh present may be dropped; never let it stall
+        // the PS1 simulation thread.
+        return Result<void>::success();
+    }
     if (FAILED(hr)) {
         return Result<void>::failure(
             ErrorCode::backend_unavailable,
