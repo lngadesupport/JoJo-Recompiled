@@ -20,6 +20,12 @@ inline constexpr std::uint32_t kPs1HleStartPad2HandlerAddress = 0x0000E020u;
 inline constexpr std::uint32_t kPs1HleStopPad2HandlerAddress = 0x0000E030u;
 inline constexpr std::uint32_t kPs1HlePadInit2HandlerAddress = 0x0000E040u;
 inline constexpr std::uint32_t kPs1HlePadDrHandlerAddress = 0x0000E050u;
+// JoJo applies the documented BIOS pad patch relative to B(5Bh), retaining
+// callable pointers to these two internal routines.
+inline constexpr std::uint32_t kPs1HleSetPadEnableHandlerAddress =
+    kPs1HleChangeClearPadHandlerAddress + 0x0884u;
+inline constexpr std::uint32_t kPs1HleClearPadEnableHandlerAddress =
+    kPs1HleChangeClearPadHandlerAddress + 0x0894u;
 
 enum class Ps1HleBiosDispatchStatus : std::uint8_t {
     handled,
@@ -57,6 +63,9 @@ public:
     [[nodiscard]] Ps1HleBiosDispatchStatus dispatch_syscall(
         R3000aState& cpu,
         std::uint32_t selector) noexcept;
+    [[nodiscard]] Ps1HleBiosDispatchStatus dispatch_internal(
+        R3000aState& cpu,
+        std::uint32_t physical_address) noexcept;
 
     [[nodiscard]] Ps1HleBiosDispatchStatus begin_interrupt_hook(
         R3000aState& cpu,

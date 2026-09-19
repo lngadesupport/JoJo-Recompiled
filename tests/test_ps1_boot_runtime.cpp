@@ -365,6 +365,56 @@ static void test_b0_pad_trampoline_dispatches_indirect_startpad2() {
               .digital_pad_pressed_poll_count(0u) == 1u);
 }
 
+static void test_internal_pad_enable_routines_gate_vblank_polling() {
+    // InitPAD2 + StartPAD2, then call the two BIOS-internal routines retained
+    // by JoJo's B(5Bh)-relative patch.
+    const std::vector<std::uint32_t> words{
+        test_mips::i(0x09u, 0u, 4u, 0x6000u),
+        test_mips::i(0x09u, 0u, 5u, 0x0022u),
+        test_mips::i(0x09u, 0u, 6u, 0x6100u),
+        test_mips::i(0x09u, 0u, 7u, 0x0022u),
+        test_mips::i(0x09u, 0u, 9u, 0x0012u),
+        test_mips::i(0x09u, 0u, 10u, 0x00B0u),
+        test_mips::r(10u, 0u, 31u, 0u, 0x09u),
+        0x00000000u,
+        test_mips::i(0x09u, 0u, 9u, 0x0013u),
+        test_mips::i(0x09u, 0u, 10u, 0x00B0u),
+        test_mips::r(10u, 0u, 31u, 0u, 0x09u),
+        0x00000000u,
+        test_mips::j(
+            0x03u,
+            jojo::kPs1HleClearPadEnableHandlerAddress >> 2u),
+        0x00000000u,
+        test_mips::j(0x02u, 0x80010038u >> 2u),
+        0x00000000u,
+    };
+
+    auto runtime = make_runtime(words);
+    const auto report = runtime.run({32u});
+    CHECK(report.stop_reason ==
+          jojo::Ps1BootStopReason::execution_budget_exhausted);
+
+    auto& sio = runtime.bus().hardware_services().sio0();
+    sio.set_digital_pad_buttons(0u, 0xFFF7u);
+    runtime.signal_vblank();
+    CHECK(sio.digital_pad_poll_count(0u) == 0u);
+
+    auto cpu = runtime.cpu_state();
+    cpu.gpr[31] = 0x80010038u;
+    cpu.pc = 0x80000000u |
+        jojo::kPs1HleSetPadEnableHandlerAddress;
+    cpu.next_pc = cpu.pc + 4u;
+    auto state = runtime.save_state();
+    state.cpu = cpu;
+    CHECK(runtime.load_state(state));
+    const auto enable = runtime.run({1u});
+    CHECK(enable.bios_call_count == 1u);
+
+    runtime.signal_vblank();
+    CHECK(sio.digital_pad_poll_count(0u) == 1u);
+    CHECK(sio.digital_pad_pressed_poll_count(0u) == 1u);
+}
+
 static void test_b0_5b_changeclearpad_records_flag_and_returns() {
     const std::vector<std::uint32_t> words{
         test_mips::i(0x09u, 0u, 4u, 0x0000u),
@@ -762,6 +812,7 @@ int main() {
     test_b0_19_hookentryint_records_pointer_args_and_returns();
     test_clean_room_b0_pad_table_contains_executable_trampolines();
     test_b0_pad_trampoline_dispatches_indirect_startpad2();
+    test_internal_pad_enable_routines_gate_vblank_polling();
     test_b0_5b_changeclearpad_records_flag_and_returns();
     test_a0_33_remains_unimplemented();
     test_mmio_access_stops_with_structured_evidence();

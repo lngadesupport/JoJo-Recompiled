@@ -712,6 +712,22 @@ void Ps1HleBios::service_pad_vblank(
     }
 }
 
+Ps1HleBiosDispatchStatus Ps1HleBios::dispatch_internal(
+    R3000aState& cpu,
+    std::uint32_t physical_address) noexcept {
+    if (physical_address == kPs1HleSetPadEnableHandlerAddress) {
+        pad_enabled_ = true;
+        return_from_bios_call(cpu);
+        return Ps1HleBiosDispatchStatus::handled;
+    }
+    if (physical_address == kPs1HleClearPadEnableHandlerAddress) {
+        pad_enabled_ = false;
+        return_from_bios_call(cpu);
+        return Ps1HleBiosDispatchStatus::handled;
+    }
+    return Ps1HleBiosDispatchStatus::unimplemented;
+}
+
 Ps1HleBiosDispatchStatus Ps1HleBios::dispatch_syscall(
     R3000aState& cpu,
     std::uint32_t selector) noexcept {

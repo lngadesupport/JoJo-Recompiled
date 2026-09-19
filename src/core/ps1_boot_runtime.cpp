@@ -31,6 +31,11 @@ bool is_bios_table(std::uint32_t physical) noexcept {
            physical == kBiosC0;
 }
 
+bool is_hle_internal_bios_entry(std::uint32_t physical) noexcept {
+    return physical == kPs1HleSetPadEnableHandlerAddress ||
+           physical == kPs1HleClearPadEnableHandlerAddress;
+}
+
 bool is_initial_mmio_window(std::uint32_t physical) noexcept {
     return physical >= 0x1F801000u && physical < 0x1F803000u;
 }
@@ -301,6 +306,32 @@ Ps1BootReport Ps1BootRuntime::run(const Ps1BootOptions& options) noexcept {
         report.last_pc = cpu_.pc;
 
         const auto physical_pc = Ps1MemoryBus::guest_to_physical(cpu_.pc);
+        if (physical_pc && is_hle_internal_bios_entry(*physical_pc)) {
+            if (observed_bios_dependencies.insert(
+                    bios_dependency_key(*physical_pc, 0u)).second) {
+                instructions_since_progress = 0u;
+            }
+            ++report.bios_call_count;
+            record_recent_bios(report, Ps1BiosCallSummary{
+                cpu_.pc,
+                *physical_pc,
+                0u,
+                cpu_.gpr[4],
+                cpu_.gpr[5],
+                cpu_.gpr[6],
+                cpu_.gpr[7],
+                cpu_.gpr[31],
+            }, options.bios_event_capacity);
+            const auto bios_status =
+                bios_.dispatch_internal(cpu_, *physical_pc);
+            if (bios_status == Ps1HleBiosDispatchStatus::handled) {
+                diagnostic_bios_frontier_pending_ = false;
+                continue;
+            }
+            diagnostic_bios_frontier_pending_ = true;
+            return finish(Ps1BootStopReason::bios_call_unimplemented);
+        }
+
         if (physical_pc && is_bios_table(*physical_pc)) {
             if (observed_bios_dependencies.insert(
                     bios_dependency_key(*physical_pc, cpu_.gpr[9])).second) {
