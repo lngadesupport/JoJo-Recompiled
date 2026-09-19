@@ -67,7 +67,11 @@ void hash_u32(std::uint64_t& hash, std::uint32_t value) noexcept {
 
 } // namespace
 
-Ps1Spu::Ps1Spu() : sound_ram_(sound_ram_size, 0u) {}
+Ps1Spu::Ps1Spu() : sound_ram_(sound_ram_size, 0u) {
+    // Roughly one NTSC frame of 44.1 kHz stereo plus headroom. Keeping this
+    // capacity avoids geometric vector growth during every audio drain cycle.
+    audio_samples_.reserve(2048u);
+}
 
 Ps1SpuDecodedBlock Ps1Spu::decode_adpcm_block(
     std::span<const std::uint8_t, 16> block,
@@ -605,6 +609,7 @@ void Ps1Spu::step(std::uint32_t cpu_cycles) noexcept {
 std::vector<std::int16_t> Ps1Spu::drain_audio_samples() {
     std::vector<std::int16_t> drained;
     drained.swap(audio_samples_);
+    audio_samples_.reserve(2048u);
     return drained;
 }
 
