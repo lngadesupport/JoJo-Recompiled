@@ -1,0 +1,28 @@
+name: Phase 8 Playable Windows Test Build
+
+on:
+  pull_request:
+    branches:
+      - feature/ps1-native-x64-phase8-prep
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-playable-artifact:
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure Release x64
+        run: cmake -S . -B build-playable -A x64
+      - name: Build playable target
+        run: cmake --build build-playable --config Release --target jojo_recompiled
+      - name: Upload playable Windows build
+        uses: actions/upload-artifact@v4
+        with:
+          name: JOJO-Recompiled-Phase8-Windows-x64-Test
+          path: |
+            build-playable/Release/JOJO-Recompiled.exe
+            build-playable/Release/assets/launcher/jojo_launcher_main.jpg
+          if-no-files-found: error
