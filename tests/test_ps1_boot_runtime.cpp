@@ -621,6 +621,53 @@ static void test_jojo_pad_buffer_compatibility_mirror() {
               .digital_pad_poll_count(1u) == 1u);
 }
 
+static void test_jojo_processed_pad_fallback_keeps_start_edge_for_one_vblank() {
+    const std::vector<std::uint32_t> words{
+        test_mips::j(0x02u, 0x80010000u >> 2),
+        0x00000000u,
+    };
+    auto runtime = make_runtime(words);
+
+    constexpr std::array<std::uint32_t, 5> signature{
+        0x8004F710u,
+        0x8004F758u,
+        0x8004F830u,
+        0x8004F8DCu,
+        0x8004F9A0u,
+    };
+    for (std::size_t i = 0u; i < signature.size(); ++i) {
+        CHECK(runtime.bus().write32(
+                  0x00063608u +
+                      static_cast<std::uint32_t>(i * 4u),
+                  signature[i]).status ==
+              jojo::R3000aBusStatus::ok);
+    }
+
+    // These raw buffers are reused for GPU ordering-table packets later in a
+    // frame. The VBlank fallback must never overwrite them.
+    CHECK(runtime.bus().write32(0x8007CE68u, 0x11223344u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(runtime.bus().write32(0x8007CE90u, 0x55667788u).status ==
+          jojo::R3000aBusStatus::ok);
+
+    runtime.bus().hardware_services().sio0().set_digital_pad_buttons(
+        0u, 0xFFF7u); // Start, active-low bit 3 -> JoJo 0x0800.
+    runtime.signal_vblank();
+
+    CHECK(runtime.bus().read16(0x8007CEB8u + 2u).value == 0x0800u);
+    CHECK(runtime.bus().read16(0x8007CEB8u + 4u).value == 0x0000u);
+    CHECK(runtime.bus().read16(0x8007CEB8u + 6u).value == 0x0800u);
+    CHECK(runtime.bus().read16(0x8007CEB8u + 8u).value == 0x0000u);
+    CHECK(runtime.bus().read32(0x8007CE68u).value == 0x11223344u);
+    CHECK(runtime.bus().read32(0x8007CE90u).value == 0x55667788u);
+
+    runtime.signal_vblank();
+    CHECK(runtime.bus().read16(0x8007CEB8u + 2u).value == 0x0800u);
+    CHECK(runtime.bus().read16(0x8007CEB8u + 4u).value == 0x0800u);
+    CHECK(runtime.bus().read16(0x8007CEB8u + 6u).value == 0x0000u);
+    CHECK(runtime.bus().read16(0x8007CEB8u + 8u).value == 0x0800u);
+}
+
 static void test_internal_pad_enable_routines_gate_vblank_polling() {
     // InitPAD2 + StartPAD2, then call the two BIOS-internal routines retained
     // by JoJo's B(5Bh)-relative patch.
@@ -1074,6 +1121,7 @@ int main() {
     test_clean_room_b0_pad_table_contains_executable_trampolines();
     test_b0_pad_trampoline_dispatches_indirect_startpad2();
     test_jojo_pad_buffer_compatibility_mirror();
+    test_jojo_processed_pad_fallback_keeps_start_edge_for_one_vblank();
     test_internal_pad_enable_routines_gate_vblank_polling();
     test_b0_5b_changeclearpad_records_flag_and_returns();
     test_a0_33_remains_unimplemented();
