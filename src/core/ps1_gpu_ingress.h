@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <span>
 #include <vector>
 
 namespace jojo {
@@ -33,6 +34,7 @@ public:
     [[nodiscard]] std::uint64_t gp0_word_count() const noexcept;
     [[nodiscard]] std::uint64_t gp1_command_count() const noexcept;
     [[nodiscard]] std::uint16_t vram_pixel(std::uint32_t x, std::uint32_t y) const noexcept;
+    [[nodiscard]] std::span<const std::uint16_t> vram_pixels() const noexcept;
     [[nodiscard]] std::uint64_t vram_write_count() const noexcept;
     [[nodiscard]] Ps1GpuDisplayState display_state() const noexcept;
     [[nodiscard]] std::uint64_t diagnostic_state_hash() const noexcept;
