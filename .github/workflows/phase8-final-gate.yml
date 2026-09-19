@@ -74,3 +74,12 @@ jobs:
           --output-on-failure
       - name: Run full CTest
         run: ctest --test-dir build-win -C Release --output-on-failure
+      - name: Upload playable Windows test build
+        uses: actions/upload-artifact@v4
+        with:
+          name: JOJO-Recompiled-Phase8-Windows-x64-Test
+          path: |
+            build-win/Release/JOJO-Recompiled.exe
+            build-win/Release/assets/launcher/jojo_launcher_main.jpg
+            build-win/Release/jojo_online_directory_server.exe
+          if-no-files-found: error
