@@ -40,33 +40,45 @@ Result<XAudio2PcmPlan> make_xaudio2_pcm_plan(
     return Result<XAudio2PcmPlan>::success(plan);
 }
 
+XAudio2Ps1AudioHost::OwnedBuffer*
+XAudio2Ps1AudioHost::VoiceCallback::acquire() {
+    std::lock_guard lock(mutex_);
+    if (!free_buffers_.empty()) {
+        auto* buffer = free_buffers_.back();
+        free_buffers_.pop_back();
+        return buffer;
+    }
+    return new OwnedBuffer{};
+}
+
 void XAudio2Ps1AudioHost::VoiceCallback::track(OwnedBuffer* buffer) {
     std::lock_guard lock(mutex_);
     outstanding_.insert(buffer);
 }
 
 void XAudio2Ps1AudioHost::VoiceCallback::discard(OwnedBuffer* buffer) noexcept {
-    OwnedBuffer* owned = nullptr;
     try {
         std::lock_guard lock(mutex_);
         const auto it = outstanding_.find(buffer);
-        if (it != outstanding_.end()) {
-            owned = *it;
-            outstanding_.erase(it);
-        }
+        if (it == outstanding_.end()) return;
+        auto* owned = *it;
+        outstanding_.erase(it);
+        owned->samples.clear();
+        free_buffers_.push_back(owned);
     } catch (...) {
         return;
     }
-    delete owned;
 }
 
 void XAudio2Ps1AudioHost::VoiceCallback::release_all() noexcept {
     std::vector<OwnedBuffer*> buffers;
     try {
         std::lock_guard lock(mutex_);
-        buffers.reserve(outstanding_.size());
+        buffers.reserve(outstanding_.size() + free_buffers_.size());
         for (auto* buffer : outstanding_) buffers.push_back(buffer);
+        for (auto* buffer : free_buffers_) buffers.push_back(buffer);
         outstanding_.clear();
+        free_buffers_.clear();
     } catch (...) {
         return;
     }
@@ -161,7 +173,7 @@ Result<void> XAudio2Ps1AudioHost::submit(
         return Result<void>::failure(plan.error, plan.detail);
     }
 
-    auto owned = std::make_unique<OwnedBuffer>();
+    std::unique_ptr<OwnedBuffer> owned(callback_.acquire());
     owned->samples.assign(
         interleaved_stereo.begin(),
         interleaved_stereo.end());
