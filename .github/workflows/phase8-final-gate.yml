@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - feature/ps1-native-x64-phase8-prep
+  pull_request:
+    branches:
+      - feature/ps1-native-x64-phase8-prep
   workflow_dispatch:
 
 permissions:
