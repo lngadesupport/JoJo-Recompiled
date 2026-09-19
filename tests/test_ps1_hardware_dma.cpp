@@ -133,7 +133,8 @@ int main() {
           jojo::R3000aBusStatus::ok);
     CHECK(hw.pending_dma_transfer(6u).has_value());
 
-    std::array<std::uint8_t, 2u * 1024u * 1024u> concurrent_ram{};
+    std::vector<std::uint8_t> concurrent_ram(
+        2u * 1024u * 1024u, 0u);
     CHECK(hw.execute_pending_dma(concurrent_ram));
     CHECK(hw.last_completed_dma_channel().has_value());
     if (hw.last_completed_dma_channel()) {
