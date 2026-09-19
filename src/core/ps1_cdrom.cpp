@@ -178,6 +178,58 @@ R3000aBusResult Ps1CdromController::write8(std::uint32_t physical,
 }
 
 void Ps1CdromController::step(std::uint32_t cpu_cycles) noexcept {
+    // The spindle/read clock is independent from host IRQ acknowledgement.
+    // A real PS1 drive keeps receiving sectors at 75/150 sectors per second
+    // into a small internal buffer even while the previous INT1 is pending.
+    // Model eight buffered sectors so guest IRQ latency does not stall the
+    // physical disc stream.
+    std::uint64_t cycles_left = cpu_cycles;
+    while (read_stream_active_ && disc_ != nullptr) {
+        if (read_cycles_remaining_ == 0u) {
+            read_cycles_remaining_ = sector_cycles();
+        }
+        if (cycles_left < read_cycles_remaining_) {
+            read_cycles_remaining_ -= static_cast<std::uint32_t>(cycles_left);
+            break;
+        }
+
+        cycles_left -= read_cycles_remaining_;
+        read_cycles_remaining_ = sector_cycles();
+
+        if (current_lba_ >= disc_->logical_sector_count()) {
+            stop_read_stream();
+            status_byte_ = static_cast<std::uint8_t>(
+                status_byte_ & ~kStatRead);
+            break;
+        }
+
+        const bool whole_sector = (mode_ & 0x20u) != 0u;
+        const std::size_t expected_size =
+            whole_sector ? data_capacity : 2048u;
+        auto sector = disc_->read_cdrom_sectors(
+            current_lba_, 1u, whole_sector);
+        if (!sector || sector.value.size() != expected_size) {
+            stop_read_stream();
+            status_byte_ = static_cast<std::uint8_t>(
+                status_byte_ & ~kStatRead);
+            break;
+        }
+
+        if (drive_sector_queue_.size() == drive_sector_buffer_capacity) {
+            // Hardware has finite buffering; when the guest falls more than
+            // eight sectors behind, the oldest unread physical sector is lost.
+            drive_sector_queue_.pop_front();
+        }
+        drive_sector_queue_.push_back(std::move(sector.value));
+        ++current_lba_;
+
+        if (cycles_left == 0u) {
+            break;
+        }
+    }
+
+    // Host responses remain serialized. Physical reading above intentionally
+    // continues even while this IRQ is waiting for acknowledgement.
     if (interrupt_flags_ != 0u) {
         return;
     }
@@ -206,59 +258,31 @@ void Ps1CdromController::step(std::uint32_t cpu_cycles) noexcept {
         return;
     }
 
-    // ReadN is a stream, not a one-shot command. After the INT3 command
-    // acknowledge the drive keeps producing INT1 + sector data at 75 Hz
-    // (or 150 Hz in double-speed mode) until Pause/Stop/Init terminates it.
-    // Keep at most one unread sector outstanding so DMA observes a stable
-    // 2048-byte transfer window.
-    if (!read_stream_active_ ||
-        disc_ == nullptr ||
-        !sector_buffer_.empty()) {
-        return;
-    }
-    if (read_cycles_remaining_ > cpu_cycles) {
-        read_cycles_remaining_ -= cpu_cycles;
-        return;
-    }
-    if (current_lba_ >= disc_->logical_sector_count()) {
-        stop_read_stream();
-        status_byte_ = static_cast<std::uint8_t>(
-            status_byte_ & ~kStatRead);
+    // Deliver the next buffered sector only after the previous host interrupt
+    // is acknowledged. The sector may immediately enter the Data FIFO when
+    // BFRD was armed in advance, or remain in the current sector buffer until
+    // the guest writes BFRD=1.
+    if (!sector_buffer_.empty() || drive_sector_queue_.empty()) {
         return;
     }
 
-    const bool whole_sector = (mode_ & 0x20u) != 0u;
-    const std::size_t expected_size =
-        whole_sector ? data_capacity : 2048u;
-    auto sector = disc_->read_cdrom_sectors(
-        current_lba_, 1u, whole_sector);
-    if (!sector || sector.value.size() != expected_size) {
-        stop_read_stream();
-        status_byte_ = static_cast<std::uint8_t>(
-            status_byte_ & ~kStatRead);
-        return;
-    }
+    auto sector = std::move(drive_sector_queue_.front());
+    drive_sector_queue_.pop_front();
 
     const auto reading_status = static_cast<std::uint8_t>(
         (status_byte_ & ~kStatActivityMask) |
         kStatMotor | kStatRead);
     if (!push_response(reading_status)) {
+        drive_sector_queue_.push_front(std::move(sector));
         return;
     }
 
     status_byte_ = reading_status;
     if ((request_register_ & 0x80u) != 0u && data_.empty()) {
-        data_.assign(
-            sector.value.begin(),
-            sector.value.end());
-        sector_buffer_.clear();
+        data_.assign(sector.begin(), sector.end());
     } else {
-        sector_buffer_.assign(
-            sector.value.begin(),
-            sector.value.end());
+        sector_buffer_.assign(sector.begin(), sector.end());
     }
-    ++current_lba_;
-    read_cycles_remaining_ = sector_cycles();
     interrupt_flags_ = 0x01u;
 }
 
@@ -343,6 +367,11 @@ std::uint64_t Ps1CdromController::diagnostic_state_hash() const noexcept {
     hash_u64(hash, read_cycles_remaining_);
     hash_bytes(hash, parameters_);
     hash_bytes(hash, responses_);
+    hash_u64(hash, drive_sector_queue_.size());
+    for (const auto& sector : drive_sector_queue_) {
+        hash_u64(hash, sector.size());
+        for (const auto value : sector) hash_byte(hash, value);
+    }
     hash_bytes(hash, sector_buffer_);
     hash_bytes(hash, data_);
     hash_u64(hash, deferred_responses_.size());
@@ -401,11 +430,13 @@ std::uint32_t Ps1CdromController::sector_cycles() const noexcept {
 void Ps1CdromController::stop_read_stream() noexcept {
     read_stream_active_ = false;
     read_cycles_remaining_ = 0u;
+    drive_sector_queue_.clear();
 }
 
 void Ps1CdromController::clear_transfer_fifos() noexcept {
     parameters_.clear();
     responses_.clear();
+    drive_sector_queue_.clear();
     sector_buffer_.clear();
     data_.clear();
 }
@@ -459,8 +490,9 @@ R3000aBusResult Ps1CdromController::execute_command(std::uint8_t command) noexce
                 current_lba_ >= disc_->logical_sector_count()) {
                 return {R3000aBusStatus::unsupported, 0u};
             }
-            data_.clear();
             stop_read_stream();
+            sector_buffer_.clear();
+            data_.clear();
             read_stream_active_ = true;
             read_cycles_remaining_ = sector_cycles();
             if (!push_response(status_byte_)) {

@@ -240,6 +240,8 @@ int main() {
     CHECK(((words[0] >> 16u) & 0xFFu) == static_cast<std::uint32_t>('S'));
     CHECK(((words[0] >> 24u) & 0xFFu) == static_cast<std::uint32_t>('E'));
     CHECK(cd.current_lba() == 26u);
+    CHECK(cd.write8(0x1F801803u, 0x00u).status ==
+          jojo::R3000aBusStatus::ok);
 
     // A second sector must arrive automatically without another ReadN.
     // In mode 80h this is one 150 Hz sector interval (225792 CPU cycles).
@@ -289,6 +291,88 @@ int main() {
     cd.step(451584u * 2u);
     CHECK(cd.data_bytes_available() == 0u);
     CHECK(cd.current_lba() == 27u);
+
+    // The physical drive must continue advancing while the ReadN command
+    // acknowledge/INT3 is still pending. Buffer several sectors without host
+    // acknowledgement, then expose them through serialized INT1 delivery.
+    jojo::Ps1CdromController buffered_cd;
+    buffered_cd.attach_disc(&disc.value);
+    CHECK(buffered_cd.write8(0x1F801802u, 0x80u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(buffered_cd.write8(0x1F801801u, 0x0Eu).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(buffered_cd.read8(0x1F801801u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(buffered_cd.write8(0x1F801800u, 0x01u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(buffered_cd.write8(0x1F801803u, 0x07u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(buffered_cd.write8(0x1F801800u, 0x00u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(buffered_cd.write8(0x1F801802u, 0x00u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(buffered_cd.write8(0x1F801802u, 0x02u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(buffered_cd.write8(0x1F801802u, 0x20u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(buffered_cd.write8(0x1F801801u, 0x02u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(buffered_cd.read8(0x1F801801u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(buffered_cd.write8(0x1F801800u, 0x01u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(buffered_cd.write8(0x1F801803u, 0x07u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(buffered_cd.write8(0x1F801800u, 0x00u).status ==
+          jojo::R3000aBusStatus::ok);
+
+    CHECK(buffered_cd.write8(0x1F801801u, 0x06u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(buffered_cd.current_lba() == 20u);
+    buffered_cd.step(225792u * 3u);
+    CHECK(buffered_cd.current_lba() == 23u);
+    CHECK(buffered_cd.data_bytes_available() == 0u);
+
+    // Ack ReadN's INT3; the first already-buffered sector is then delivered
+    // immediately as INT1 without waiting another sector interval.
+    CHECK(buffered_cd.read8(0x1F801801u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(buffered_cd.write8(0x1F801800u, 0x01u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(buffered_cd.write8(0x1F801803u, 0x07u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(buffered_cd.write8(0x1F801800u, 0x00u).status ==
+          jojo::R3000aBusStatus::ok);
+    buffered_cd.step(0u);
+    CHECK(buffered_cd.current_lba() == 23u);
+    CHECK(buffered_cd.write8(0x1F801800u, 0x01u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK((buffered_cd.read8(0x1F801803u).value & 0x07u) == 0x01u);
+    CHECK(buffered_cd.read8(0x1F801801u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(buffered_cd.write8(0x1F801803u, 0x07u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(buffered_cd.write8(0x1F801800u, 0x00u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(buffered_cd.write8(0x1F801803u, 0x80u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(buffered_cd.data_bytes_available() == 2048u);
+    std::vector<std::uint32_t> buffered_words(512u, 0u);
+    CHECK(buffered_cd.read_data_words(buffered_words) == 512u);
+    CHECK(buffered_cd.write8(0x1F801803u, 0x00u).status ==
+          jojo::R3000aBusStatus::ok);
+
+    // The second queued sector is likewise ready for INT1 immediately.
+    buffered_cd.step(0u);
+    CHECK(buffered_cd.write8(0x1F801800u, 0x01u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK((buffered_cd.read8(0x1F801803u).value & 0x07u) == 0x01u);
+    CHECK(buffered_cd.read8(0x1F801801u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(buffered_cd.write8(0x1F801803u, 0x07u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(buffered_cd.write8(0x1F801800u, 0x00u).status ==
+          jojo::R3000aBusStatus::ok);
 
     // Mode bit 5 selects the PS1 924h-byte transfer window:
     // bytes 12..2351 of a raw 2352-byte sector. This is the mode used by

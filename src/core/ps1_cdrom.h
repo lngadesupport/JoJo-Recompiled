@@ -60,6 +60,7 @@ private:
     static constexpr std::size_t parameter_capacity = 16u;
     static constexpr std::size_t response_capacity = 16u;
     static constexpr std::size_t data_capacity = 2340u;
+    static constexpr std::size_t drive_sector_buffer_capacity = 8u;
     static constexpr std::size_t command_history_capacity = 64u;
 
     [[nodiscard]] bool push_response(std::uint8_t value) noexcept;
@@ -88,6 +89,7 @@ private:
     std::uint32_t read_cycles_remaining_{};
     std::deque<std::uint8_t> parameters_{};
     std::deque<std::uint8_t> responses_{};
+    std::deque<std::vector<std::uint8_t>> drive_sector_queue_{};
     std::deque<std::uint8_t> sector_buffer_{};
     std::deque<std::uint8_t> data_{};
     std::deque<DeferredResponse> deferred_responses_{};
