@@ -939,6 +939,10 @@ std::uint16_t Ps1GpuIngress::vram_pixel(std::uint32_t x, std::uint32_t y) const 
     return vram_[static_cast<std::size_t>(y) * vram_width + x];
 }
 
+std::span<const std::uint16_t> Ps1GpuIngress::vram_pixels() const noexcept {
+    return std::span<const std::uint16_t>{vram_.data(), vram_.size()};
+}
+
 std::uint64_t Ps1GpuIngress::vram_write_count() const noexcept {
     return vram_write_count_;
 }
