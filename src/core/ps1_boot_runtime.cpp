@@ -546,6 +546,13 @@ Ps1BootReport Ps1BootRuntime::run(const Ps1BootOptions& options) noexcept {
         options.bios_event_capacity == 0u &&
         options.stagnation_instruction_limit == 0u &&
         !options.diagnostic_mmio_probe;
+    const bool track_stagnation =
+        options.stagnation_instruction_limit != 0u;
+
+    if (fast_gameplay_path) {
+        bus_.clear_last_unsupported_access();
+        bus_.clear_last_diagnostic_mmio_probe();
+    }
 
     const auto& hardware_at_start = bus_.hardware_services();
     const auto dma_transfer_count_at_start = hardware_at_start.completed_dma_transfer_count();
@@ -674,7 +681,7 @@ Ps1BootReport Ps1BootRuntime::run(const Ps1BootOptions& options) noexcept {
         }
 
         if (physical_pc && is_hle_internal_bios_entry(*physical_pc)) {
-            if (options.stagnation_instruction_limit != 0u &&
+            if (track_stagnation &&
                 observed_bios_dependencies.insert(
                     bios_dependency_key(*physical_pc, 0u)).second) {
                 instructions_since_progress = 0u;
@@ -701,7 +708,7 @@ Ps1BootReport Ps1BootRuntime::run(const Ps1BootOptions& options) noexcept {
         }
 
         if (physical_pc && is_bios_table(*physical_pc)) {
-            if (options.stagnation_instruction_limit != 0u &&
+            if (track_stagnation &&
                 observed_bios_dependencies.insert(
                     bios_dependency_key(*physical_pc, cpu_.gpr[9])).second) {
                 instructions_since_progress = 0u;
@@ -792,25 +799,33 @@ Ps1BootReport Ps1BootRuntime::run(const Ps1BootOptions& options) noexcept {
         }else{
             observed_opcode=bus_.read32(cpu_.pc);
         }
-        if (observed_opcode.status == R3000aBusStatus::ok) {
-            report.last_opcode = observed_opcode.value;
-        } else {
-            report.last_opcode.reset();
+        if (!fast_gameplay_path) {
+            if (observed_opcode.status == R3000aBusStatus::ok) {
+                report.last_opcode = observed_opcode.value;
+            } else {
+                report.last_opcode.reset();
+            }
+            record_recent_trace(
+                report,
+                cpu_.pc,
+                report.last_opcode,
+                options.trace_capacity);
+            bus_.clear_last_unsupported_access();
+            bus_.clear_last_diagnostic_mmio_probe();
         }
-        record_recent_trace(report, cpu_.pc, report.last_opcode, options.trace_capacity);
-        bus_.clear_last_unsupported_access();
-        bus_.clear_last_diagnostic_mmio_probe();
 
+        constexpr std::uint32_t kSyscallMask = 0xFC00003Fu;
+        constexpr std::uint32_t kSyscallEncoding = 0x0000000Cu;
         if (observed_opcode.status == R3000aBusStatus::ok &&
-            decode_mips(observed_opcode.value).op == MipsOp::syscall &&
+            (observed_opcode.value & kSyscallMask) == kSyscallEncoding &&
             !cpu_.delay_slot.active) {
             const auto syscall_status =
                 bios_.dispatch_syscall(cpu_, cpu_.gpr[4]);
             if (syscall_status == Ps1HleBiosDispatchStatus::handled) {
                 ++report.execution_steps;
-                ++instructions_since_progress;
+                if (track_stagnation) ++instructions_since_progress;
                 pump_hardware(1u);
-                if (options.stagnation_instruction_limit != 0u &&
+                if (track_stagnation &&
                     instructions_since_progress >=
                         options.stagnation_instruction_limit) {
                     return finish(Ps1BootStopReason::diagnostic_stall);
@@ -819,16 +834,13 @@ Ps1BootReport Ps1BootRuntime::run(const Ps1BootOptions& options) noexcept {
             }
         }
 
-        const bool pc_in_native_text =
+        if (native_x64_enabled_ &&
+            cpu_.external_interrupt_pending == 0u &&
             native_text_end_ > native_text_begin_ &&
             cpu_.pc >= native_text_begin_ &&
             cpu_.pc < native_text_end_ &&
             static_cast<std::uint64_t>(cpu_.pc) + 4u <=
-                static_cast<std::uint64_t>(native_text_end_);
-
-        if (native_x64_enabled_ &&
-            cpu_.external_interrupt_pending == 0u &&
-            pc_in_native_text &&
+                static_cast<std::uint64_t>(native_text_end_) &&
             observed_opcode.status == R3000aBusStatus::ok) {
             if (fast_gameplay_path &&
                 !cpu_.pending_load.valid &&
@@ -912,9 +924,9 @@ Ps1BootReport Ps1BootRuntime::run(const Ps1BootOptions& options) noexcept {
                         ++report.execution_steps;
                         ++report.instructions_retired;
                         ++report.native_x64_instructions_retired;
-                        ++instructions_since_progress;
+                        if (track_stagnation) ++instructions_since_progress;
                         pump_hardware(1u);
-                        if (options.stagnation_instruction_limit != 0u &&
+                        if (track_stagnation &&
                             instructions_since_progress >=
                                 options.stagnation_instruction_limit) {
                             return finish(
@@ -931,7 +943,10 @@ Ps1BootReport Ps1BootRuntime::run(const Ps1BootOptions& options) noexcept {
             }
         }
 
-        const auto cpu_before_step = cpu_;
+        const auto resume_pc = cpu_.pc;
+        const auto resume_next_pc = cpu_.next_pc;
+        const auto resume_delay_slot = cpu_.delay_slot;
+        const auto resume_cop0_status = cpu_.cop0.status;
         const auto step=
             observed_opcode.status==R3000aBusStatus::ok &&
             (cpu_.pc & 3u)==0u
@@ -942,7 +957,7 @@ Ps1BootReport Ps1BootRuntime::run(const Ps1BootOptions& options) noexcept {
             ++report.execution_steps;
             ++report.instructions_retired;
             ++report.reference_instructions_retired;
-            ++instructions_since_progress;
+            if (track_stagnation) ++instructions_since_progress;
             pump_hardware(1u);
             if (const auto& probe = bus_.last_diagnostic_mmio_probe(); probe) {
                 ++report.speculative_mmio_count;
@@ -954,13 +969,13 @@ Ps1BootReport Ps1BootRuntime::run(const Ps1BootOptions& options) noexcept {
                     probe->value,
                     true,
                 }, options.mmio_event_capacity);
-                if (options.stagnation_instruction_limit != 0u &&
+                if (track_stagnation &&
                     observed_mmio_dependencies.insert(
                         mmio_dependency_key(*probe)).second) {
                     instructions_since_progress = 0u;
                 }
             }
-            if (options.stagnation_instruction_limit != 0u &&
+            if (track_stagnation &&
                 instructions_since_progress >= options.stagnation_instruction_limit) {
                 return finish(Ps1BootStopReason::diagnostic_stall);
             }
@@ -980,12 +995,11 @@ Ps1BootReport Ps1BootRuntime::run(const Ps1BootOptions& options) noexcept {
                 // that B(17h) ReturnFromException must restore, while retaining
                 // the post-exception GPR result of that retired load.
                 auto resume_state = cpu_;
-                resume_state.pc = cpu_before_step.pc;
-                resume_state.next_pc = cpu_before_step.next_pc;
+                resume_state.pc = resume_pc;
+                resume_state.next_pc = resume_next_pc;
                 resume_state.pending_load = {};
-                resume_state.delay_slot = cpu_before_step.delay_slot;
-                resume_state.cop0.status =
-                    cpu_before_step.cop0.status;
+                resume_state.delay_slot = resume_delay_slot;
+                resume_state.cop0.status = resume_cop0_status;
                 resume_state.external_interrupt_pending =
                     cpu_.external_interrupt_pending;
 
@@ -1005,6 +1019,13 @@ Ps1BootReport Ps1BootRuntime::run(const Ps1BootOptions& options) noexcept {
             }
         }
 
+        if (fast_gameplay_path) {
+            if (observed_opcode.status == R3000aBusStatus::ok) {
+                report.last_opcode = observed_opcode.value;
+            } else {
+                report.last_opcode.reset();
+            }
+        }
         report.cpu_diagnostic = step.diagnostic;
         report.unsupported_access = bus_.last_unsupported_access();
 
