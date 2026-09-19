@@ -135,6 +135,10 @@ private:
     TextureFilter active_texture_filter_{TextureFilter::off};
     bool sampler_initialized_{};
     UINT active_msaa_samples_{1u};
+    UINT requested_msaa_samples_{1u};
+    std::uint32_t constants_source_width_{};
+    std::uint32_t constants_source_height_{};
+    UINT constants_aa_samples_{};
     std::uint32_t source_width_{};
     std::uint32_t source_height_{};
     std::uint32_t back_buffer_width_{};
