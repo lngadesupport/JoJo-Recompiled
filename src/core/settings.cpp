@@ -223,6 +223,7 @@ Result<AppSettings> load_settings(const std::filesystem::path& path) {
     if (!in) return Result<AppSettings>::failure(ErrorCode::file_not_found, "settings file not found: " + path.string());
 
     AppSettings result{};
+    bool loaded_frame_limit = false;
     std::string line;
     while (std::getline(in, line)) {
         line = trim(line);
@@ -267,7 +268,7 @@ Result<AppSettings> load_settings(const std::filesystem::path& path) {
         } else if (key == "vsync") {
             auto p = parse_bool(value); if (!p) return Result<AppSettings>::failure(p.error, p.detail); result.graphics.vsync = p.value;
         } else if (key == "frame_limit") {
-            auto p = parse_int(value); if (!p) return Result<AppSettings>::failure(p.error, p.detail); result.graphics.frame_limit = p.value;
+            auto p = parse_int(value); if (!p) return Result<AppSettings>::failure(p.error, p.detail); result.graphics.frame_limit = p.value; loaded_frame_limit = true;
         } else if (key == "master_volume") {
             auto p = parse_int(value); if (!p) return Result<AppSettings>::failure(p.error, p.detail); result.audio.master_volume = p.value;
         } else if (key == "music_volume") {
@@ -287,6 +288,19 @@ Result<AppSettings> load_settings(const std::filesystem::path& path) {
         } else if (key == "accessibility_menu_text_scale") {
             auto p = parse_int(value); if (!p) return Result<AppSettings>::failure(p.error, p.detail); result.accessibility.menu_text_scale = p.value;
         }
+    }
+
+    // Settings written before the high-refresh profile had no frame_limit
+    // key and used the old expensive default (16x filtering + 4x AA).
+    // Migrate only that exact legacy default so user-customized quality
+    // settings remain untouched.
+    if (!loaded_frame_limit &&
+        result.graphics.texture_filter == TextureFilter::x16 &&
+        result.graphics.msaa == Msaa::x4) {
+        result.graphics.texture_filter = TextureFilter::x2;
+        result.graphics.msaa = Msaa::off;
+        result.graphics.vsync = false;
+        result.graphics.frame_limit = 240;
     }
 
     if (!validate_graphics(result.graphics)) {
