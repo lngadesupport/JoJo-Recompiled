@@ -754,7 +754,20 @@ Ps1BootReport Ps1BootRuntime::run(const Ps1BootOptions& options) noexcept {
         }
 
         diagnostic_bios_frontier_pending_ = false;
-        const auto observed_opcode = bus_.read32(cpu_.pc);
+        R3000aBusResult observed_opcode{};
+        if (physical_pc &&
+            (cpu_.pc & 3u) == 0u &&
+            *physical_pc <= Ps1MemoryBus::main_ram_size - 4u) {
+            const auto* bytes=bus_.main_ram_data()+*physical_pc;
+            observed_opcode={
+                R3000aBusStatus::ok,
+                static_cast<std::uint32_t>(bytes[0]) |
+                (static_cast<std::uint32_t>(bytes[1]) << 8u) |
+                (static_cast<std::uint32_t>(bytes[2]) << 16u) |
+                (static_cast<std::uint32_t>(bytes[3]) << 24u)};
+        }else{
+            observed_opcode=bus_.read32(cpu_.pc);
+        }
         if (observed_opcode.status == R3000aBusStatus::ok) {
             report.last_opcode = observed_opcode.value;
         } else {
@@ -901,7 +914,12 @@ Ps1BootReport Ps1BootRuntime::run(const Ps1BootOptions& options) noexcept {
         }
 
         const auto cpu_before_step = cpu_;
-        const auto step = step_r3000a(cpu_, bus_);
+        const auto step=
+            observed_opcode.status==R3000aBusStatus::ok &&
+            (cpu_.pc & 3u)==0u
+                ?step_r3000a_prefetched(
+                    cpu_,bus_,observed_opcode.value)
+                :step_r3000a(cpu_,bus_);
         if (step.status == R3000aStepStatus::retired) {
             ++report.execution_steps;
             ++report.instructions_retired;
