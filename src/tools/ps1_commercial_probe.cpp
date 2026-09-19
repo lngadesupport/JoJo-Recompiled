@@ -137,9 +137,12 @@ int run_gameplay_probe(
             std::min<std::uint64_t>(
                 segment_budget,
                 frame_ticks_remaining);
-        options.trace_capacity = 4096u;
-        options.mmio_event_capacity = 2048u;
-        options.bios_event_capacity = 2048u;
+        // Long gameplay validation can retire hundreds of millions of
+        // instructions. Keep only a compact frontier tail here; the legacy
+        // first-frame/frontier mode below still retains its deep 4096 trace.
+        options.trace_capacity = 64u;
+        options.mmio_event_capacity = 128u;
+        options.bios_event_capacity = 128u;
         options.stagnation_instruction_limit = 0u;
 
         last_boot = runner.run_segment(options);
