@@ -33,12 +33,16 @@ const std::array<std::uint32_t, 32768>& bgr555_rgba_lut() noexcept {
 
 } // namespace
 
-Ps1DisplayFrame capture_ps1_display_frame(const Ps1GpuIngress& gpu) {
+void capture_ps1_display_frame_into(
+    const Ps1GpuIngress& gpu,
+    Ps1DisplayFrame& frame) {
     const auto state = gpu.display_state();
-    Ps1DisplayFrame frame{};
     if (!state.enabled || state.rgb24 ||
         state.width == 0u || state.height == 0u) {
-        return frame;
+        frame.width = 0u;
+        frame.height = 0u;
+        frame.rgba8.clear();
+        return;
     }
 
     frame.width = state.width;
@@ -75,6 +79,11 @@ Ps1DisplayFrame capture_ps1_display_frame(const Ps1GpuIngress& gpu) {
                 lut[row[x - first_run] & 0x7FFFu];
         }
     }
+}
+
+Ps1DisplayFrame capture_ps1_display_frame(const Ps1GpuIngress& gpu) {
+    Ps1DisplayFrame frame{};
+    capture_ps1_display_frame_into(gpu, frame);
     return frame;
 }
 
