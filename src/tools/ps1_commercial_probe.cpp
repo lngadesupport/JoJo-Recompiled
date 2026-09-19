@@ -100,7 +100,8 @@ int run_gameplay_probe(
     std::uint64_t segment_budget,
     std::uint32_t gameplay_frames,
     bool scripted_input,
-    bool memory_card) {
+    bool memory_card,
+    bool fast_runtime) {
     if (memory_card) {
         auto card_path = report_path;
         card_path += ".mcr";
@@ -163,9 +164,9 @@ int run_gameplay_probe(
         // Long gameplay validation can retire hundreds of millions of
         // instructions. Keep only a compact frontier tail here; the legacy
         // first-frame/frontier mode below still retains its deep 4096 trace.
-        options.trace_capacity = 64u;
-        options.mmio_event_capacity = 128u;
-        options.bios_event_capacity = 128u;
+        options.trace_capacity = fast_runtime ? 0u : 64u;
+        options.mmio_event_capacity = fast_runtime ? 0u : 128u;
+        options.bios_event_capacity = fast_runtime ? 0u : 128u;
         options.stagnation_instruction_limit = 0u;
 
         last_boot = runner.run_segment(options);
@@ -482,7 +483,7 @@ int main(int argc, char** argv) {
             << "usage: jojo_ps1_commercial_probe <source.bin|source.cue|source.iso> "
                "<report.txt> [segments=128] [instructions_per_segment=500000] "
                "[native_x64=0|1] [gameplay_frames=0] [scripted_input=0|1] "
-               "[memory_card=0|1]\n";
+               "[memory_card=0|1] [fast_runtime=0|1]\n";
         return 2;
     }
 
@@ -499,6 +500,8 @@ int main(int argc, char** argv) {
         argc >= 8 ? parse_u32(argv[7], 0u) != 0u : false;
     const bool memory_card =
         argc >= 9 ? parse_u32(argv[8], 0u) != 0u : false;
+    const bool fast_runtime =
+        argc >= 10 ? parse_u32(argv[9], 0u) != 0u : false;
 #if (defined(_WIN32) && defined(_M_X64)) || \
     (defined(__linux__) && defined(__x86_64__))
     constexpr bool native_x64_backend_available = true;
@@ -522,7 +525,8 @@ int main(int argc, char** argv) {
             segment_budget,
             gameplay_frames,
             scripted_input,
-            memory_card);
+            memory_card,
+            fast_runtime);
     }
 
     jojo::Ps1CommercialEvidenceOptions options{};
