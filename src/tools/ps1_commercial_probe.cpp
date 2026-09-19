@@ -193,7 +193,7 @@ int run_gameplay_probe(
         }
 
         ++segments_without_frame;
-        if (segments_without_frame >= 200u) {
+        if (segments_without_frame >= 20u) {
             const auto stalled = runner.validation_counters();
             std::cerr << "gameplay_watchdog_frame=" << completed_frames << "\n";
             std::cerr << "gameplay_watchdog_pc=" << last_boot.last_pc << "\n";
