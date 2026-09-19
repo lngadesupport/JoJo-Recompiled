@@ -20,11 +20,14 @@ namespace {
 constexpr float kUiWidth = 1024.0f;
 constexpr float kUiHeight = 720.0f;
 const Gdiplus::Color kGold(255, 242, 195, 72);
-const Gdiplus::Color kText(255, 242, 238, 229);
-const Gdiplus::Color kMuted(255, 168, 166, 166);
-const Gdiplus::Color kDisabled(255, 100, 103, 108);
-const Gdiplus::Color kPanel(220, 7, 13, 20);
-const Gdiplus::Color kPanelHighContrast(245, 0, 0, 0);
+const Gdiplus::Color kText(255, 246, 249, 252);
+const Gdiplus::Color kMuted(255, 166, 184, 198);
+const Gdiplus::Color kDisabled(255, 92, 109, 122);
+const Gdiplus::Color kPanel(224, 5, 16, 25);
+const Gdiplus::Color kPanelHighContrast(248, 0, 0, 0);
+const Gdiplus::Color kJojoBlue(255, 42, 176, 228);
+const Gdiplus::Color kJojoBlueDark(235, 9, 83, 126);
+const Gdiplus::Color kJojoIce(255, 201, 235, 247);
 
 bool contains(const Gdiplus::RectF& rect, float x, float y) noexcept {
     return x >= rect.X && y >= rect.Y &&
@@ -111,6 +114,60 @@ void draw_string(
         &brush);
 }
 
+void draw_jojo_shell(Gdiplus::Graphics& graphics) {
+    Gdiplus::LinearGradientBrush background(
+        Gdiplus::PointF(0.0f, 0.0f),
+        Gdiplus::PointF(kUiWidth, kUiHeight),
+        Gdiplus::Color(255, 4, 15, 24),
+        Gdiplus::Color(255, 28, 52, 63));
+    graphics.FillRectangle(&background, 0.0f, 0.0f, kUiWidth, kUiHeight);
+
+    const Gdiplus::PointF left_band[] = {
+        {0.0f, 0.0f}, {430.0f, 0.0f}, {220.0f, kUiHeight}, {0.0f, kUiHeight}};
+    Gdiplus::SolidBrush band_a(Gdiplus::Color(118, 25, 67, 89));
+    graphics.FillPolygon(&band_a, left_band, 4);
+
+    const Gdiplus::PointF center_band[] = {
+        {320.0f, 0.0f}, {690.0f, 0.0f}, {500.0f, kUiHeight}, {140.0f, kUiHeight}};
+    Gdiplus::SolidBrush band_b(Gdiplus::Color(74, 171, 206, 220));
+    graphics.FillPolygon(&band_b, center_band, 4);
+
+    const Gdiplus::PointF white_band[] = {
+        {575.0f, 0.0f}, {655.0f, 0.0f}, {440.0f, kUiHeight}, {360.0f, kUiHeight}};
+    Gdiplus::SolidBrush band_c(Gdiplus::Color(34, 245, 249, 250));
+    graphics.FillPolygon(&band_c, white_band, 4);
+
+    Gdiplus::Pen line(Gdiplus::Color(80, 170, 225, 244), 1.0f);
+    for (int i = -220; i < 1200; i += 64) {
+        graphics.DrawLine(
+            &line,
+            static_cast<float>(i),
+            0.0f,
+            static_cast<float>(i - 220),
+            kUiHeight);
+    }
+
+    Gdiplus::SolidBrush top_bar(Gdiplus::Color(196, 3, 12, 19));
+    graphics.FillRectangle(&top_bar, 0.0f, 0.0f, kUiWidth, 70.0f);
+    Gdiplus::SolidBrush cyan_bar(kJojoBlue);
+    graphics.FillRectangle(&cyan_bar, 0.0f, 68.0f, kUiWidth, 3.0f);
+
+    draw_string(
+        graphics,
+        L"JOJO'S BIZARRE ADVENTURE",
+        Gdiplus::RectF(54.0f, 14.0f, 470.0f, 38.0f),
+        28.0f,
+        kText,
+        Gdiplus::FontStyleBold);
+    draw_string(
+        graphics,
+        L"RECOMPILED",
+        Gdiplus::RectF(528.0f, 16.0f, 210.0f, 34.0f),
+        20.0f,
+        kJojoBlue,
+        Gdiplus::FontStyleBold);
+}
+
 std::size_t wrap_index(std::size_t current, int direction, std::size_t count) {
     if (count == 0) return 0;
     if (direction > 0) return (current + 1) % count;
@@ -177,7 +234,6 @@ bool LauncherUi::initialize(const std::filesystem::path& background_path) {
     background_.reset(Gdiplus::Image::FromFile(background_path.c_str(), FALSE));
     if (!background_ || background_->GetLastStatus() != Gdiplus::Ok) {
         background_.reset();
-        return false;
     }
     return true;
 }
@@ -266,10 +322,7 @@ LauncherUiAction LauncherUi::activate_main_item() noexcept {
         case 0:
             return LauncherUiAction::start_game;
         case 1:
-            screen_ = Screen::online;
-            online_open_home(online_model_);
-            online_ui_.show_home();
-            return LauncherUiAction::none;
+            return LauncherUiAction::select_disc;
         case 2:
             open_controls();
             return LauncherUiAction::none;
@@ -457,54 +510,6 @@ void LauncherUi::paint(
     graphics.SetPixelOffsetMode(Gdiplus::PixelOffsetModeHighQuality);
     graphics.SetTextRenderingHint(Gdiplus::TextRenderingHintClearTypeGridFit);
 
-    if (background_ && background_->GetLastStatus() == Gdiplus::Ok) {
-        const float image_width=static_cast<float>(background_->GetWidth());
-        const float image_height=static_cast<float>(background_->GetHeight());
-
-        // The original art includes a mockup title bar. Crop the same
-        // proportional amount at any source resolution, then use a center
-        // "cover" crop so resizing/maximizing never stretches the artwork.
-        float src_x=0.0f;
-        float src_y=image_height*(69.0f/768.0f);
-        float src_w=image_width;
-        float src_h=std::max(1.0f,image_height-src_y);
-        const float dst_aspect=
-            static_cast<float>(client_width)/
-            static_cast<float>(client_height);
-        const float src_aspect=src_w/src_h;
-        if(src_aspect>dst_aspect){
-            const float new_w=src_h*dst_aspect;
-            src_x+=(src_w-new_w)*0.5f;
-            src_w=new_w;
-        }else if(src_aspect<dst_aspect){
-            const float new_h=src_w/dst_aspect;
-            src_y+=(src_h-new_h)*0.5f;
-            src_h=new_h;
-        }
-
-        graphics.DrawImage(
-            background_.get(),
-            Gdiplus::RectF(
-                0.0f,
-                0.0f,
-                static_cast<float>(client_width),
-                static_cast<float>(client_height)),
-            src_x,
-            src_y,
-            src_w,
-            src_h,
-            Gdiplus::UnitPixel);
-    } else {
-        Gdiplus::LinearGradientBrush fallback(
-            Gdiplus::Point(0, 0),
-            Gdiplus::Point(client_width, client_height),
-            Gdiplus::Color(255, 7, 11, 20),
-            Gdiplus::Color(255, 4, 45, 42));
-        graphics.FillRectangle(&fallback, 0, 0, client_width, client_height);
-    }
-
-    // Keep the launcher canvas at its authored 1024x720 aspect. This avoids
-    // stretched text/hitboxes when the window is maximized or resized.
     const float ui_scale=std::min(
         static_cast<float>(client_width)/kUiWidth,
         static_cast<float>(client_height)/kUiHeight);
@@ -516,229 +521,275 @@ void LauncherUi::paint(
         ui_scale,0.0f,0.0f,ui_scale,ui_offset_x,ui_offset_y);
     graphics.SetTransform(&ui_transform);
 
+    draw_jojo_shell(graphics);
+
     if (screen_ == Screen::main_menu) {
-        Gdiplus::SolidBrush veil(Gdiplus::Color(165, 3, 12, 18));
-        graphics.FillRectangle(&veil, 704.0f, 142.0f, 306.0f, 390.0f);
+        draw_string(
+            graphics,
+            L"MAIN MENU",
+            Gdiplus::RectF(555.0f, 112.0f, 390.0f, 42.0f),
+            20.0f,
+            kJojoIce,
+            Gdiplus::FontStyleBold,
+            Gdiplus::StringAlignmentFar);
 
         constexpr std::array<const wchar_t*, 5> labels{
             L"START GAME",
-            L"ONLINE",
+            L"SELECT GAME",
             L"CONTROLS",
-            L"SETTINGS",
+            L"OPTIONS",
             L"EXIT",
         };
-        constexpr std::array<float, 5> ys{166.0f, 230.0f, 294.0f, 358.0f, 422.0f};
+        constexpr std::array<const wchar_t*, 5> hints{
+            L"START THE VALIDATED GAME",
+            L"CHOOSE ISO / BIN / CUE",
+            L"INPUT DEVICE & BINDINGS",
+            L"VIDEO / AUDIO / ACCESSIBILITY",
+            L"CLOSE JOJO RECOMPILED",
+        };
+
         for (std::size_t i = 0; i < labels.size(); ++i) {
-            const bool selected = i == main_selection_;
+            const float y=178.0f+static_cast<float>(i)*78.0f;
+            const bool selected=i==main_selection_;
+
+            const Gdiplus::PointF row[]={
+                {520.0f,y},
+                {960.0f,y},
+                {936.0f,y+58.0f},
+                {496.0f,y+58.0f}};
+            Gdiplus::SolidBrush row_brush(
+                selected
+                    ?Gdiplus::Color(238,16,143,201)
+                    :Gdiplus::Color(190,6,17,27));
+            graphics.FillPolygon(&row_brush,row,4);
+
+            if(selected){
+                const Gdiplus::PointF accent[]={
+                    {484.0f,y+10.0f},
+                    {515.0f,y+29.0f},
+                    {484.0f,y+48.0f}};
+                Gdiplus::SolidBrush accent_brush(kJojoIce);
+                graphics.FillPolygon(&accent_brush,accent,3);
+                Gdiplus::Pen selected_line(kJojoIce,2.0f);
+                graphics.DrawLine(&selected_line,520.0f,y+57.0f,936.0f,y+57.0f);
+            }
+
             draw_string(
                 graphics,
                 labels[i],
-                Gdiplus::RectF(735.0f, ys[i], 250.0f, 54.0f),
-                selected ? 31.0f : 28.0f,
-                selected ? kGold : kText,
+                Gdiplus::RectF(548.0f,y+2.0f,350.0f,34.0f),
+                selected?24.0f:22.0f,
+                kText,
                 Gdiplus::FontStyleBold);
-            if (selected) {
-                Gdiplus::Pen pen(kGold, 2.0f);
-                graphics.DrawLine(
-                    &pen,
-                    735.0f,
-                    ys[i] + 51.0f,
-                    986.0f,
-                    ys[i] + 51.0f);
-            }
+            draw_string(
+                graphics,
+                hints[i],
+                Gdiplus::RectF(550.0f,y+31.0f,350.0f,20.0f),
+                11.0f,
+                selected?kJojoIce:kMuted,
+                Gdiplus::FontStyleRegular);
         }
 
-        Gdiplus::SolidBrush source_cover(Gdiplus::Color(205, 5, 11, 16));
-        graphics.FillRectangle(&source_cover, 238.0f, 653.0f, 440.0f, 48.0f);
-        const std::wstring source_text =
-            source_label.empty() ? L"(none)" : std::wstring(source_label);
+        Gdiplus::SolidBrush info_panel(Gdiplus::Color(205,2,12,19));
+        graphics.FillRectangle(&info_panel,54.0f,518.0f,378.0f,125.0f);
+        draw_string(
+            graphics,
+            L"GAME SOURCE",
+            Gdiplus::RectF(72.0f,528.0f,150.0f,24.0f),
+            13.0f,
+            kJojoBlue,
+            Gdiplus::FontStyleBold);
+        const std::wstring source_text=
+            source_label.empty()?L"NO GAME SELECTED":std::wstring(source_label);
         draw_string(
             graphics,
             source_text,
-            Gdiplus::RectF(245.0f, 654.0f, 425.0f, 45.0f),
-            17.0f,
-            source_label.empty() ? kMuted : kText);
-
-        // Replace the mockup-only version number with the real runtime version.
-        Gdiplus::SolidBrush version_cover(Gdiplus::Color(235, 3, 25, 28));
-        graphics.FillRectangle(&version_cover, 910.0f, 642.0f, 105.0f, 58.0f);
+            Gdiplus::RectF(72.0f,553.0f,340.0f,34.0f),
+            16.0f,
+            source_label.empty()?kMuted:kText,
+            Gdiplus::FontStyleBold);
         draw_string(
             graphics,
-            L"v" + widen_ascii(core_version()),
-            Gdiplus::RectF(915.0f, 647.0f, 92.0f, 42.0f),
-            16.0f,
-            kText,
+            L"ENTER confirm  •  ARROWS navigate  •  ESC back",
+            Gdiplus::RectF(72.0f,594.0f,340.0f,30.0f),
+            12.0f,
+            kMuted);
+
+        draw_string(
+            graphics,
+            L"v"+widen_ascii(core_version()),
+            Gdiplus::RectF(840.0f,665.0f,135.0f,30.0f),
+            14.0f,
+            kJojoIce,
             Gdiplus::FontStyleBold,
             Gdiplus::StringAlignmentFar);
         return;
     }
 
-    const auto panel_color = settings.accessibility.high_contrast_ui
-        ? kPanelHighContrast
-        : kPanel;
+    const auto panel_color=settings.accessibility.high_contrast_ui
+        ?kPanelHighContrast
+        :kPanel;
     Gdiplus::SolidBrush panel(panel_color);
-    graphics.FillRectangle(&panel, 225.0f, 70.0f, 770.0f, 630.0f);
+    graphics.FillRectangle(&panel,335.0f,118.0f,635.0f,535.0f);
 
     draw_string(
         graphics,
-        L"SETTINGS",
-        Gdiplus::RectF(260.0f, 82.0f, 300.0f, 52.0f),
-        32.0f,
-        kGold,
+        page_==SettingsPage::controls?L"CONTROLS":L"OPTIONS",
+        Gdiplus::RectF(54.0f,118.0f,245.0f,52.0f),
+        34.0f,
+        kText,
+        Gdiplus::FontStyleBold);
+    draw_string(
+        graphics,
+        L"GAME SETTINGS",
+        Gdiplus::RectF(56.0f,163.0f,220.0f,26.0f),
+        13.0f,
+        kJojoBlue,
         Gdiplus::FontStyleBold);
 
-    constexpr std::array<const wchar_t*, 4> tabs{
-        L"VIDEO", L"AUDIO", L"CONTROL", L"ACCESSIBILITY"};
-    constexpr std::array<SettingsPage, 4> pages{
+    constexpr std::array<const wchar_t*,4> tabs{
+        L"VIDEO",L"AUDIO",L"CONTROL",L"ACCESSIBILITY"};
+    constexpr std::array<SettingsPage,4> pages{
         SettingsPage::graphics,
         SettingsPage::audio,
         SettingsPage::controls,
         SettingsPage::accessibility};
-    for (std::size_t i = 0; i < tabs.size(); ++i) {
-        const float x = 265.0f + static_cast<float>(i) * 175.0f;
-        const bool active = page_ == pages[i];
+    for(std::size_t i=0;i<tabs.size();++i){
+        const float y=218.0f+static_cast<float>(i)*60.0f;
+        const bool active=page_==pages[i];
+        if(active){
+            const Gdiplus::PointF tab_shape[]={
+                {52.0f,y},{310.0f,y},{292.0f,y+44.0f},{52.0f,y+44.0f}};
+            Gdiplus::SolidBrush tab_brush(kJojoBlueDark);
+            graphics.FillPolygon(&tab_brush,tab_shape,4);
+        }
         draw_string(
             graphics,
             tabs[i],
-            Gdiplus::RectF(x, 145.0f, 165.0f, 42.0f),
+            Gdiplus::RectF(72.0f,y,205.0f,44.0f),
             17.0f,
-            active ? kGold : kMuted,
-            Gdiplus::FontStyleBold,
-            Gdiplus::StringAlignmentCenter);
-        if (active) {
-            Gdiplus::Pen pen(kGold, 2.0f);
-            graphics.DrawLine(&pen, x + 15.0f, 185.0f, x + 150.0f, 185.0f);
-        }
+            active?kText:kMuted,
+            Gdiplus::FontStyleBold);
     }
 
-    std::vector<std::pair<std::wstring, std::wstring>> rows;
+    std::vector<std::pair<std::wstring,std::wstring>> rows;
     std::vector<bool> enabled;
-
-    if (page_ == SettingsPage::graphics) {
-        rows = {
-            {L"DISPLAY MODE", display_mode_name(settings.graphics.display_mode)},
-            {L"RESOLUTION", std::to_wstring(settings.graphics.width) + L" x " +
+    if(page_==SettingsPage::graphics){
+        rows={
+            {L"DISPLAY MODE",display_mode_name(settings.graphics.display_mode)},
+            {L"RESOLUTION",std::to_wstring(settings.graphics.width)+L" x "+
                 std::to_wstring(settings.graphics.height)},
-            {L"V-SYNC", on_off(settings.graphics.vsync)},
-            {L"ANTI-ALIASING", msaa_name(settings.graphics.msaa)},
-            {L"TEXTURE FILTER", filter_name(settings.graphics.texture_filter)},
-            {L"ASPECT RATIO", aspect_name(settings.graphics.aspect_ratio)},
+            {L"V-SYNC",on_off(settings.graphics.vsync)},
+            {L"ANTI-ALIASING",msaa_name(settings.graphics.msaa)},
+            {L"TEXTURE FILTER",filter_name(settings.graphics.texture_filter)},
+            {L"ASPECT RATIO",aspect_name(settings.graphics.aspect_ratio)},
         };
-        enabled.assign(rows.size(), true);
-    } else if (page_ == SettingsPage::audio) {
-        rows = {
-            {L"MASTER VOLUME", std::to_wstring(settings.audio.master_volume) + L"%"},
-            {L"MUTE WHEN UNFOCUSED", on_off(settings.audio.mute_when_unfocused)},
+        enabled.assign(rows.size(),true);
+    }else if(page_==SettingsPage::audio){
+        rows={
+            {L"MASTER VOLUME",std::to_wstring(settings.audio.master_volume)+L"%"},
+            {L"MUTE WHEN UNFOCUSED",on_off(settings.audio.mute_when_unfocused)},
         };
-        enabled.assign(rows.size(), true);
-    } else if (page_ == SettingsPage::controls) {
-        const auto player = control_player_;
+        enabled.assign(rows.size(),true);
+    }else if(page_==SettingsPage::controls){
+        const auto player=control_player_;
         rows.push_back({
             L"DEVICE",
-            device_name(settings.input.players[player].selected_device, devices)});
+            device_name(settings.input.players[player].selected_device,devices)});
         enabled.push_back(true);
-        for (const auto action : all_game_actions()) {
-            const auto it = settings.input.players[player].bindings.find(action);
-            const std::wstring value = it == settings.input.players[player].bindings.end()
-                ? L"UNBOUND"
-                : widen_ascii(it->second.code);
-            rows.push_back({action_name(action), value});
+        for(const auto action:all_game_actions()){
+            const auto it=settings.input.players[player].bindings.find(action);
+            rows.push_back({
+                action_name(action),
+                it==settings.input.players[player].bindings.end()
+                    ?L"UNBOUND"
+                    :widen_ascii(it->second.code)});
             enabled.push_back(true);
         }
-
         draw_string(
             graphics,
-            player == 0 ? L"PLAYER 1" : L"PLAYER 2",
-            Gdiplus::RectF(740.0f, 192.0f, 205.0f, 32.0f),
-            16.0f,
-            kGold,
+            player==0?L"PLAYER 1":L"PLAYER 2",
+            Gdiplus::RectF(760.0f,128.0f,175.0f,32.0f),
+            15.0f,
+            kJojoBlue,
             Gdiplus::FontStyleBold,
-            Gdiplus::StringAlignmentCenter);
-    } else {
-        rows = {
-            {L"HIGH CONTRAST UI", on_off(settings.accessibility.high_contrast_ui)},
-            {L"MENU TEXT SCALE", std::to_wstring(settings.accessibility.menu_text_scale) + L"%"},
+            Gdiplus::StringAlignmentFar);
+    }else{
+        rows={
+            {L"HIGH CONTRAST UI",on_off(settings.accessibility.high_contrast_ui)},
+            {L"MENU TEXT SCALE",std::to_wstring(settings.accessibility.menu_text_scale)+L"%"},
         };
-        enabled = {true, true};
+        enabled={true,true};
     }
 
-    const float scale = std::clamp(
-        static_cast<float>(settings.accessibility.menu_text_scale) / 100.0f,
-        1.0f,
-        1.5f);
-    const float row_font = std::min(18.0f * scale, 24.0f);
+    const float text_scale=std::clamp(
+        static_cast<float>(settings.accessibility.menu_text_scale)/100.0f,
+        1.0f,1.35f);
+    const float row_font=std::min(17.0f*text_scale,22.0f);
+    const float row_step=page_==SettingsPage::controls?32.0f:56.0f;
+    const float row_height=page_==SettingsPage::controls?29.0f:46.0f;
 
-    for (std::size_t i = 0; i < rows.size(); ++i) {
-        const float y = 232.0f + static_cast<float>(i) * 37.0f;
-        const bool selected = i == selected_row_;
-        const bool active = i < enabled.size() ? enabled[i] : true;
+    for(std::size_t i=0;i<rows.size();++i){
+        const float y=198.0f+static_cast<float>(i)*row_step;
+        if(y+row_height>616.0f) break;
+        const bool selected=i==selected_row_;
+        const bool active=i<enabled.size()?enabled[i]:true;
 
-        if (selected) {
-            Gdiplus::SolidBrush selection(Gdiplus::Color(95, 210, 164, 46));
-            graphics.FillRectangle(&selection, 275.0f, y, 660.0f, 32.0f);
+        if(selected){
+            const Gdiplus::PointF selection_shape[]={
+                {365.0f,y},{944.0f,y},{928.0f,y+row_height},{365.0f,y+row_height}};
+            Gdiplus::SolidBrush selection(Gdiplus::Color(225,12,121,175));
+            graphics.FillPolygon(&selection,selection_shape,4);
+        }else{
+            Gdiplus::SolidBrush row_bg(Gdiplus::Color(95,16,34,45));
+            graphics.FillRectangle(&row_bg,365.0f,y,563.0f,row_height);
         }
 
         draw_string(
             graphics,
             rows[i].first,
-            Gdiplus::RectF(290.0f, y, 310.0f, 32.0f),
+            Gdiplus::RectF(382.0f,y,275.0f,row_height),
             row_font,
-            active ? kText : kDisabled,
+            active?kText:kDisabled,
             Gdiplus::FontStyleBold);
-
         draw_string(
             graphics,
-            active ? L"<" : L"",
-            Gdiplus::RectF(610.0f, y, 34.0f, 32.0f),
+            active?L"<":L"",
+            Gdiplus::RectF(663.0f,y,34.0f,row_height),
             row_font,
-            active ? kGold : kDisabled,
+            selected?kJojoIce:kMuted,
             Gdiplus::FontStyleBold,
             Gdiplus::StringAlignmentCenter);
         draw_string(
             graphics,
             rows[i].second,
-            Gdiplus::RectF(650.0f, y, 230.0f, 32.0f),
-            std::max(14.0f, row_font - 2.0f),
-            active ? (selected ? kGold : kText) : kDisabled,
-            active ? Gdiplus::FontStyleBold : Gdiplus::FontStyleRegular,
+            Gdiplus::RectF(700.0f,y,185.0f,row_height),
+            std::max(13.0f,row_font-2.0f),
+            active?(selected?kText:kJojoIce):kDisabled,
+            active?Gdiplus::FontStyleBold:Gdiplus::FontStyleRegular,
             Gdiplus::StringAlignmentCenter);
         draw_string(
             graphics,
-            active ? L">" : L"",
-            Gdiplus::RectF(885.0f, y, 34.0f, 32.0f),
+            active?L">":L"",
+            Gdiplus::RectF(890.0f,y,34.0f,row_height),
             row_font,
-            active ? kGold : kDisabled,
+            selected?kJojoIce:kMuted,
             Gdiplus::FontStyleBold,
             Gdiplus::StringAlignmentCenter);
     }
 
-    if (page_ == SettingsPage::controls) {
-        const std::wstring help = capture_status.empty()
-            ? L"ENTER/click a binding to remap • TAB changes category • P switches player"
-            : std::wstring(capture_status);
-        draw_string(
-            graphics,
-            help,
-            Gdiplus::RectF(280.0f, 640.0f, 650.0f, 32.0f),
-            14.0f,
-            capture_status.empty() ? kMuted : kGold);
-    } else {
-        draw_string(
-            graphics,
-            L"UP/DOWN select • LEFT/RIGHT change • TAB changes category • ESC returns",
-            Gdiplus::RectF(280.0f, 640.0f, 650.0f, 32.0f),
-            14.0f,
-            kMuted);
-    }
-
+    const std::wstring help=
+        page_==SettingsPage::controls
+            ?(capture_status.empty()
+                ?L"ENTER remap  •  P switch player  •  TAB category  •  ESC back"
+                :std::wstring(capture_status))
+            :L"LEFT / RIGHT change  •  TAB category  •  ESC back";
     draw_string(
         graphics,
-        L"BACK",
-        Gdiplus::RectF(850.0f, 655.0f, 110.0f, 34.0f),
-        16.0f,
-        kGold,
-        Gdiplus::FontStyleBold,
-        Gdiplus::StringAlignmentCenter);
+        help,
+        Gdiplus::RectF(365.0f,620.0f,560.0f,28.0f),
+        12.0f,
+        capture_status.empty()?kMuted:kJojoIce);
 }
 
 LauncherUiAction LauncherUi::mouse_up(
@@ -775,11 +826,11 @@ LauncherUiAction LauncherUi::mouse_up(
 
     if (screen_ == Screen::main_menu) {
         const std::array<Gdiplus::RectF, 5> menu_rects{{
-            {725.0f, 151.0f, 275.0f, 64.0f},
-            {725.0f, 215.0f, 275.0f, 64.0f},
-            {725.0f, 279.0f, 275.0f, 64.0f},
-            {725.0f, 343.0f, 275.0f, 64.0f},
-            {725.0f, 407.0f, 275.0f, 64.0f},
+            {496.0f, 178.0f, 464.0f, 58.0f},
+            {496.0f, 256.0f, 464.0f, 58.0f},
+            {496.0f, 334.0f, 464.0f, 58.0f},
+            {496.0f, 412.0f, 464.0f, 58.0f},
+            {496.0f, 490.0f, 464.0f, 58.0f},
         }};
         for (std::size_t i = 0; i < menu_rects.size(); ++i) {
             if (contains(menu_rects[i], x, y)) {
@@ -787,13 +838,10 @@ LauncherUiAction LauncherUi::mouse_up(
                 return activate_main_item();
             }
         }
-        if (contains({25.0f, 641.0f, 225.0f, 70.0f}, x, y)) {
-            return LauncherUiAction::select_disc;
-        }
         return LauncherUiAction::none;
     }
 
-    if (contains({835.0f, 640.0f, 145.0f, 60.0f}, x, y)) {
+    if (contains({52.0f, 620.0f, 250.0f, 65.0f}, x, y)) {
         show_main();
         return LauncherUiAction::none;
     }
@@ -805,10 +853,10 @@ LauncherUiAction LauncherUi::mouse_up(
         SettingsPage::accessibility};
     for (std::size_t i = 0; i < pages.size(); ++i) {
         const Gdiplus::RectF tab{
-            265.0f + static_cast<float>(i) * 175.0f,
-            140.0f,
-            165.0f,
-            52.0f};
+            52.0f,
+            218.0f + static_cast<float>(i) * 60.0f,
+            258.0f,
+            44.0f};
         if (contains(tab, x, y)) {
             page_ = pages[i];
             selected_row_ = 0;
@@ -817,7 +865,7 @@ LauncherUiAction LauncherUi::mouse_up(
     }
 
     if (page_ == SettingsPage::controls &&
-        contains({720.0f, 187.0f, 240.0f, 40.0f}, x, y)) {
+        contains({735.0f, 120.0f, 215.0f, 50.0f}, x, y)) {
         cycle_control_player(1);
         selected_row_ = 0;
         return LauncherUiAction::none;
@@ -825,18 +873,22 @@ LauncherUiAction LauncherUi::mouse_up(
 
     const auto count = row_count();
     for (std::size_t i = 0; i < count; ++i) {
-        const float row_y = 232.0f + static_cast<float>(i) * 37.0f;
-        if (!contains({275.0f, row_y, 660.0f, 32.0f}, x, y)) continue;
+        const float row_step =
+            page_ == SettingsPage::controls ? 32.0f : 56.0f;
+        const float row_height =
+            page_ == SettingsPage::controls ? 29.0f : 46.0f;
+        const float row_y = 198.0f + static_cast<float>(i) * row_step;
+        if (!contains({365.0f, row_y, 579.0f, row_height}, x, y)) continue;
 
         selected_row_ = i;
         if (page_ == SettingsPage::controls && i > 0 &&
-            x >= 635.0f && x <= 900.0f) {
+            x >= 680.0f && x <= 905.0f) {
             return LauncherUiAction::begin_binding_capture;
         }
-        if (x < 645.0f) {
+        if (x < 700.0f) {
             return adjust_setting(-1, settings, devices);
         }
-        if (x > 875.0f) {
+        if (x > 880.0f) {
             return adjust_setting(1, settings, devices);
         }
         return LauncherUiAction::none;
