@@ -82,6 +82,7 @@ HFONT title_font{}, body_font{}, small_font{}, button_font{};
 HBRUSH edit_brush{};
 std::optional<jojo::D3d11Ps1Presenter> game_presenter{};
 std::unique_ptr<jojo::XAudio2Ps1AudioHost> game_audio_host{};
+float game_audio_applied_gain{-1.0f};
 std::unique_ptr<jojo::win32::Win32InputHost> input_host{};
 std::unique_ptr<jojo::Ps1CommercialEvidenceRunner> game_runner{};
 jojo::Ps1DisplayFrame game_frame{};
@@ -677,6 +678,7 @@ void stop_game_runtime(const jojo::Ps1BootReport* final_boot){
     online_game_packet_sequence=1u;
     game_runner.reset();
     game_audio_host.reset();
+    game_audio_applied_gain=-1.0f;
     game_paused_for_options=false;
     game_total_execution_steps=0u;
     game_total_instructions=0u;
@@ -708,7 +710,10 @@ void service_game_audio(){
 
     if(!game_audio_host){
         auto audio_host=jojo::XAudio2Ps1AudioHost::create();
-        if(audio_host) game_audio_host=std::move(audio_host.value);
+        if(audio_host){
+            game_audio_host=std::move(audio_host.value);
+            game_audio_applied_gain=-1.0f;
+        }
         else{
             add_log(L"Aviso: XAudio2 indisponível: "+wide(audio_host.detail));
             return;
@@ -722,9 +727,13 @@ void service_game_audio(){
     const float gain = muted_for_focus
         ? 0.0f
         : jojo::xaudio2_gain_from_percent(app_settings.audio.master_volume);
-    const auto volume=game_audio_host->set_volume(gain);
-    if(!volume){
-        add_log(L"Aviso: volume XAudio2 falhou: "+wide(volume.detail));
+    if(std::abs(gain-game_audio_applied_gain)>0.0001f){
+        const auto volume=game_audio_host->set_volume(gain);
+        if(!volume){
+            add_log(L"Aviso: volume XAudio2 falhou: "+wide(volume.detail));
+        }else{
+            game_audio_applied_gain=gain;
+        }
     }
 
     const auto submitted=game_audio_host->submit(audio_samples);
@@ -2260,6 +2269,7 @@ int WINAPI wWinMain(HINSTANCE inst,HINSTANCE,PWSTR,int show){
     if(game_window && IsWindow(game_window)) DestroyWindow(game_window);
     game_presenter.reset();
     game_audio_host.reset();
+    game_audio_applied_gain=-1.0f;
     game_runner.reset();
     online_session.reset();
     input_host.reset();
