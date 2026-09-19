@@ -122,6 +122,7 @@ bool directory_matchmaking_active=false;
 bool lan_matchmaking_active=false;
 std::uint64_t next_online_directory_publish_ms{};
 bool binding_capture_active=false;
+bool game_paused_for_options=false;
 std::size_t binding_capture_player=0u;
 jojo::GameAction binding_capture_action=jojo::GameAction::attack_light;
 jojo::InputFrame binding_capture_previous{};
@@ -304,6 +305,8 @@ std::wstring choose_image(){
 }
 
 void stop_game_runtime(const jojo::Ps1BootReport* final_boot=nullptr);
+void open_game_options();
+void resume_game_from_options();
 
 void validate_source(){
     if(game_runner) return;
@@ -351,6 +354,12 @@ void validate_source(){
 
 LRESULT CALLBACK game_proc(HWND h,UINT m,WPARAM w,LPARAM l){
     switch(m){
+    case WM_KEYDOWN:
+        if(w==VK_ESCAPE){
+            open_game_options();
+            return 0;
+        }
+        break;
     case WM_PAINT:{
         PAINTSTRUCT ps{};
         BeginPaint(h,&ps);
@@ -465,6 +474,7 @@ bool show_game_frame(jojo::Ps1DisplayFrame frame){
     if(created_window){
         ShowWindow(game_window,SW_SHOW);
         UpdateWindow(game_window);
+        if(win) ShowWindow(win,SW_HIDE);
     }
     const auto presented=game_presenter->present(
                 game_frame,
@@ -473,6 +483,58 @@ bool show_game_frame(jojo::Ps1DisplayFrame frame){
                 app_settings.graphics.msaa,
                 app_settings.graphics.aspect_ratio);
     return static_cast<bool>(presented);
+}
+
+void open_game_options(){
+    if(!game_runner || game_paused_for_options) return;
+    if(win) KillTimer(win,ID_GAME_TIMER);
+    game_paused_for_options=true;
+    launcher_ui.open_settings();
+    binding_capture_active=false;
+    binding_capture_status.clear();
+    status=L"Jogo pausado • OPTIONS";
+    if(game_window&&IsWindow(game_window)){
+        ShowWindow(game_window,SW_HIDE);
+    }
+    if(win){
+        ShowWindow(win,SW_SHOW);
+        ShowWindow(win,SW_RESTORE);
+        SetForegroundWindow(win);
+        InvalidateRect(win,nullptr,FALSE);
+    }
+}
+
+void resume_game_from_options(){
+    if(!game_runner || !game_paused_for_options) return;
+    game_paused_for_options=false;
+    binding_capture_active=false;
+    binding_capture_status.clear();
+    launcher_ui.show_main();
+    next_game_tick=std::chrono::steady_clock::now();
+    next_present_tick=next_game_tick;
+    if(win){
+        ShowWindow(win,SW_HIDE);
+        if(!SetTimer(win,ID_GAME_TIMER,1u,nullptr)){
+            status=L"Falha ao retomar o relógio de execução do jogo.";
+            game_paused_for_options=true;
+            ShowWindow(win,SW_SHOW);
+            return;
+        }
+    }
+    if(game_window&&IsWindow(game_window)){
+        ShowWindow(game_window,SW_SHOW);
+        SetForegroundWindow(game_window);
+        if(game_presenter&&!game_frame.rgba8.empty()){
+            const auto presented=game_presenter->present(
+                game_frame,
+                app_settings.graphics.vsync,
+                app_settings.graphics.texture_filter,
+                app_settings.graphics.msaa,
+                app_settings.graphics.aspect_ratio);
+            (void)presented;
+        }
+    }
+    status=L"Jogo retomado.";
 }
 
 
@@ -615,6 +677,7 @@ void stop_game_runtime(const jojo::Ps1BootReport* final_boot){
     online_game_packet_sequence=1u;
     game_runner.reset();
     game_audio_host.reset();
+    game_paused_for_options=false;
     game_total_execution_steps=0u;
     game_total_instructions=0u;
     game_native_x64_instructions=0u;
@@ -1678,6 +1741,15 @@ void handle_launcher_action(jojo::win32::LauncherUiAction action){
         break;
     case jojo::win32::LauncherUiAction::settings_changed:
         save_launcher_settings();
+        if(game_paused_for_options&&game_presenter&&!game_frame.rgba8.empty()){
+            const auto presented=game_presenter->present(
+                game_frame,
+                app_settings.graphics.vsync,
+                app_settings.graphics.texture_filter,
+                app_settings.graphics.msaa,
+                app_settings.graphics.aspect_ratio);
+            (void)presented;
+        }
         break;
     case jojo::win32::LauncherUiAction::begin_binding_capture:
         if(!input_host)break;
@@ -1919,7 +1991,8 @@ void handle_launcher_action(jojo::win32::LauncherUiAction action){
 }
 
 void poll_launcher_controller(){
-    if(!input_host||binding_capture_active||game_runner)return;
+    if(!input_host||binding_capture_active||
+       (game_runner&&!game_paused_for_options))return;
 
     const auto& device_id=app_settings.input.players[0].selected_device;
     const bool gamepad=
@@ -2033,6 +2106,10 @@ LRESULT CALLBACK proc(HWND h,UINT m,WPARAM w,LPARAM l){
         }
         return 0;
     case WM_KEYDOWN:
+        if(game_paused_for_options&&w==VK_ESCAPE&&!binding_capture_active){
+            resume_game_from_options();
+            return 0;
+        }
         if(binding_capture_active&&w==VK_ESCAPE){
             binding_capture_active=false;
             binding_capture_status=L"Binding capture cancelled.";
