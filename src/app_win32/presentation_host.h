@@ -88,6 +88,11 @@ public:
         TextureFilter texture_filter = TextureFilter::off,
         Msaa anti_aliasing = Msaa::off,
         AspectRatio aspect_ratio = AspectRatio::ratio_4_3);
+    [[nodiscard]] Result<void> present_cached(
+        bool vsync = false,
+        TextureFilter texture_filter = TextureFilter::off,
+        Msaa anti_aliasing = Msaa::off,
+        AspectRatio aspect_ratio = AspectRatio::ratio_4_3);
 
     [[nodiscard]] std::uint32_t back_buffer_width() const noexcept;
     [[nodiscard]] std::uint32_t back_buffer_height() const noexcept;
@@ -105,6 +110,10 @@ private:
     [[nodiscard]] Result<void> ensure_msaa_target(UINT requested_samples);
     [[nodiscard]] Result<void> draw_frame(
         const Ps1DisplayFrame& frame,
+        TextureFilter texture_filter,
+        Msaa anti_aliasing,
+        AspectRatio aspect_ratio);
+    [[nodiscard]] Result<void> draw_cached_frame(
         TextureFilter texture_filter,
         Msaa anti_aliasing,
         AspectRatio aspect_ratio);
