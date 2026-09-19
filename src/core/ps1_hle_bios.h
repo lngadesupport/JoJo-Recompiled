@@ -15,6 +15,11 @@ inline constexpr std::uint32_t kPs1HleC0TableAddress = 0x00000674u;
 inline constexpr std::uint32_t kPs1HleExceptionHandlerAddress = 0x00000C80u;
 inline constexpr std::uint32_t kPs1HleB0TableAddress = 0x0000D000u;
 inline constexpr std::uint32_t kPs1HleChangeClearPadHandlerAddress = 0x0000E000u;
+inline constexpr std::uint32_t kPs1HleInitPad2HandlerAddress = 0x0000E010u;
+inline constexpr std::uint32_t kPs1HleStartPad2HandlerAddress = 0x0000E020u;
+inline constexpr std::uint32_t kPs1HleStopPad2HandlerAddress = 0x0000E030u;
+inline constexpr std::uint32_t kPs1HlePadInit2HandlerAddress = 0x0000E040u;
+inline constexpr std::uint32_t kPs1HlePadDrHandlerAddress = 0x0000E050u;
 
 enum class Ps1HleBiosDispatchStatus : std::uint8_t {
     handled,

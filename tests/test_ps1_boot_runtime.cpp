@@ -291,6 +291,80 @@ static void test_b0_19_hookentryint_records_pointer_args_and_returns() {
     }
 }
 
+static void test_clean_room_b0_pad_table_contains_executable_trampolines() {
+    const std::vector<std::uint32_t> words{
+        test_mips::j(0x02u, 0x80010000u >> 2),
+        0x00000000u,
+    };
+    auto runtime = make_runtime(words);
+
+    struct Expected {
+        std::uint32_t selector;
+        std::uint32_t address;
+    };
+    const std::array<Expected, 6> expected{{
+        {0x12u, jojo::kPs1HleInitPad2HandlerAddress},
+        {0x13u, jojo::kPs1HleStartPad2HandlerAddress},
+        {0x14u, jojo::kPs1HleStopPad2HandlerAddress},
+        {0x15u, jojo::kPs1HlePadInit2HandlerAddress},
+        {0x16u, jojo::kPs1HlePadDrHandlerAddress},
+        {0x5Bu, jojo::kPs1HleChangeClearPadHandlerAddress},
+    }};
+
+    for (const auto& entry : expected) {
+        CHECK(runtime.bus().read32(
+                  jojo::kPs1HleB0TableAddress +
+                      entry.selector * 4u).value ==
+              entry.address);
+        CHECK(runtime.bus().read32(entry.address + 0u).value ==
+              (0x24090000u | entry.selector));
+        CHECK(runtime.bus().read32(entry.address + 4u).value ==
+              0x0800002Cu);
+        CHECK(runtime.bus().read32(entry.address + 8u).value ==
+              0x00000000u);
+    }
+}
+
+static void test_b0_pad_trampoline_dispatches_indirect_startpad2() {
+    // Call the trampoline via JALR exactly like a title using GetB0Table:
+    // t0 = table[13h]; jalr t0; ...
+    const std::vector<std::uint32_t> words{
+        test_mips::i(0x0Fu, 0u, 8u, 0x0000u),       // lui t0,0
+        test_mips::i(0x0Du, 8u, 8u, 0xE010u),       // ori t0,t0,E010 (InitPAD2)
+        test_mips::i(0x09u, 0u, 4u, 0x6000u),       // a0 = pad1
+        test_mips::i(0x09u, 0u, 5u, 0x0022u),       // a1 = 34
+        test_mips::i(0x09u, 0u, 6u, 0x6100u),       // a2 = pad2
+        test_mips::i(0x09u, 0u, 7u, 0x0022u),       // a3 = 34
+        test_mips::r(8u, 0u, 31u, 0u, 0x09u),       // jalr t0
+        0x00000000u,
+        test_mips::i(0x0Fu, 0u, 8u, 0x0000u),
+        test_mips::i(0x0Du, 8u, 8u, 0xE020u),       // StartPAD2 trampoline
+        test_mips::r(8u, 0u, 31u, 0u, 0x09u),
+        0x00000000u,
+        test_mips::j(0x02u, 0x80010030u >> 2),
+        0x00000000u,
+    };
+    auto runtime = make_runtime(words);
+    const auto report = runtime.run({40u});
+
+    CHECK(report.stop_reason ==
+          jojo::Ps1BootStopReason::execution_budget_exhausted);
+    CHECK(report.bios_call_count >= 2u);
+
+    runtime.bus().hardware_services().sio0().set_digital_pad_buttons(
+        0u, 0xFFF7u);
+    runtime.signal_vblank();
+
+    CHECK(runtime.bus().read8(0x00006000u).value == 0x00u);
+    CHECK(runtime.bus().read8(0x00006001u).value == 0x41u);
+    CHECK(runtime.bus().read8(0x00006002u).value == 0xF7u);
+    CHECK(runtime.bus().read8(0x00006003u).value == 0xFFu);
+    CHECK(runtime.bus().hardware_services().sio0()
+              .digital_pad_poll_count(0u) == 1u);
+    CHECK(runtime.bus().hardware_services().sio0()
+              .digital_pad_pressed_poll_count(0u) == 1u);
+}
+
 static void test_b0_5b_changeclearpad_records_flag_and_returns() {
     const std::vector<std::uint32_t> words{
         test_mips::i(0x09u, 0u, 4u, 0x0000u),
@@ -686,6 +760,8 @@ int main() {
     test_bios_entry_stops_before_executing_bios_bytes();
     test_a0_39_initheap_returns_to_ra_and_continues();
     test_b0_19_hookentryint_records_pointer_args_and_returns();
+    test_clean_room_b0_pad_table_contains_executable_trampolines();
+    test_b0_pad_trampoline_dispatches_indirect_startpad2();
     test_b0_5b_changeclearpad_records_flag_and_returns();
     test_a0_33_remains_unimplemented();
     test_mmio_access_stops_with_structured_evidence();

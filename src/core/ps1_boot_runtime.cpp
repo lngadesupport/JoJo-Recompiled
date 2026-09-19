@@ -4,6 +4,7 @@
 #include "core/ps1_executable_loader.h"
 #include "core/r3000a_reference_executor.h"
 
+#include <array>
 #include <new>
 #include <set>
 #include <span>
@@ -138,13 +139,47 @@ Result<Ps1BootRuntime> Ps1BootRuntime::create(const Ps1Executable& executable) {
             "failed to initialize clean-room PS1 C0 HLE table");
     }
 
-    const auto b0_change_clear_pad_entry = runtime.bus_.write32(
-        kPs1HleB0TableAddress + 0x5Bu * sizeof(std::uint32_t),
-        kPs1HleChangeClearPadHandlerAddress);
-    if (b0_change_clear_pad_entry.status != R3000aBusStatus::ok) {
-        return Result<Ps1BootRuntime>::failure(
-            ErrorCode::invalid_installation,
-            "failed to initialize clean-room PS1 B0 HLE table");
+    // The retail BIOS exposes a B0 function-pointer table in low RAM.
+    // JoJo fetches several pad functions from that table and calls them
+    // indirectly, so populate real guest-side trampolines rather than only
+    // supporting direct jumps to physical B0.
+    struct B0Trampoline {
+        std::uint32_t selector;
+        std::uint32_t address;
+    };
+    constexpr std::array<B0Trampoline, 6> kB0Trampolines{{
+        {0x12u, kPs1HleInitPad2HandlerAddress},
+        {0x13u, kPs1HleStartPad2HandlerAddress},
+        {0x14u, kPs1HleStopPad2HandlerAddress},
+        {0x15u, kPs1HlePadInit2HandlerAddress},
+        {0x16u, kPs1HlePadDrHandlerAddress},
+        {0x5Bu, kPs1HleChangeClearPadHandlerAddress},
+    }};
+    constexpr std::uint32_t kJumpB0 =
+        0x08000000u | ((kBiosB0 >> 2u) & 0x03FFFFFFu);
+
+    for (const auto& trampoline : kB0Trampolines) {
+        const auto table_entry = runtime.bus_.write32(
+            kPs1HleB0TableAddress +
+                trampoline.selector * sizeof(std::uint32_t),
+            trampoline.address);
+        const auto load_selector = runtime.bus_.write32(
+            trampoline.address + 0u,
+            0x24090000u | trampoline.selector); // addiu t1,zero,selector
+        const auto jump_b0 = runtime.bus_.write32(
+            trampoline.address + 4u,
+            kJumpB0);
+        const auto delay_nop = runtime.bus_.write32(
+            trampoline.address + 8u,
+            0x00000000u);
+        if (table_entry.status != R3000aBusStatus::ok ||
+            load_selector.status != R3000aBusStatus::ok ||
+            jump_b0.status != R3000aBusStatus::ok ||
+            delay_nop.status != R3000aBusStatus::ok) {
+            return Result<Ps1BootRuntime>::failure(
+                ErrorCode::invalid_installation,
+                "failed to initialize clean-room PS1 B0 pad trampolines");
+        }
     }
 
     runtime.native_text_begin_ =
