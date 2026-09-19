@@ -36,6 +36,8 @@ public:
         std::uint16_t active_low_buttons) noexcept;
     [[nodiscard]] std::uint16_t sample_digital_pad_buttons(
         std::uint32_t port) noexcept;
+    [[nodiscard]] std::uint16_t digital_pad_buttons(
+        std::uint32_t port) const noexcept;
     [[nodiscard]] Ps1MemoryCard& memory_card(std::uint32_t port) noexcept;
     [[nodiscard]] const Ps1MemoryCard& memory_card(std::uint32_t port) const noexcept;
     [[nodiscard]] std::uint64_t digital_pad_poll_count(

@@ -452,6 +452,60 @@ static void test_b0_pad_trampoline_dispatches_indirect_startpad2() {
               .digital_pad_pressed_poll_count(0u) == 1u);
 }
 
+static void test_jojo_pad_buffer_compatibility_mirror() {
+    const std::vector<std::uint32_t> words{
+        test_mips::j(0x02u, 0x80010000u >> 2),
+        0x00000000u,
+    };
+    auto runtime = make_runtime(words);
+
+    constexpr std::array<std::uint32_t, 5> signature{
+        0x8004F710u,
+        0x8004F758u,
+        0x8004F830u,
+        0x8004F8DCu,
+        0x8004F9A0u,
+    };
+    for (std::size_t i = 0u; i < signature.size(); ++i) {
+        CHECK(runtime.bus().write32(
+                  0x00063608u +
+                      static_cast<std::uint32_t>(i * 4u),
+                  signature[i]).status ==
+              jojo::R3000aBusStatus::ok);
+    }
+
+    constexpr std::uint32_t state_base = 0x80070000u;
+    constexpr std::uint32_t pad1_buffer = 0x80071000u;
+    constexpr std::uint32_t pad2_buffer = 0x80071100u;
+    CHECK(runtime.bus().write32(0x000635B4u, state_base).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(runtime.bus().write32(
+              state_base + 0x3Cu, pad1_buffer).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(runtime.bus().write32(
+              state_base + 0xF0u + 0x3Cu, pad2_buffer).status ==
+          jojo::R3000aBusStatus::ok);
+
+    runtime.bus().hardware_services().sio0().set_digital_pad_buttons(
+        0u, 0xFFF7u);
+    runtime.bus().hardware_services().sio0().set_digital_pad_buttons(
+        1u, 0xFFEFu);
+    runtime.signal_vblank();
+
+    CHECK(runtime.bus().read8(pad1_buffer + 0u).value == 0x00u);
+    CHECK(runtime.bus().read8(pad1_buffer + 1u).value == 0x41u);
+    CHECK(runtime.bus().read8(pad1_buffer + 2u).value == 0xF7u);
+    CHECK(runtime.bus().read8(pad1_buffer + 3u).value == 0xFFu);
+    CHECK(runtime.bus().read8(pad2_buffer + 0u).value == 0x00u);
+    CHECK(runtime.bus().read8(pad2_buffer + 1u).value == 0x41u);
+    CHECK(runtime.bus().read8(pad2_buffer + 2u).value == 0xEFu);
+    CHECK(runtime.bus().read8(pad2_buffer + 3u).value == 0xFFu);
+    CHECK(runtime.bus().hardware_services().sio0()
+              .digital_pad_poll_count(0u) == 1u);
+    CHECK(runtime.bus().hardware_services().sio0()
+              .digital_pad_pressed_poll_count(0u) == 1u);
+}
+
 static void test_internal_pad_enable_routines_gate_vblank_polling() {
     // InitPAD2 + StartPAD2, then call the two BIOS-internal routines retained
     // by JoJo's B(5Bh)-relative patch.
@@ -903,6 +957,7 @@ int main() {
     test_b0_19_hookentryint_records_pointer_args_and_returns();
     test_clean_room_b0_pad_table_contains_executable_trampolines();
     test_b0_pad_trampoline_dispatches_indirect_startpad2();
+    test_jojo_pad_buffer_compatibility_mirror();
     test_internal_pad_enable_routines_gate_vblank_polling();
     test_b0_5b_changeclearpad_records_flag_and_returns();
     test_a0_33_remains_unimplemented();

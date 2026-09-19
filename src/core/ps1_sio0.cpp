@@ -518,6 +518,11 @@ std::uint16_t Ps1Sio0::sample_digital_pad_buttons(
     return buttons;
 }
 
+std::uint16_t Ps1Sio0::digital_pad_buttons(
+    std::uint32_t port) const noexcept {
+    return port < pad_buttons_.size() ? pad_buttons_[port] : 0xFFFFu;
+}
+
 Ps1MemoryCard& Ps1Sio0::memory_card(std::uint32_t port) noexcept {
     return memory_cards_[port < memory_cards_.size() ? port : 0u];
 }

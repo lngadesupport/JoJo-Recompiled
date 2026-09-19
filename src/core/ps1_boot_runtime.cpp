@@ -27,6 +27,21 @@ constexpr std::uint32_t kA0GpuSync = 0x0000004Eu;
 constexpr std::uint32_t kGpuGp0 = 0x1F801810u;
 constexpr std::uint32_t kGpuGp1 = 0x1F801814u;
 constexpr std::uint64_t kFnvOffset = 14695981039346656037ull;
+
+// JoJo's Bizarre Adventure (US, SLUS_010.60) links the retail Pad/Card
+// state machine into the executable. Its function table is a stable,
+// revision-specific signature and the per-port state blocks are 0xF0 bytes.
+constexpr std::uint32_t kJojoPadTablePhysical = 0x00063608u;
+constexpr std::array<std::uint32_t, 5> kJojoPadTableSignature{
+    0x8004F710u,
+    0x8004F758u,
+    0x8004F830u,
+    0x8004F8DCu,
+    0x8004F9A0u,
+};
+constexpr std::uint32_t kJojoPadStateBasePointerPhysical = 0x000635B4u;
+constexpr std::uint32_t kJojoPadStateStride = 0xF0u;
+constexpr std::uint32_t kJojoPadBufferPointerOffset = 0x3Cu;
 constexpr std::uint64_t kFnvPrime = 1099511628211ull;
 
 bool is_bios_table(std::uint32_t physical) noexcept {
@@ -224,6 +239,61 @@ void Ps1BootRuntime::restore_interrupt_resume_state(
     cpu_.gpr[0] = 0u;
 }
 
+bool Ps1BootRuntime::mirror_jojo_pad_buffers() noexcept {
+    for (std::size_t i = 0u; i < kJojoPadTableSignature.size(); ++i) {
+        const auto entry = bus_.read32(
+            kJojoPadTablePhysical +
+            static_cast<std::uint32_t>(i * sizeof(std::uint32_t)));
+        if (entry.status != R3000aBusStatus::ok ||
+            entry.value != kJojoPadTableSignature[i]) {
+            return false;
+        }
+    }
+
+    const auto state_base =
+        bus_.read32(kJojoPadStateBasePointerPhysical);
+    if (state_base.status != R3000aBusStatus::ok ||
+        state_base.value == 0u) {
+        return false;
+    }
+
+    auto& sio0 = bus_.hardware_services().sio0();
+    bool mirrored = false;
+    for (std::uint32_t port = 0u; port < 2u; ++port) {
+        const auto state_guest =
+            state_base.value + port * kJojoPadStateStride;
+        const auto buffer_ptr =
+            bus_.read32(state_guest + kJojoPadBufferPointerOffset);
+        if (buffer_ptr.status != R3000aBusStatus::ok ||
+            buffer_ptr.value == 0u) {
+            continue;
+        }
+
+        const auto physical =
+            Ps1MemoryBus::guest_to_physical(buffer_ptr.value);
+        if (!physical ||
+            *physical > Ps1MemoryBus::main_ram_size - 4u) {
+            continue;
+        }
+
+        const auto buttons = sio0.sample_digital_pad_buttons(port);
+        const auto status = bus_.write8(buffer_ptr.value + 0u, 0x00u);
+        const auto id = bus_.write8(buffer_ptr.value + 1u, 0x41u);
+        const auto low = bus_.write8(
+            buffer_ptr.value + 2u,
+            static_cast<std::uint8_t>(buttons));
+        const auto high = bus_.write8(
+            buffer_ptr.value + 3u,
+            static_cast<std::uint8_t>(buttons >> 8u));
+        mirrored = mirrored ||
+            (status.status == R3000aBusStatus::ok &&
+             id.status == R3000aBusStatus::ok &&
+             low.status == R3000aBusStatus::ok &&
+             high.status == R3000aBusStatus::ok);
+    }
+    return mirrored;
+}
+
 bool Ps1BootRuntime::enter_interrupt_chain_node() noexcept {
     while (interrupt_chain_.active) {
         if (interrupt_chain_.nodes_visited >= kMaxInterruptChainNodes) {
@@ -284,6 +354,7 @@ bool Ps1BootRuntime::enter_interrupt_chain_node() noexcept {
             return true;
         }
         restore_interrupt_resume_state(resume);
+        static_cast<void>(mirror_jojo_pad_buffers());
         return true;
     }
     return false;
@@ -347,6 +418,7 @@ bool Ps1BootRuntime::continue_interrupt_priority_chain() noexcept {
         return true;
     }
     restore_interrupt_resume_state(resume);
+    static_cast<void>(mirror_jojo_pad_buffers());
     return true;
 }
 
@@ -748,6 +820,7 @@ void Ps1BootRuntime::signal_vblank() noexcept {
     auto& hardware = bus_.hardware_services();
     hardware.signal_vblank();
     bios_.service_pad_vblank(bus_, hardware.sio0());
+    static_cast<void>(mirror_jojo_pad_buffers());
     cpu_.external_interrupt_pending =
         hardware.interrupt_pending() ? 0x04u : 0u;
 }

@@ -86,6 +86,7 @@ private:
     [[nodiscard]] bool enter_interrupt_chain_node() noexcept;
     void restore_interrupt_resume_state(
         const R3000aState& resume_state) noexcept;
+    [[nodiscard]] bool mirror_jojo_pad_buffers() noexcept;
 
     Ps1MemoryBus bus_{};
     R3000aState cpu_{};
