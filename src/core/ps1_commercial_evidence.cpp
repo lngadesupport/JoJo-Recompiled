@@ -402,8 +402,15 @@ const Ps1DiscSession& Ps1CommercialEvidenceRunner::disc_session() const noexcept
     return disc_;
 }
 
+void Ps1CommercialEvidenceRunner::display_frame_into(
+    Ps1DisplayFrame& frame) const {
+    runtime_.display_frame_into(frame);
+}
+
 Ps1DisplayFrame Ps1CommercialEvidenceRunner::display_frame() const {
-    return runtime_.display_frame();
+    Ps1DisplayFrame frame{};
+    display_frame_into(frame);
+    return frame;
 }
 
 Ps1GpuDisplayState Ps1CommercialEvidenceRunner::gpu_display_state() const noexcept {
