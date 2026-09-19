@@ -394,10 +394,11 @@ static void test_internal_pad_enable_routines_gate_vblank_polling() {
     CHECK(report.stop_reason ==
           jojo::Ps1BootStopReason::execution_budget_exhausted);
 
-    auto& sio = runtime.bus().hardware_services().sio0();
-    sio.set_digital_pad_buttons(0u, 0xFFF7u);
+    runtime.bus().hardware_services().sio0()
+        .set_digital_pad_buttons(0u, 0xFFF7u);
     runtime.signal_vblank();
-    CHECK(sio.digital_pad_poll_count(0u) == 0u);
+    CHECK(runtime.bus().hardware_services().sio0()
+              .digital_pad_poll_count(0u) == 0u);
 
     auto cpu = runtime.cpu_state();
     cpu.gpr[31] = 0x80010038u;
@@ -411,8 +412,10 @@ static void test_internal_pad_enable_routines_gate_vblank_polling() {
     CHECK(enable.bios_call_count == 1u);
 
     runtime.signal_vblank();
-    CHECK(sio.digital_pad_poll_count(0u) == 1u);
-    CHECK(sio.digital_pad_pressed_poll_count(0u) == 1u);
+    CHECK(runtime.bus().hardware_services().sio0()
+              .digital_pad_poll_count(0u) == 1u);
+    CHECK(runtime.bus().hardware_services().sio0()
+              .digital_pad_pressed_poll_count(0u) == 1u);
 }
 
 static void test_b0_5b_changeclearpad_records_flag_and_returns() {
