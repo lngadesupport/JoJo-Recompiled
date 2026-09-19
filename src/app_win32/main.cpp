@@ -24,6 +24,7 @@
 #include <shlobj_core.h>
 #include <mmsystem.h>
 #include <chrono>
+#include <cmath>
 #include <deque>
 #include <filesystem>
 #include <memory>
