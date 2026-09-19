@@ -513,6 +513,90 @@ static void test_hookentryint_restores_jmpbuf_and_returnfromexception() {
     CHECK(exception_cpu.gpr[8] == 0xCAFEBABEu);
 }
 
+static void test_b0_12_13_14_pad2_vblank_updates_guest_buffers() {
+    jojo::Ps1HleBios bios{};
+    jojo::Ps1MemoryBus bus{};
+
+    constexpr std::uint32_t pad1 = 0x00006000u;
+    constexpr std::uint32_t pad2 = 0x00006100u;
+    for (std::uint32_t i = 0u; i < 0x22u; ++i) {
+        CHECK(bus.write8(pad1 + i, 0xAAu).status ==
+              jojo::R3000aBusStatus::ok);
+        CHECK(bus.write8(pad2 + i, 0xBBu).status ==
+              jojo::R3000aBusStatus::ok);
+    }
+
+    auto init = make_cpu();
+    init.gpr[4] = pad1;
+    init.gpr[5] = 0x22u;
+    init.gpr[6] = pad2;
+    init.gpr[7] = 0x22u;
+    CHECK(bios.dispatch(init, 0xB0u, 0x12u, &bus) ==
+          jojo::Ps1HleBiosDispatchStatus::handled);
+    CHECK(init.gpr[2] == 1u);
+    for (std::uint32_t i = 0u; i < 0x22u; ++i) {
+        CHECK(bus.read8(pad1 + i).value == 0u);
+        CHECK(bus.read8(pad2 + i).value == 0u);
+    }
+
+    auto start = make_cpu();
+    CHECK(bios.dispatch(start, 0xB0u, 0x13u, &bus) ==
+          jojo::Ps1HleBiosDispatchStatus::handled);
+
+    auto& sio = bus.hardware_services().sio0();
+    sio.set_digital_pad_buttons(0u, 0xBFEFu);
+    sio.set_digital_pad_buttons(1u, 0xFFF7u);
+    bios.service_pad_vblank(bus, sio);
+
+    CHECK(bus.read8(pad1 + 0u).value == 0x00u);
+    CHECK(bus.read8(pad1 + 1u).value == 0x41u);
+    CHECK(bus.read8(pad1 + 2u).value == 0xEFu);
+    CHECK(bus.read8(pad1 + 3u).value == 0xBFu);
+    CHECK(bus.read8(pad2 + 2u).value == 0xF7u);
+    CHECK(bus.read8(pad2 + 3u).value == 0xFFu);
+    CHECK(sio.digital_pad_poll_count(0u) == 1u);
+    CHECK(sio.digital_pad_pressed_poll_count(0u) == 1u);
+    CHECK(sio.digital_pad_poll_count(1u) == 1u);
+
+    auto stop = make_cpu();
+    CHECK(bios.dispatch(stop, 0xB0u, 0x14u, &bus) ==
+          jojo::Ps1HleBiosDispatchStatus::handled);
+    bios.service_pad_vblank(bus, sio);
+    CHECK(sio.digital_pad_poll_count(0u) == 1u);
+}
+
+static void test_b0_15_16_pad_init2_updates_button_destination() {
+    jojo::Ps1HleBios bios{};
+    jojo::Ps1MemoryBus bus{};
+    constexpr std::uint32_t destination = 0x00006200u;
+
+    auto init = make_cpu();
+    init.gpr[4] = 0x20000000u;
+    init.gpr[5] = destination;
+    CHECK(bios.dispatch(init, 0xB0u, 0x15u, &bus) ==
+          jojo::Ps1HleBiosDispatchStatus::handled);
+    CHECK(init.gpr[2] == 2u);
+
+    auto& sio = bus.hardware_services().sio0();
+    sio.set_digital_pad_buttons(0u, 0xBFEFu);
+    sio.set_digital_pad_buttons(1u, 0xFFF7u);
+    bios.service_pad_vblank(bus, sio);
+    CHECK(bus.read32(destination).value == 0xF7FFEFBFu);
+
+    auto read = make_cpu();
+    CHECK(bios.dispatch(read, 0xB0u, 0x16u, &bus) ==
+          jojo::Ps1HleBiosDispatchStatus::handled);
+    CHECK(read.gpr[2] == 0xF7FFEFBFu);
+
+    jojo::Ps1HleBios invalid{};
+    auto rejected = make_cpu();
+    rejected.gpr[4] = 0x12345678u;
+    rejected.gpr[5] = destination;
+    CHECK(invalid.dispatch(rejected, 0xB0u, 0x15u, &bus) ==
+          jojo::Ps1HleBiosDispatchStatus::handled);
+    CHECK(rejected.gpr[2] == 0u);
+}
+
 static void test_b0_5b_changeclearpad() {
     jojo::Ps1HleBios bios{};
 
@@ -731,6 +815,8 @@ int main() {
     test_b0_18_resetentryint_clears_custom_hook();
     test_b0_19_hookentryint();
     test_hookentryint_restores_jmpbuf_and_returnfromexception();
+    test_b0_12_13_14_pad2_vblank_updates_guest_buffers();
+    test_b0_15_16_pad_init2_updates_button_destination();
     test_b0_5b_changeclearpad();
     test_c0_irq_priority_chain_enqueue_and_dequeue();
     test_c0_03_removes_unmodeled_bios_chain_element();

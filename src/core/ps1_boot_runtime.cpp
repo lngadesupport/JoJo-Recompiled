@@ -507,9 +507,11 @@ Ps1BootReport Ps1BootRuntime::run(const Ps1BootOptions& options) noexcept {
 }
 
 void Ps1BootRuntime::signal_vblank() noexcept {
-    bus_.hardware_services().signal_vblank();
+    auto& hardware = bus_.hardware_services();
+    hardware.signal_vblank();
+    bios_.service_pad_vblank(bus_, hardware.sio0());
     cpu_.external_interrupt_pending =
-        bus_.hardware_services().interrupt_pending() ? 0x04u : 0u;
+        hardware.interrupt_pending() ? 0x04u : 0u;
 }
 
 bool Ps1BootRuntime::apply_diagnostic_bios_fallback(Ps1BiosFallback fallback) noexcept {

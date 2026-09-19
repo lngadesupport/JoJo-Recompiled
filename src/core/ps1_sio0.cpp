@@ -466,6 +466,17 @@ void Ps1Sio0::set_digital_pad_buttons(
     }
 }
 
+std::uint16_t Ps1Sio0::sample_digital_pad_buttons(
+    std::uint32_t port) noexcept {
+    if (port >= pad_buttons_.size()) return 0xFFFFu;
+    const auto buttons = pad_buttons_[port];
+    ++digital_pad_poll_count_[port];
+    if (buttons != 0xFFFFu) {
+        ++digital_pad_pressed_poll_count_[port];
+    }
+    return buttons;
+}
+
 Ps1MemoryCard& Ps1Sio0::memory_card(std::uint32_t port) noexcept {
     return memory_cards_[port < memory_cards_.size() ? port : 0u];
 }

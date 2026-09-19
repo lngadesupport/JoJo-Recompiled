@@ -2,6 +2,7 @@
 
 #include "core/r3000a_bus.h"
 #include "core/r3000a_state.h"
+#include "core/ps1_sio0.h"
 
 #include <array>
 #include <cstddef>
@@ -60,6 +61,9 @@ public:
     void deliver_event(
         std::uint32_t event_class,
         std::uint32_t spec) noexcept;
+    void service_pad_vblank(
+        R3000aBus& bus,
+        Ps1Sio0& sio0) noexcept;
 
     [[nodiscard]] std::uint64_t diagnostic_state_hash() const noexcept;
 
@@ -84,6 +88,13 @@ private:
     std::optional<std::uint32_t> interrupt_hook_address_{};
     std::optional<R3000aState> interrupt_resume_state_{};
     std::optional<bool> pad_card_auto_ack_enabled_{};
+    bool pad_initialized_{};
+    bool pad_started_{};
+    bool pad_enabled_{};
+    std::array<std::uint32_t, 2> pad_buffer_addresses_{};
+    std::array<std::uint32_t, 2> pad_buffer_sizes_{};
+    std::optional<std::uint32_t> pad_button_destination_{};
+    std::array<std::uint16_t, 2> pad_last_buttons_{0xFFFFu, 0xFFFFu};
     bool card_initialized_{};
     bool card_started_{};
     bool card_pad_enabled_{};

@@ -25,6 +25,11 @@ constexpr std::uint32_t kB0DisableEvent = 0x0000000Du;
 constexpr std::uint32_t kB0OpenThread = 0x0000000Eu;
 constexpr std::uint32_t kB0CloseThread = 0x0000000Fu;
 constexpr std::uint32_t kB0ChangeThread = 0x00000010u;
+constexpr std::uint32_t kB0InitPad2 = 0x00000012u;
+constexpr std::uint32_t kB0StartPad2 = 0x00000013u;
+constexpr std::uint32_t kB0StopPad2 = 0x00000014u;
+constexpr std::uint32_t kB0PadInit2 = 0x00000015u;
+constexpr std::uint32_t kB0PadDr = 0x00000016u;
 constexpr std::uint32_t kB0ReturnFromException = 0x00000017u;
 constexpr std::uint32_t kB0ResetEntryInt = 0x00000018u;
 constexpr std::uint32_t kB0HookEntryInt = 0x00000019u;
@@ -342,6 +347,101 @@ Ps1HleBiosDispatchStatus Ps1HleBios::dispatch(
     }
 
     if (table_physical == kBiosB0 &&
+        selector == kB0InitPad2) {
+        if (bus == nullptr) {
+            return Ps1HleBiosDispatchStatus::unimplemented;
+        }
+
+        const std::array<std::uint32_t, 2> addresses{
+            cpu.gpr[4], cpu.gpr[6]};
+        const std::array<std::uint32_t, 2> sizes{
+            cpu.gpr[5], cpu.gpr[7]};
+        for (std::size_t port = 0u; port < addresses.size(); ++port) {
+            for (std::uint32_t index = 0u; index < sizes[port]; ++index) {
+                const auto written = bus->write8(
+                    addresses[port] + index, 0u);
+                if (written.status != R3000aBusStatus::ok) {
+                    return Ps1HleBiosDispatchStatus::unimplemented;
+                }
+            }
+        }
+
+        pad_buffer_addresses_ = addresses;
+        pad_buffer_sizes_ = sizes;
+        pad_button_destination_.reset();
+        pad_initialized_ = true;
+        pad_started_ = false;
+        pad_enabled_ = true;
+        pad_last_buttons_ = {0xFFFFu, 0xFFFFu};
+        cpu.gpr[2] = 1u;
+        return_from_bios_call(cpu);
+        return Ps1HleBiosDispatchStatus::handled;
+    }
+
+    if (table_physical == kBiosB0 &&
+        selector == kB0StartPad2) {
+        if (!pad_initialized_) {
+            return Ps1HleBiosDispatchStatus::unimplemented;
+        }
+        pad_started_ = true;
+        cpu.gpr[2] = 1u;
+        return_from_bios_call(cpu);
+        return Ps1HleBiosDispatchStatus::handled;
+    }
+
+    if (table_physical == kBiosB0 &&
+        selector == kB0StopPad2) {
+        pad_started_ = false;
+        cpu.gpr[2] = 1u;
+        return_from_bios_call(cpu);
+        return Ps1HleBiosDispatchStatus::handled;
+    }
+
+    if (table_physical == kBiosB0 &&
+        selector == kB0PadInit2) {
+        const auto type = cpu.gpr[4];
+        if (type != 0x20000000u &&
+            type != 0x20000001u) {
+            cpu.gpr[2] = 0u;
+            return_from_bios_call(cpu);
+            return Ps1HleBiosDispatchStatus::handled;
+        }
+
+        pad_buffer_addresses_ = {};
+        pad_buffer_sizes_ = {};
+        pad_button_destination_ = cpu.gpr[5];
+        pad_initialized_ = true;
+        pad_started_ = true;
+        pad_enabled_ = true;
+        pad_last_buttons_ = {0xFFFFu, 0xFFFFu};
+        cpu.gpr[2] = 2u;
+        return_from_bios_call(cpu);
+        return Ps1HleBiosDispatchStatus::handled;
+    }
+
+    if (table_physical == kBiosB0 &&
+        selector == kB0PadDr) {
+        const auto swap_bytes = [](std::uint16_t value) noexcept {
+            return static_cast<std::uint16_t>(
+                (value << 8u) | (value >> 8u));
+        };
+        const auto packed =
+            static_cast<std::uint32_t>(
+                swap_bytes(pad_last_buttons_[0])) |
+            (static_cast<std::uint32_t>(
+                 swap_bytes(pad_last_buttons_[1])) << 16u);
+        if (pad_button_destination_ && bus != nullptr) {
+            if (bus->write32(*pad_button_destination_, packed).status !=
+                R3000aBusStatus::ok) {
+                return Ps1HleBiosDispatchStatus::unimplemented;
+            }
+        }
+        cpu.gpr[2] = packed;
+        return_from_bios_call(cpu);
+        return Ps1HleBiosDispatchStatus::handled;
+    }
+
+    if (table_physical == kBiosB0 &&
         selector == kB0ReturnFromException) {
         if (!interrupt_resume_state_) {
             return Ps1HleBiosDispatchStatus::unimplemented;
@@ -388,6 +488,7 @@ Ps1HleBiosDispatchStatus Ps1HleBios::dispatch(
         card_initialized_ = true;
         card_started_ = false;
         card_pad_enabled_ = cpu.gpr[4] != 0u;
+        pad_enabled_ = card_pad_enabled_;
         return_from_bios_call(cpu);
         return Ps1HleBiosDispatchStatus::handled;
     }
@@ -556,6 +657,61 @@ void Ps1HleBios::deliver_event(
     }
 }
 
+void Ps1HleBios::service_pad_vblank(
+    R3000aBus& bus,
+    Ps1Sio0& sio0) noexcept {
+    if (!pad_initialized_ || !pad_started_ || !pad_enabled_) {
+        return;
+    }
+
+    for (std::size_t port = 0u; port < pad_last_buttons_.size(); ++port) {
+        const auto buttons =
+            sio0.sample_digital_pad_buttons(
+                static_cast<std::uint32_t>(port));
+        pad_last_buttons_[port] = buttons;
+
+        const auto address = pad_buffer_addresses_[port];
+        if (address == 0u || pad_buffer_sizes_[port] == 0u) {
+            continue;
+        }
+
+        // The retail BIOS PadCard VBlank handler writes the standard
+        // digital-pad record regardless of the initialization buffer size:
+        // status, ID1, low button byte, high button byte.
+        if (bus.write8(address + 0u, 0x00u).status !=
+                R3000aBusStatus::ok ||
+            bus.write8(address + 1u, 0x41u).status !=
+                R3000aBusStatus::ok ||
+            bus.write8(
+                address + 2u,
+                static_cast<std::uint8_t>(buttons)).status !=
+                R3000aBusStatus::ok ||
+            bus.write8(
+                address + 3u,
+                static_cast<std::uint8_t>(buttons >> 8u)).status !=
+                R3000aBusStatus::ok) {
+            pad_started_ = false;
+            return;
+        }
+    }
+
+    if (pad_button_destination_) {
+        const auto swap_bytes = [](std::uint16_t value) noexcept {
+            return static_cast<std::uint16_t>(
+                (value << 8u) | (value >> 8u));
+        };
+        const auto packed =
+            static_cast<std::uint32_t>(
+                swap_bytes(pad_last_buttons_[0])) |
+            (static_cast<std::uint32_t>(
+                 swap_bytes(pad_last_buttons_[1])) << 16u);
+        if (bus.write32(*pad_button_destination_, packed).status !=
+            R3000aBusStatus::ok) {
+            pad_started_ = false;
+        }
+    }
+}
+
 Ps1HleBiosDispatchStatus Ps1HleBios::dispatch_syscall(
     R3000aState& cpu,
     std::uint32_t selector) noexcept {
@@ -594,6 +750,16 @@ std::uint64_t Ps1HleBios::diagnostic_state_hash() const noexcept {
         hash_r3000a_state(hash, *interrupt_resume_state_);
     }
     hash_optional_bool(hash, pad_card_auto_ack_enabled_);
+    hash_bool(hash, pad_initialized_);
+    hash_bool(hash, pad_started_);
+    hash_bool(hash, pad_enabled_);
+    for (const auto address : pad_buffer_addresses_) hash_u32(hash, address);
+    for (const auto size : pad_buffer_sizes_) hash_u32(hash, size);
+    hash_optional_u32(hash, pad_button_destination_);
+    for (const auto buttons : pad_last_buttons_) {
+        hash_byte(hash, static_cast<std::uint8_t>(buttons));
+        hash_byte(hash, static_cast<std::uint8_t>(buttons >> 8u));
+    }
     hash_bool(hash, card_initialized_);
     hash_bool(hash, card_started_);
     hash_bool(hash, card_pad_enabled_);
