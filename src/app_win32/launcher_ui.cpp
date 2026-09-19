@@ -452,22 +452,47 @@ void LauncherUi::paint(
 
     Gdiplus::Graphics graphics(dc);
     graphics.SetSmoothingMode(Gdiplus::SmoothingModeHighQuality);
+    graphics.SetCompositingQuality(Gdiplus::CompositingQualityHighQuality);
     graphics.SetInterpolationMode(Gdiplus::InterpolationModeHighQualityBicubic);
+    graphics.SetPixelOffsetMode(Gdiplus::PixelOffsetModeHighQuality);
     graphics.SetTextRenderingHint(Gdiplus::TextRenderingHintClearTypeGridFit);
 
     if (background_ && background_->GetLastStatus() == Gdiplus::Ok) {
-        constexpr UINT title_crop = 69u;
-        const UINT image_width = background_->GetWidth();
-        const UINT image_height = background_->GetHeight();
-        const UINT cropped_height =
-            image_height > title_crop ? image_height - title_crop : image_height;
+        const float image_width=static_cast<float>(background_->GetWidth());
+        const float image_height=static_cast<float>(background_->GetHeight());
+
+        // The original art includes a mockup title bar. Crop the same
+        // proportional amount at any source resolution, then use a center
+        // "cover" crop so resizing/maximizing never stretches the artwork.
+        float src_x=0.0f;
+        float src_y=image_height*(69.0f/768.0f);
+        float src_w=image_width;
+        float src_h=std::max(1.0f,image_height-src_y);
+        const float dst_aspect=
+            static_cast<float>(client_width)/
+            static_cast<float>(client_height);
+        const float src_aspect=src_w/src_h;
+        if(src_aspect>dst_aspect){
+            const float new_w=src_h*dst_aspect;
+            src_x+=(src_w-new_w)*0.5f;
+            src_w=new_w;
+        }else if(src_aspect<dst_aspect){
+            const float new_h=src_w/dst_aspect;
+            src_y+=(src_h-new_h)*0.5f;
+            src_h=new_h;
+        }
+
         graphics.DrawImage(
             background_.get(),
-            Gdiplus::Rect(0, 0, client_width, client_height),
-            0,
-            image_height > title_crop ? title_crop : 0u,
-            image_width,
-            cropped_height,
+            Gdiplus::RectF(
+                0.0f,
+                0.0f,
+                static_cast<float>(client_width),
+                static_cast<float>(client_height)),
+            src_x,
+            src_y,
+            src_w,
+            src_h,
             Gdiplus::UnitPixel);
     } else {
         Gdiplus::LinearGradientBrush fallback(
@@ -478,9 +503,18 @@ void LauncherUi::paint(
         graphics.FillRectangle(&fallback, 0, 0, client_width, client_height);
     }
 
-    const float sx = static_cast<float>(client_width) / kUiWidth;
-    const float sy = static_cast<float>(client_height) / kUiHeight;
-    graphics.ScaleTransform(sx, sy);
+    // Keep the launcher canvas at its authored 1024x720 aspect. This avoids
+    // stretched text/hitboxes when the window is maximized or resized.
+    const float ui_scale=std::min(
+        static_cast<float>(client_width)/kUiWidth,
+        static_cast<float>(client_height)/kUiHeight);
+    const float ui_offset_x=
+        (static_cast<float>(client_width)-kUiWidth*ui_scale)*0.5f;
+    const float ui_offset_y=
+        (static_cast<float>(client_height)-kUiHeight*ui_scale)*0.5f;
+    Gdiplus::Matrix ui_transform(
+        ui_scale,0.0f,0.0f,ui_scale,ui_offset_x,ui_offset_y);
+    graphics.SetTransform(&ui_transform);
 
     if (screen_ == Screen::main_menu) {
         Gdiplus::SolidBrush veil(Gdiplus::Color(165, 3, 12, 18));
@@ -716,10 +750,18 @@ LauncherUiAction LauncherUi::mouse_up(
     const auto height = client.bottom - client.top;
     if (width <= 0 || height <= 0) return LauncherUiAction::none;
 
-    const float x = static_cast<float>(client_point.x) * kUiWidth /
-        static_cast<float>(width);
-    const float y = static_cast<float>(client_point.y) * kUiHeight /
-        static_cast<float>(height);
+    const float ui_scale=std::min(
+        static_cast<float>(width)/kUiWidth,
+        static_cast<float>(height)/kUiHeight);
+    if(ui_scale<=0.0f) return LauncherUiAction::none;
+    const float ui_offset_x=
+        (static_cast<float>(width)-kUiWidth*ui_scale)*0.5f;
+    const float ui_offset_y=
+        (static_cast<float>(height)-kUiHeight*ui_scale)*0.5f;
+    const float x=
+        (static_cast<float>(client_point.x)-ui_offset_x)/ui_scale;
+    const float y=
+        (static_cast<float>(client_point.y)-ui_offset_y)/ui_scale;
 
     if (screen_ == Screen::online) {
         const auto online_action =
