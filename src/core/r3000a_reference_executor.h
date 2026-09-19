@@ -7,10 +7,16 @@
 
 namespace jojo {
 
+class Ps1MemoryBus;
+
 [[nodiscard]] R3000aStepResult step_r3000a(R3000aState& state, R3000aBus& bus) noexcept;
 [[nodiscard]] R3000aStepResult step_r3000a_prefetched(
     R3000aState& state,
     R3000aBus& bus,
+    std::uint32_t raw_opcode) noexcept;
+[[nodiscard]] R3000aStepResult step_r3000a_prefetched_ps1(
+    R3000aState& state,
+    Ps1MemoryBus& bus,
     std::uint32_t raw_opcode) noexcept;
 [[nodiscard]] R3000aState initialize_r3000a_for_psx_exe(const Ps1ExeMetadata& metadata) noexcept;
 
