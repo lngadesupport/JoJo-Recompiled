@@ -61,6 +61,7 @@ public:
     void signal_vblank() noexcept;
     [[nodiscard]] bool apply_diagnostic_bios_fallback(Ps1BiosFallback fallback) noexcept;
     [[nodiscard]] std::uint64_t diagnostic_state_hash() const noexcept;
+    void display_frame_into(Ps1DisplayFrame& frame) const;
     [[nodiscard]] Ps1DisplayFrame display_frame() const;
     [[nodiscard]] Ps1BootRuntimeState save_state() const;
     [[nodiscard]] Result<void> load_state(const Ps1BootRuntimeState& state);
