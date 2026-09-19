@@ -100,7 +100,7 @@ if(WIN32)
   )
   set_target_properties(jojo_recompiled PROPERTIES OUTPUT_NAME "JOJO-Recompiled")
   target_compile_definitions(jojo_recompiled PRIVATE UNICODE _UNICODE _WIN32_WINNT=0x0A00 WINVER=0x0A00)
-  target_link_libraries(jojo_recompiled PRIVATE jojo_core jojo_win32_input_host shell32 ole32 uuid d3d11 d3dcompiler dxgi xaudio2 gdiplus)
+  target_link_libraries(jojo_recompiled PRIVATE jojo_core jojo_win32_input_host shell32 ole32 uuid d3d11 d3dcompiler dxgi xaudio2 gdiplus winmm)
 
   add_custom_command(TARGET jojo_recompiled POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E make_directory
