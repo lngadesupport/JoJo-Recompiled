@@ -506,20 +506,64 @@ void Ps1HardwareServices::step(std::uint32_t cpu_cycles) noexcept {
         timer.cycle_accumulator += cpu_cycles;
         const auto divisor =
             timer_clock_divisor(channel, timer.mode, gpu_.display_state());
-        while (timer.cycle_accumulator >= divisor) {
-            timer.cycle_accumulator -= divisor;
-            timer.counter = static_cast<std::uint16_t>(timer.counter + 1u);
+        if (timer.cycle_accumulator < divisor) continue;
 
-            if (timer.target != 0u && timer.counter == timer.target) {
-                if ((timer.mode & kTimerIrqAtTarget) != 0u) {
-                    interrupt_status_ = static_cast<std::uint16_t>(
-                        interrupt_status_ | static_cast<std::uint16_t>(1u << (4u + channel)));
-                }
-                if ((timer.mode & kTimerResetAtTarget) != 0u) {
-                    timer.counter = 0u;
-                }
-            }
+        const std::uint32_t ticks =
+            timer.cycle_accumulator / divisor;
+        timer.cycle_accumulator %= divisor;
+        if (ticks == 0u) continue;
+
+        const auto old_counter =
+            static_cast<std::uint32_t>(timer.counter);
+        const auto target =
+            static_cast<std::uint32_t>(timer.target);
+        const bool irq_at_target =
+            (timer.mode & kTimerIrqAtTarget) != 0u;
+        const bool reset_at_target =
+            (timer.mode & kTimerResetAtTarget) != 0u;
+
+        // Most timer activity does not need target-by-target iteration.
+        // Advance arithmetically while preserving the exact 16-bit counter,
+        // target hit, reset-at-target, and IRQ semantics.
+        if (target == 0u || (!irq_at_target && !reset_at_target)) {
+            timer.counter = static_cast<std::uint16_t>(
+                old_counter + ticks);
+            continue;
         }
+
+        std::uint32_t distance_to_target =
+            (target - old_counter) & 0xFFFFu;
+        if (distance_to_target == 0u) {
+            distance_to_target = 0x10000u;
+        }
+
+        if (!reset_at_target) {
+            if (irq_at_target && ticks >= distance_to_target) {
+                interrupt_status_ = static_cast<std::uint16_t>(
+                    interrupt_status_ |
+                    static_cast<std::uint16_t>(1u << (4u + channel)));
+            }
+            timer.counter = static_cast<std::uint16_t>(
+                old_counter + ticks);
+            continue;
+        }
+
+        if (ticks < distance_to_target) {
+            timer.counter = static_cast<std::uint16_t>(
+                old_counter + ticks);
+            continue;
+        }
+
+        if (irq_at_target) {
+            interrupt_status_ = static_cast<std::uint16_t>(
+                interrupt_status_ |
+                static_cast<std::uint16_t>(1u << (4u + channel)));
+        }
+
+        const std::uint32_t remaining =
+            ticks - distance_to_target;
+        timer.counter = static_cast<std::uint16_t>(
+            remaining % target);
     }
 }
 
