@@ -88,6 +88,7 @@ private:
     std::uint32_t read_cycles_remaining_{};
     std::deque<std::uint8_t> parameters_{};
     std::deque<std::uint8_t> responses_{};
+    std::deque<std::uint8_t> sector_buffer_{};
     std::deque<std::uint8_t> data_{};
     std::deque<DeferredResponse> deferred_responses_{};
     std::uint64_t command_count_{};

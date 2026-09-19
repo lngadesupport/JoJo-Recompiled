@@ -222,7 +222,7 @@ int main() {
     CHECK(cd.write8(0x1F801803u, 0x07u).status == jojo::R3000aBusStatus::ok);
     CHECK(cd.write8(0x1F801800u, 0x00u).status == jojo::R3000aBusStatus::ok);
     cd.step(451584u);
-    CHECK(cd.data_bytes_available() == 2048u);
+    CHECK(cd.data_bytes_available() == 0u);
     CHECK(cd.write8(0x1F801800u, 0x01u).status == jojo::R3000aBusStatus::ok);
     CHECK((cd.read8(0x1F801803u).value & 0x07u) == 0x01u);
     const auto read_complete_status = cd.read8(0x1F801801u);
@@ -230,6 +230,8 @@ int main() {
     CHECK((read_complete_status.value & 0x22u) == 0x22u);
     CHECK(cd.write8(0x1F801803u, 0x07u).status == jojo::R3000aBusStatus::ok);
     CHECK(cd.write8(0x1F801800u, 0x00u).status == jojo::R3000aBusStatus::ok);
+    CHECK(cd.write8(0x1F801803u, 0x80u).status == jojo::R3000aBusStatus::ok);
+    CHECK(cd.data_bytes_available() == 2048u);
     std::vector<std::uint32_t> words(512u, 0u);
     CHECK(cd.read_data_words(words) == 512u);
     CHECK(cd.data_bytes_available() == 0u);
@@ -242,7 +244,7 @@ int main() {
     // A second sector must arrive automatically without another ReadN.
     // In mode 80h this is one 150 Hz sector interval (225792 CPU cycles).
     cd.step(225792u);
-    CHECK(cd.data_bytes_available() == 2048u);
+    CHECK(cd.data_bytes_available() == 0u);
     CHECK(cd.write8(0x1F801800u, 0x01u).status ==
           jojo::R3000aBusStatus::ok);
     CHECK((cd.read8(0x1F801803u).value & 0x07u) == 0x01u);
@@ -253,6 +255,9 @@ int main() {
           jojo::R3000aBusStatus::ok);
     CHECK(cd.write8(0x1F801800u, 0x00u).status ==
           jojo::R3000aBusStatus::ok);
+    CHECK(cd.write8(0x1F801803u, 0x80u).status ==
+          jojo::R3000aBusStatus::ok);
+    CHECK(cd.data_bytes_available() == 2048u);
     std::fill(words.begin(), words.end(), 0xFFFFFFFFu);
     CHECK(cd.read_data_words(words) == 512u);
     CHECK(cd.data_bytes_available() == 0u);
@@ -340,7 +345,7 @@ int main() {
         CHECK(raw_cd.write8(0x1F801800u, 0x00u).status ==
               jojo::R3000aBusStatus::ok);
         raw_cd.step(225792u);
-        CHECK(raw_cd.data_bytes_available() == 2340u);
+        CHECK(raw_cd.data_bytes_available() == 0u);
         CHECK(raw_cd.write8(0x1F801800u, 0x01u).status ==
               jojo::R3000aBusStatus::ok);
         CHECK((raw_cd.read8(0x1F801803u).value & 0x07u) == 0x01u);
@@ -350,9 +355,13 @@ int main() {
               jojo::R3000aBusStatus::ok);
         CHECK(raw_cd.write8(0x1F801800u, 0x00u).status ==
               jojo::R3000aBusStatus::ok);
+        CHECK(raw_cd.write8(0x1F801803u, 0x80u).status ==
+              jojo::R3000aBusStatus::ok);
+        CHECK(raw_cd.data_bytes_available() == 2340u);
 
-        std::vector<std::uint32_t> raw_words(585u, 0u);
-        CHECK(raw_cd.read_data_words(raw_words) == 585u);
+        std::vector<std::uint32_t> raw_words(512u, 0u);
+        CHECK(raw_cd.read_data_words(raw_words) == 512u);
+        CHECK(raw_cd.data_bytes_available() == 292u);
         CHECK((raw_words[0] >> 24u) == 0x02u);
         CHECK((raw_words[3] & 0xFFu) ==
               static_cast<std::uint32_t>('A'));
@@ -362,6 +371,9 @@ int main() {
               static_cast<std::uint32_t>('S'));
         CHECK(((raw_words[3] >> 24u) & 0xFFu) ==
               static_cast<std::uint32_t>('E'));
+        CHECK(raw_cd.write8(0x1F801803u, 0x00u).status ==
+              jojo::R3000aBusStatus::ok);
+        CHECK(raw_cd.data_bytes_available() == 0u);
     }
 
     const auto cd_hash_before = cd.diagnostic_state_hash();

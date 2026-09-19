@@ -61,6 +61,7 @@ int main() {
     CHECK(hw.write8(0x1F801800u, 0x00u).status == jojo::R3000aBusStatus::ok);
     hw.step(451584u);
     CHECK(hw.read8(0x1F801801u).status == jojo::R3000aBusStatus::ok);
+    CHECK(hw.write8(0x1F801803u, 0x80u).status == jojo::R3000aBusStatus::ok);
 
     std::vector<std::uint8_t> ram(2u * 1024u * 1024u, 0u);
 

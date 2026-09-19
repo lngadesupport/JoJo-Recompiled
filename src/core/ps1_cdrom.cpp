@@ -138,10 +138,20 @@ R3000aBusResult Ps1CdromController::write8(std::uint32_t physical,
     }
     if (physical == kCdInterrupt) {
         if (index_ == 0u) {
-            // CD request register (bank 0). Bit 7 requests sector-buffer
-            // reads; bit 5/6 are sound-map/write controls. JoJo clears the
-            // register with 00h during bootstrap, which is a valid operation.
+            // HCHPCTL/BFRD: bit7=1 loads the pending sector window into
+            // the host Data FIFO; bit7=0 resets that FIFO.
             request_register_ = value;
+            if ((value & 0x80u) == 0u) {
+                data_.clear();
+            } else {
+                data_.clear();
+                if (!sector_buffer_.empty()) {
+                    data_.assign(
+                        sector_buffer_.begin(),
+                        sector_buffer_.end());
+                    sector_buffer_.clear();
+                }
+            }
             return {R3000aBusStatus::ok, 0u};
         }
         if (index_ == 1u) {
@@ -201,7 +211,9 @@ void Ps1CdromController::step(std::uint32_t cpu_cycles) noexcept {
     // (or 150 Hz in double-speed mode) until Pause/Stop/Init terminates it.
     // Keep at most one unread sector outstanding so DMA observes a stable
     // 2048-byte transfer window.
-    if (!read_stream_active_ || disc_ == nullptr || !data_.empty()) {
+    if (!read_stream_active_ ||
+        disc_ == nullptr ||
+        !sector_buffer_.empty()) {
         return;
     }
     if (read_cycles_remaining_ > cpu_cycles) {
@@ -235,7 +247,9 @@ void Ps1CdromController::step(std::uint32_t cpu_cycles) noexcept {
     }
 
     status_byte_ = reading_status;
-    data_.assign(sector.value.begin(), sector.value.end());
+    sector_buffer_.assign(
+        sector.value.begin(),
+        sector.value.end());
     ++current_lba_;
     read_cycles_remaining_ = sector_cycles();
     interrupt_flags_ = 0x01u;
@@ -322,6 +336,7 @@ std::uint64_t Ps1CdromController::diagnostic_state_hash() const noexcept {
     hash_u64(hash, read_cycles_remaining_);
     hash_bytes(hash, parameters_);
     hash_bytes(hash, responses_);
+    hash_bytes(hash, sector_buffer_);
     hash_bytes(hash, data_);
     hash_u64(hash, deferred_responses_.size());
     for (const auto& pending : deferred_responses_) {
@@ -384,6 +399,7 @@ void Ps1CdromController::stop_read_stream() noexcept {
 void Ps1CdromController::clear_transfer_fifos() noexcept {
     parameters_.clear();
     responses_.clear();
+    sector_buffer_.clear();
     data_.clear();
 }
 
@@ -450,6 +466,7 @@ R3000aBusResult Ps1CdromController::execute_command(std::uint8_t command) noexce
 
         case 0x07u: { // MotorOn
             stop_read_stream();
+            sector_buffer_.clear();
             data_.clear();
             const auto completed_status = static_cast<std::uint8_t>(
                 (status_byte_ & ~kStatActivityMask) | kStatMotor);
@@ -468,6 +485,7 @@ R3000aBusResult Ps1CdromController::execute_command(std::uint8_t command) noexce
 
         case 0x08u: { // Stop
             stop_read_stream();
+            sector_buffer_.clear();
             data_.clear();
             status_byte_ = static_cast<std::uint8_t>(
                 status_byte_ & ~kStatActivityMask);
@@ -486,6 +504,7 @@ R3000aBusResult Ps1CdromController::execute_command(std::uint8_t command) noexce
 
         case 0x09u: { // Pause
             stop_read_stream();
+            sector_buffer_.clear();
             data_.clear();
             const auto completed_status = static_cast<std::uint8_t>(
                 (status_byte_ & ~kStatActivityMask) |

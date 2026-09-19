@@ -53,6 +53,7 @@ int main() {
     CHECK(hw.write8(0x1F801800u, 0x00u).status == jojo::R3000aBusStatus::ok);
     hw.step(451584u);
     CHECK(hw.read8(0x1F801801u).status == jojo::R3000aBusStatus::ok);
+    CHECK(hw.write8(0x1F801803u, 0x80u).status == jojo::R3000aBusStatus::ok);
 
     // Channel 3 CD-ROM -> RAM: 2048 bytes = 512 words.
     const std::uint32_t ch3_enable = 1u << (3u * 4u + 3u);
@@ -86,6 +87,7 @@ int main() {
     CHECK(hw.write8(0x1F801800u, 0x00u).status == jojo::R3000aBusStatus::ok);
     hw.step(451584u);
     CHECK(hw.read8(0x1F801801u).status == jojo::R3000aBusStatus::ok);
+    CHECK(hw.write8(0x1F801803u, 0x80u).status == jojo::R3000aBusStatus::ok);
     CHECK(hw.write32(0x1F8010B8u, 0x11000000u).status == jojo::R3000aBusStatus::ok);
     const auto tail_before = ram.back();
     CHECK(!hw.execute_pending_dma(ram));
