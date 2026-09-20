@@ -34,6 +34,7 @@ jobs:
           jojo_tim_image_tests
           jojo_hit_table_tests
           jojo_fighter_tk_tests
+          jojo_fighter_overlay_tests
           -j2
       - name: Run content migration tests
         run: |
@@ -42,6 +43,7 @@ jobs:
           ./build-migration/jojo_tim_image_tests
           ./build-migration/jojo_hit_table_tests
           ./build-migration/jojo_fighter_tk_tests
+          ./build-migration/jojo_fighter_overlay_tests
       - name: Upload content importer
         uses: actions/upload-artifact@v4
         with:
