@@ -1,4 +1,5 @@
 #include "content/content_migration.h"
+#include "content/hit_table.h"
 #include "content/pac_archive.h"
 #include "content/tim_image.h"
 
@@ -398,6 +399,67 @@ bool useful_ascii_string(std::string_view value) {
     return letters >= 2u;
 }
 
+Result<std::filesystem::path> write_hit_table_json(
+    const std::filesystem::path& output_root,
+    const DiscFileEntry& entry,
+    const std::vector<std::uint8_t>& bytes) {
+    const auto parsed = parse_hit_table(bytes);
+    if (!parsed) {
+        return Result<std::filesystem::path>::failure(
+            parsed.error, parsed.detail);
+    }
+
+    const auto out_path =
+        output_root / "derived" / "hit" /
+        (std::filesystem::path{entry.name}.stem().string() + ".json");
+    std::error_code ec;
+    std::filesystem::create_directories(out_path.parent_path(), ec);
+    if (ec) {
+        return Result<std::filesystem::path>::failure(
+            ErrorCode::io_error,
+            "cannot create HIT output directory: " + ec.message());
+    }
+
+    std::ofstream out(out_path, std::ios::trunc);
+    if (!out) {
+        return Result<std::filesystem::path>::failure(
+            ErrorCode::io_error,
+            "cannot create HIT JSON");
+    }
+
+    out << "{\n"
+        << "  \"source\": \"" << json_escape(entry.path) << "\",\n"
+        << "  \"record_count\": 512,\n"
+        << "  \"nonzero_records\": "
+        << parsed.value.nonzero_records << ",\n"
+        << "  \"field_semantics\": \"unresolved_four_signed_int16\",\n"
+        << "  \"records\": [\n";
+
+    bool first = true;
+    for (std::size_t index = 0u;
+         index < parsed.value.records.size();
+         ++index) {
+        const auto& record = parsed.value.records[index];
+        if (record.empty()) continue;
+        if (!first) out << ",\n";
+        first = false;
+        out << "    {\"index\":" << index
+            << ",\"a\":" << record.a
+            << ",\"b\":" << record.b
+            << ",\"c\":" << record.c
+            << ",\"d\":" << record.d
+            << "}";
+    }
+    out << "\n  ]\n}\n";
+
+    if (!out) {
+        return Result<std::filesystem::path>::failure(
+            ErrorCode::io_error,
+            "failed while writing HIT JSON");
+    }
+    return Result<std::filesystem::path>::success(out_path);
+}
+
 Result<std::filesystem::path> write_candidate_strings(
     const std::filesystem::path& output_root,
     const DiscFileEntry& entry,
@@ -680,6 +742,18 @@ Result<ContentImportSummary> import_game_content(
                         path_relative_to(
                             preview.value, output_root);
                 }
+            } else if (imported.kind == ContentKind::hitbox_data) {
+                const auto hit =
+                    write_hit_table_json(
+                        output_root, entry, bytes.value);
+                if (!hit) {
+                    return Result<ContentImportSummary>::failure(
+                        hit.error,
+                        entry.path + ": " + hit.detail);
+                }
+                imported.derived_path =
+                    path_relative_to(
+                        hit.value, output_root);
             } else if (
                 starts_with(ascii_upper(entry.path), "/M/") &&
                 ends_with(ascii_upper(entry.path), ".BIN")) {
