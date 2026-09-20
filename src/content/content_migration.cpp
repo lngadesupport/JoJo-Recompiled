@@ -4,6 +4,7 @@
 #include "content/hit_table.h"
 #include "content/pac_archive.h"
 #include "content/tim_image.h"
+#include "content/xa_audio.h"
 
 #include "core/disc_media.h"
 #include "core/iso9660.h"
@@ -118,6 +119,171 @@ Result<void> write_bytes(
             "failed while writing content output file: " + path.string());
     }
     return Result<void>::success();
+}
+
+Result<std::vector<std::uint8_t>> read_raw_xa_sectors(
+    const LogicalSectorSource& source,
+    const DiscFileEntry& entry) {
+    if (source.physical_sector_size != xa_raw_sector_size) {
+        return Result<std::vector<std::uint8_t>>::failure(
+            ErrorCode::unsupported_format,
+            "complete XA migration requires a raw 2352-byte BIN/CUE source");
+    }
+
+    const auto sector_count =
+        static_cast<std::uint32_t>(
+            (static_cast<std::uint64_t>(entry.size_bytes) +
+             2047u) /
+            2048u);
+    if (sector_count == 0u) {
+        return Result<std::vector<std::uint8_t>>::success({});
+    }
+    if (static_cast<std::uint64_t>(entry.extent_lba) +
+            sector_count >
+        source.logical_sector_count) {
+        return Result<std::vector<std::uint8_t>>::failure(
+            ErrorCode::invalid_installation,
+            "XA extent runs past the source track");
+    }
+
+    std::ifstream in(source.file_path, std::ios::binary);
+    if (!in) {
+        return Result<std::vector<std::uint8_t>>::failure(
+            ErrorCode::io_error,
+            "cannot open raw XA source track");
+    }
+
+    std::vector<std::uint8_t> raw(
+        static_cast<std::size_t>(sector_count) *
+        xa_raw_sector_size);
+    const auto physical =
+        source.file_offset +
+        static_cast<std::uint64_t>(entry.extent_lba) *
+            source.physical_sector_size;
+    in.seekg(static_cast<std::streamoff>(physical));
+    if (!in) {
+        return Result<std::vector<std::uint8_t>>::failure(
+            ErrorCode::io_error,
+            "cannot seek XA extent");
+    }
+    in.read(
+        reinterpret_cast<char*>(raw.data()),
+        static_cast<std::streamsize>(raw.size()));
+    if (in.gcount() !=
+        static_cast<std::streamsize>(raw.size())) {
+        return Result<std::vector<std::uint8_t>>::failure(
+            ErrorCode::io_error,
+            "short read while loading raw XA sectors");
+    }
+    return Result<std::vector<std::uint8_t>>::success(
+        std::move(raw));
+}
+
+Result<std::filesystem::path> write_xa_audio(
+    const std::filesystem::path& output_root,
+    const LogicalSectorSource& source,
+    const DiscFileEntry& entry) {
+    const auto raw =
+        read_raw_xa_sectors(source, entry);
+    if (!raw) {
+        return Result<std::filesystem::path>::failure(
+            raw.error, raw.detail);
+    }
+    const auto parsed =
+        parse_xa_audio_sectors(raw.value);
+    if (!parsed) {
+        return Result<std::filesystem::path>::failure(
+            parsed.error, parsed.detail);
+    }
+
+    const auto stem =
+        std::filesystem::path{entry.name}.stem().string();
+    const auto directory =
+        output_root / "derived" / "xa" / stem;
+    std::error_code ec;
+    std::filesystem::create_directories(directory, ec);
+    if (ec) {
+        return Result<std::filesystem::path>::failure(
+            ErrorCode::io_error,
+            "cannot create XA output directory: " + ec.message());
+    }
+
+    const auto index_path = directory / "stream.json";
+    std::ofstream index(index_path, std::ios::trunc);
+    if (!index) {
+        return Result<std::filesystem::path>::failure(
+            ErrorCode::io_error,
+            "cannot create XA stream manifest");
+    }
+
+    index << "{\n"
+          << "  \"source\": \"" << json_escape(entry.path) << "\",\n"
+          << "  \"source_representation\": \"raw_mode2_form2\",\n"
+          << "  \"runtime_representation\": \"xa_adpcm_payload_only\",\n"
+          << "  \"total_source_sectors\": "
+          << parsed.value.total_sectors << ",\n"
+          << "  \"audio_sectors\": "
+          << parsed.value.audio_sectors << ",\n"
+          << "  \"skipped_non_audio_sectors\": "
+          << parsed.value.skipped_non_audio_sectors << ",\n"
+          << "  \"streams\": [\n";
+
+    for (std::size_t stream_index = 0u;
+         stream_index < parsed.value.streams.size();
+         ++stream_index) {
+        const auto& stream =
+            parsed.value.streams[stream_index];
+        std::ostringstream filename;
+        filename << "channel_"
+                 << std::setfill('0')
+                 << std::setw(2)
+                 << static_cast<unsigned>(stream.channel)
+                 << ".xaadpcm";
+        const auto payload_path =
+            directory / filename.str();
+        const auto written =
+            write_bytes(payload_path, stream.adpcm_payload);
+        if (!written) {
+            return Result<std::filesystem::path>::failure(
+                written.error, written.detail);
+        }
+
+        index << "    {"
+              << "\"channel\":"
+              << static_cast<unsigned>(stream.channel)
+              << ",\"coding\":"
+              << static_cast<unsigned>(stream.coding)
+              << ",\"sample_rate_hz\":"
+              << stream.sample_rate_hz
+              << ",\"channels\":"
+              << stream.channel_count
+              << ",\"sector_count\":"
+              << stream.packets.size()
+              << ",\"payload\":\""
+              << json_escape(filename.str())
+              << "\",\"eof_sector_indices\":[";
+        bool first_eof = true;
+        for (const auto& packet : stream.packets) {
+            if (!packet.end_of_file) continue;
+            if (!first_eof) index << ",";
+            first_eof = false;
+            index << packet.source_sector_index;
+        }
+        index << "]}";
+        if (stream_index + 1u !=
+            parsed.value.streams.size()) {
+            index << ",";
+        }
+        index << "\n";
+    }
+    index << "  ]\n}\n";
+
+    if (!index) {
+        return Result<std::filesystem::path>::failure(
+            ErrorCode::io_error,
+            "failed while writing XA stream manifest");
+    }
+    return Result<std::filesystem::path>::success(index_path);
 }
 
 Result<void> write_rgba_tga(
@@ -876,7 +1042,21 @@ Result<ContentImportSummary> import_game_content(
             imported.size_bytes = bytes.value.size();
             imported.fnv1a64 = fnv1a64(bytes.value);
 
-            if (imported.kind == ContentKind::graphics_pack) {
+            if (imported.kind == ContentKind::audio_xa) {
+                const auto xa =
+                    write_xa_audio(
+                        output_root,
+                        sectors.value,
+                        entry);
+                if (!xa) {
+                    return Result<ContentImportSummary>::failure(
+                        xa.error,
+                        entry.path + ": " + xa.detail);
+                }
+                imported.derived_path =
+                    path_relative_to(
+                        xa.value, output_root);
+            } else if (imported.kind == ContentKind::graphics_pack) {
                 const auto split =
                     write_pac_split(
                         output_root, entry, bytes.value);
