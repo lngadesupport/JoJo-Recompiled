@@ -31,11 +31,13 @@ jobs:
           --target jojo_content_importer
           jojo_content_migration_tests
           jojo_pac_archive_tests
+          jojo_tim_image_tests
           -j2
       - name: Run content migration tests
         run: |
           ./build-migration/jojo_content_migration_tests
           ./build-migration/jojo_pac_archive_tests
+          ./build-migration/jojo_tim_image_tests
       - name: Upload content importer
         uses: actions/upload-artifact@v4
         with:
