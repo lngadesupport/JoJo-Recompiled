@@ -93,6 +93,17 @@ int main() {
     CHECK((decoded.value[0].rgba8[1] & 0xFFu) == 255u);
     CHECK(((decoded.value[1].rgba8[1] >> 16u) & 0xFFu) == 255u);
 
+    // False sector-aligned TIM signature inside heterogeneous PAC data:
+    // magic/flags look valid but the following block length is impossible.
+    std::vector<std::uint8_t> mixed(4096u, 0u);
+    put32(mixed, 0u, 0x10u);
+    put32(mixed, 4u, 0x08u);
+    put32(mixed, 8u, 0xFFFFFFF0u);
+    const auto scanned_false =
+        jojo::content::decode_sector_aligned_tim_images(mixed);
+    CHECK(static_cast<bool>(scanned_false));
+    CHECK(scanned_false.value.empty());
+
     std::cout << "TIM decoder tests passed\n";
     return 0;
 }
