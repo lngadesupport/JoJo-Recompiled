@@ -89,6 +89,7 @@ add_library(jojo_content_migration STATIC
   src/content/hit_table.cpp
   src/content/pac_archive.cpp
   src/content/tim_image.cpp
+  src/content/xa_audio.cpp
   src/core/disc_media.cpp
   src/core/iso9660.cpp
 )
@@ -193,6 +194,10 @@ add_test(NAME jojo_fighter_tk_tests COMMAND jojo_fighter_tk_tests)
 add_executable(jojo_fighter_overlay_tests tests/test_fighter_overlay.cpp)
 target_link_libraries(jojo_fighter_overlay_tests PRIVATE jojo_content_migration)
 add_test(NAME jojo_fighter_overlay_tests COMMAND jojo_fighter_overlay_tests)
+
+add_executable(jojo_xa_audio_tests tests/test_xa_audio.cpp)
+target_link_libraries(jojo_xa_audio_tests PRIVATE jojo_content_migration)
+add_test(NAME jojo_xa_audio_tests COMMAND jojo_xa_audio_tests)
 add_jojo_test(jojo_iso_tests tests/test_iso9660.cpp)
 add_jojo_test(jojo_media_tests tests/test_disc_media.cpp)
 add_jojo_test(jojo_ps1_system_cnf_tests tests/test_ps1_system_cnf.cpp)
