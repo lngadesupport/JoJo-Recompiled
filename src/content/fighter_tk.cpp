@@ -5,6 +5,12 @@
 namespace jojo::content {
 namespace {
 
+std::uint16_t le16(const std::uint8_t* p) noexcept {
+    return static_cast<std::uint16_t>(
+        static_cast<std::uint16_t>(p[0]) |
+        (static_cast<std::uint16_t>(p[1]) << 8u));
+}
+
 std::uint32_t le32(const std::uint8_t* p) noexcept {
     return static_cast<std::uint32_t>(p[0]) |
         (static_cast<std::uint32_t>(p[1]) << 8u) |
@@ -67,6 +73,51 @@ Result<FighterTkRoots> parse_fighter_tk_roots(
                     "TKC root pointer is outside the TKC blob");
             }
             output.tkc_offset = offset;
+
+            if (offset < tkc.size()) {
+                std::size_t cursor = offset;
+                bool terminated = false;
+                while (cursor + 4u <= tkc.size()) {
+                    const auto leaf_pointer =
+                        le32(tkc.data() + cursor);
+                    cursor += 4u;
+                    if (leaf_pointer == 0xFFFFFFFFu) {
+                        terminated = true;
+                        break;
+                    }
+                    if (leaf_pointer < fighter_tkc_load_base) {
+                        return Result<FighterTkRoots>::failure(
+                            ErrorCode::invalid_installation,
+                            "TKC leaf pointer is below the retail load base");
+                    }
+                    const auto leaf_offset =
+                        leaf_pointer - fighter_tkc_load_base;
+                    if (leaf_offset > tkc.size() ||
+                        tkc.size() - leaf_offset < 10u) {
+                        return Result<FighterTkRoots>::failure(
+                            ErrorCode::invalid_installation,
+                            "TKC leaf record is outside the TKC blob");
+                    }
+
+                    FighterTkRecord record{};
+                    record.source_offset = leaf_offset;
+                    for (std::size_t field = 0u;
+                         field < record.fields.size();
+                         ++field) {
+                        record.fields[field] =
+                            le16(
+                                tkc.data() +
+                                leaf_offset +
+                                field * 2u);
+                    }
+                    output.tkc_records.push_back(record);
+                }
+                if (!terminated) {
+                    return Result<FighterTkRoots>::failure(
+                        ErrorCode::invalid_installation,
+                        "TKC root pointer list is not terminated");
+                }
+            }
         }
 
         // TKD roots are stored as raw offsets/values. In the retail set every
