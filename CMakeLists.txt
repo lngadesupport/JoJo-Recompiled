@@ -84,6 +84,7 @@ target_link_libraries(jojo_ps1_commercial_probe PRIVATE jojo_core)
 # only media/ISO9660 reading is reused offline to extract original game content.
 add_library(jojo_content_migration STATIC
   src/content/content_migration.cpp
+  src/content/pac_archive.cpp
   src/core/disc_media.cpp
   src/core/iso9660.cpp
 )
@@ -168,6 +169,10 @@ add_jojo_test(jojo_tests tests/test_main.cpp)
 add_executable(jojo_content_migration_tests tests/test_content_migration.cpp)
 target_link_libraries(jojo_content_migration_tests PRIVATE jojo_content_migration)
 add_test(NAME jojo_content_migration_tests COMMAND jojo_content_migration_tests)
+
+add_executable(jojo_pac_archive_tests tests/test_pac_archive.cpp)
+target_link_libraries(jojo_pac_archive_tests PRIVATE jojo_content_migration)
+add_test(NAME jojo_pac_archive_tests COMMAND jojo_pac_archive_tests)
 add_jojo_test(jojo_iso_tests tests/test_iso9660.cpp)
 add_jojo_test(jojo_media_tests tests/test_disc_media.cpp)
 add_jojo_test(jojo_ps1_system_cnf_tests tests/test_ps1_system_cnf.cpp)
