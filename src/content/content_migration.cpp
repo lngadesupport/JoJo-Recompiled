@@ -1,4 +1,5 @@
 #include "content/content_migration.h"
+#include "content/fighter_tk.h"
 #include "content/hit_table.h"
 #include "content/pac_archive.h"
 #include "content/tim_image.h"
@@ -399,6 +400,87 @@ bool useful_ascii_string(std::string_view value) {
     return letters >= 2u;
 }
 
+Result<std::filesystem::path> write_fighter_tk_json(
+    const std::filesystem::path& output_root,
+    const DiscFileEntry& entry,
+    const std::vector<std::uint8_t>& tkc,
+    const std::vector<std::uint8_t>& tkd) {
+    const auto parsed = parse_fighter_tk_roots(tkc, tkd);
+    if (!parsed) {
+        return Result<std::filesystem::path>::failure(
+            parsed.error, parsed.detail);
+    }
+
+    auto stem = std::filesystem::path{entry.name}.stem().string();
+    const auto suffix = std::string{"_TKC"};
+    if (stem.size() >= suffix.size() &&
+        stem.compare(
+            stem.size() - suffix.size(),
+            suffix.size(),
+            suffix) == 0) {
+        stem.resize(stem.size() - suffix.size());
+    }
+
+    const auto out_path =
+        output_root / "derived" / "fighter_tk" /
+        (stem + ".json");
+    std::error_code ec;
+    std::filesystem::create_directories(out_path.parent_path(), ec);
+    if (ec) {
+        return Result<std::filesystem::path>::failure(
+            ErrorCode::io_error,
+            "cannot create fighter TK output directory: " + ec.message());
+    }
+
+    std::ofstream out(out_path, std::ios::trunc);
+    if (!out) {
+        return Result<std::filesystem::path>::failure(
+            ErrorCode::io_error,
+            "cannot create fighter TK JSON");
+    }
+
+    out << "{\n"
+        << "  \"source_tkc\": \""
+        << json_escape(entry.path) << "\",\n"
+        << "  \"source_tkd\": \"/M/"
+        << json_escape(stem) << "_TKD.BIN\",\n"
+        << "  \"tkc_original_load_base\": \"0x8010D800\",\n"
+        << "  \"runtime_representation\": \"native_offsets_only\",\n"
+        << "  \"slot_count\": "
+        << fighter_tk_slot_count << ",\n"
+        << "  \"slots\": [\n";
+
+    for (std::size_t index = 0u;
+         index < parsed.value.slots.size();
+         ++index) {
+        const auto& slot = parsed.value.slots[index];
+        out << "    {\"index\":" << index
+            << ",\"tkc_null\":"
+            << (slot.tkc_null ? "true" : "false")
+            << ",\"tkc_offset\":";
+        if (slot.tkc_null) {
+            out << "null";
+        } else {
+            out << slot.tkc_offset;
+        }
+        out << ",\"tkd_value\":"
+            << slot.tkd_value
+            << "}";
+        if (index + 1u != parsed.value.slots.size()) {
+            out << ",";
+        }
+        out << "\n";
+    }
+    out << "  ]\n}\n";
+
+    if (!out) {
+        return Result<std::filesystem::path>::failure(
+            ErrorCode::io_error,
+            "failed while writing fighter TK JSON");
+    }
+    return Result<std::filesystem::path>::success(out_path);
+}
+
 Result<std::filesystem::path> write_hit_table_json(
     const std::filesystem::path& output_root,
     const DiscFileEntry& entry,
@@ -742,6 +824,43 @@ Result<ContentImportSummary> import_game_content(
                         path_relative_to(
                             preview.value, output_root);
                 }
+            } else if (
+                imported.kind == ContentKind::character_data &&
+                ends_with(
+                    ascii_upper(entry.path),
+                    "_TKC.BIN")) {
+                auto tkd_path = entry.path;
+                const auto marker =
+                    tkd_path.rfind("_TKC.BIN");
+                tkd_path.replace(
+                    marker,
+                    std::string{"_TKC.BIN"}.size(),
+                    "_TKD.BIN");
+                const auto tkd =
+                    read_iso9660_file(
+                        image.value,
+                        tkd_path);
+                if (!tkd) {
+                    return Result<ContentImportSummary>::failure(
+                        tkd.error,
+                        entry.path +
+                            ": paired TKD could not be read: " +
+                            tkd.detail);
+                }
+                const auto roots =
+                    write_fighter_tk_json(
+                        output_root,
+                        entry,
+                        bytes.value,
+                        tkd.value);
+                if (!roots) {
+                    return Result<ContentImportSummary>::failure(
+                        roots.error,
+                        entry.path + ": " + roots.detail);
+                }
+                imported.derived_path =
+                    path_relative_to(
+                        roots.value, output_root);
             } else if (imported.kind == ContentKind::hitbox_data) {
                 const auto hit =
                     write_hit_table_json(
