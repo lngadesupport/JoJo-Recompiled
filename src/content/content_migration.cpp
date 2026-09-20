@@ -74,6 +74,10 @@ std::uint64_t fnv1a64(const std::vector<std::uint8_t>& bytes) noexcept {
     return hash;
 }
 
+std::string path_relative_to(
+    const std::filesystem::path& path,
+    const std::filesystem::path& root);
+
 std::filesystem::path raw_output_path(
     const std::filesystem::path& root,
     std::string_view iso_path) {
