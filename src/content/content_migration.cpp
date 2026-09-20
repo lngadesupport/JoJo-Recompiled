@@ -1,4 +1,5 @@
 #include "content/content_migration.h"
+#include "content/fighter_overlay.h"
 #include "content/fighter_tk.h"
 #include "content/hit_table.h"
 #include "content/pac_archive.h"
@@ -398,6 +399,78 @@ bool useful_ascii_string(std::string_view value) {
         }
     }
     return letters >= 2u;
+}
+
+Result<std::filesystem::path> write_fighter_overlay_json(
+    const std::filesystem::path& output_root,
+    const DiscFileEntry& entry,
+    const std::vector<std::uint8_t>& primary,
+    const std::vector<std::uint8_t>& mirror) {
+    const auto analyzed =
+        analyze_fighter_overlay_pair(primary, mirror);
+    if (!analyzed) {
+        return Result<std::filesystem::path>::failure(
+            analyzed.error, analyzed.detail);
+    }
+
+    auto stem = std::filesystem::path{entry.name}.stem().string();
+    const auto out_path =
+        output_root / "derived" / "fighter_overlay" /
+        (stem + ".json");
+    std::error_code ec;
+    std::filesystem::create_directories(out_path.parent_path(), ec);
+    if (ec) {
+        return Result<std::filesystem::path>::failure(
+            ErrorCode::io_error,
+            "cannot create fighter overlay output directory: " +
+                ec.message());
+    }
+
+    std::ofstream out(out_path, std::ios::trunc);
+    if (!out) {
+        return Result<std::filesystem::path>::failure(
+            ErrorCode::io_error,
+            "cannot create fighter overlay JSON");
+    }
+
+    out << "{\n"
+        << "  \"source_primary\": \""
+        << json_escape(entry.path) << "\",\n"
+        << "  \"source_mirror\": \"/M/"
+        << json_escape(stem) << "X.BIN\",\n"
+        << "  \"primary_load_base\": \"0x800DF000\",\n"
+        << "  \"mirror_delta\": \"0x00015800\",\n"
+        << "  \"size\": " << analyzed.value.size_bytes << ",\n"
+        << "  \"verified_direct_relocations\": "
+        << analyzed.value.relocation_count << ",\n"
+        << "  \"residual_pair_difference_bytes\": "
+        << analyzed.value.residual_difference_bytes << ",\n"
+        << "  \"relocations\": [\n";
+
+    for (std::size_t index = 0u;
+         index < analyzed.value.relocations.size();
+         ++index) {
+        const auto& relocation =
+            analyzed.value.relocations[index];
+        out << "    {\"field_offset\":"
+            << relocation.field_offset
+            << ",\"target_offset\":"
+            << relocation.target_offset
+            << "}";
+        if (index + 1u !=
+            analyzed.value.relocations.size()) {
+            out << ",";
+        }
+        out << "\n";
+    }
+    out << "  ]\n}\n";
+
+    if (!out) {
+        return Result<std::filesystem::path>::failure(
+            ErrorCode::io_error,
+            "failed while writing fighter overlay JSON");
+    }
+    return Result<std::filesystem::path>::success(out_path);
 }
 
 Result<std::filesystem::path> write_fighter_tk_json(
@@ -824,6 +897,40 @@ Result<ContentImportSummary> import_game_content(
                         path_relative_to(
                             preview.value, output_root);
                 }
+            } else if (
+                imported.kind == ContentKind::character_data &&
+                entry.name.size() == 8u &&
+                starts_with(ascii_upper(entry.name), "PL") &&
+                ends_with(ascii_upper(entry.name), ".BIN")) {
+                auto mirror_path = entry.path;
+                mirror_path.insert(
+                    mirror_path.size() - 4u,
+                    "X");
+                const auto mirror =
+                    read_iso9660_file(
+                        image.value,
+                        mirror_path);
+                if (!mirror) {
+                    return Result<ContentImportSummary>::failure(
+                        mirror.error,
+                        entry.path +
+                            ": paired PLX could not be read: " +
+                            mirror.detail);
+                }
+                const auto overlay =
+                    write_fighter_overlay_json(
+                        output_root,
+                        entry,
+                        bytes.value,
+                        mirror.value);
+                if (!overlay) {
+                    return Result<ContentImportSummary>::failure(
+                        overlay.error,
+                        entry.path + ": " + overlay.detail);
+                }
+                imported.derived_path =
+                    path_relative_to(
+                        overlay.value, output_root);
             } else if (
                 imported.kind == ContentKind::character_data &&
                 ends_with(
