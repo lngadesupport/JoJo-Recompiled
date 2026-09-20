@@ -1,4 +1,5 @@
 #include "content/content_migration.h"
+#include "content/pac_archive.h"
 
 #include "core/disc_media.h"
 #include "core/iso9660.h"
@@ -115,6 +116,78 @@ std::uint8_t expand5(std::uint16_t value) noexcept {
     value &= 0x1Fu;
     return static_cast<std::uint8_t>(
         (value << 3u) | (value >> 2u));
+}
+
+Result<std::filesystem::path> write_pac_split(
+    const std::filesystem::path& output_root,
+    const DiscFileEntry& entry,
+    const std::vector<std::uint8_t>& bytes) {
+    const auto parsed = parse_pac_archive(bytes);
+    if (!parsed) {
+        return Result<std::filesystem::path>::failure(
+            parsed.error, parsed.detail);
+    }
+
+    const auto stem =
+        std::filesystem::path{entry.name}.stem().string();
+    const auto directory =
+        output_root / "derived" / "pac" / stem;
+    std::error_code ec;
+    std::filesystem::create_directories(directory, ec);
+    if (ec) {
+        return Result<std::filesystem::path>::failure(
+            ErrorCode::io_error,
+            "cannot create PAC output directory: " + ec.message());
+    }
+
+    const auto index_path = directory / "pack.json";
+    std::ofstream index(index_path, std::ios::trunc);
+    if (!index) {
+        return Result<std::filesystem::path>::failure(
+            ErrorCode::io_error,
+            "cannot create PAC chunk manifest");
+    }
+
+    index << "{\n"
+          << "  \"source\": \"" << json_escape(entry.path) << "\",\n"
+          << "  \"chunks\": [\n";
+
+    for (std::size_t i = 0u; i < parsed.value.size(); ++i) {
+        const auto& chunk = parsed.value[i];
+        std::ostringstream filename;
+        filename << std::setfill('0')
+                 << std::setw(3) << i
+                 << "_type_"
+                 << std::hex << std::setw(4)
+                 << chunk.type << std::dec
+                 << ".bin";
+        const auto chunk_path = directory / filename.str();
+        const auto written = write_bytes(chunk_path, chunk.bytes);
+        if (!written) {
+            return Result<std::filesystem::path>::failure(
+                written.error, written.detail);
+        }
+
+        index << "    {\"index\":" << i
+              << ",\"type\":\"0x"
+              << std::hex << std::setw(4)
+              << std::setfill('0') << chunk.type << std::dec
+              << "\",\"size\":" << chunk.bytes.size()
+              << ",\"file\":\""
+              << json_escape(filename.str()) << "\"}";
+        if (i + 1u != parsed.value.size()) {
+            index << ",";
+        }
+        index << "\n";
+    }
+    index << "  ]\n}\n";
+
+    if (!index) {
+        return Result<std::filesystem::path>::failure(
+            ErrorCode::io_error,
+            "failed while writing PAC chunk manifest");
+    }
+    return Result<std::filesystem::path>::success(index_path);
 }
 
 Result<std::filesystem::path> write_palette_preview(
@@ -454,7 +527,19 @@ Result<ContentImportSummary> import_game_content(
             imported.size_bytes = bytes.value.size();
             imported.fnv1a64 = fnv1a64(bytes.value);
 
-            if (imported.kind == ContentKind::palette) {
+            if (imported.kind == ContentKind::graphics_pack) {
+                const auto split =
+                    write_pac_split(
+                        output_root, entry, bytes.value);
+                if (!split) {
+                    return Result<ContentImportSummary>::failure(
+                        split.error,
+                        entry.path + ": " + split.detail);
+                }
+                imported.derived_path =
+                    path_relative_to(
+                        split.value, output_root);
+            } else if (imported.kind == ContentKind::palette) {
                 const auto preview =
                     write_palette_preview(
                         output_root, entry, bytes.value);
