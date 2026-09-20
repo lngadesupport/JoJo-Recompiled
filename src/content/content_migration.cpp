@@ -704,7 +704,25 @@ Result<std::filesystem::path> write_fighter_tk_json(
         }
         out << ",\"tkd_value\":"
             << slot.tkd_value
-            << "}";
+            << ",\"tkc_records\":[";
+        for (std::size_t record_index = 0u;
+             record_index < slot.tkc_records.size();
+             ++record_index) {
+            const auto& record =
+                slot.tkc_records[record_index];
+            if (record_index != 0u) out << ",";
+            out << "{\"source_offset\":"
+                << record.source_offset
+                << ",\"fields\":[";
+            for (std::size_t field = 0u;
+                 field < record.fields.size();
+                 ++field) {
+                if (field != 0u) out << ",";
+                out << record.fields[field];
+            }
+            out << "]}";
+        }
+        out << "]}";
         if (index + 1u != parsed.value.slots.size()) {
             out << ",";
         }
