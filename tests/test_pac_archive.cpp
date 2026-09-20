@@ -54,7 +54,7 @@ int main() {
 
     const auto parsed =
         jojo::content::parse_pac_archive(bytes);
-    CHECK(parsed);
+    CHECK(static_cast<bool>(parsed));
     CHECK(parsed.value.size() == 2u);
     CHECK(parsed.value[0].type == 0x0803u);
     CHECK(parsed.value[0].bytes.size() == 0x200u);
