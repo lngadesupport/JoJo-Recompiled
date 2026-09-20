@@ -866,6 +866,126 @@ std::string path_relative_to(
     return ec ? path.generic_string() : relative.generic_string();
 }
 
+bool fighter_pac_matches(
+    std::string_view filename,
+    std::string_view fighter_id) {
+    const auto upper = ascii_upper(std::string{filename});
+    const std::array<std::string, 7> exact{
+        "KPLN" + std::string{fighter_id} + ".PAC",
+        "PLK" + std::string{fighter_id} + ".PAC",
+        "KOP_PL" + std::string{fighter_id} + ".PAC",
+        "KACCNT" + std::string{fighter_id} + ".PAC",
+        "KACEND" + std::string{fighter_id} + ".PAC",
+        "KRA" + std::string{fighter_id} + ".PAC",
+        "KSYO" + std::string{fighter_id} + ".PAC",
+    };
+    return std::find(
+        exact.begin(), exact.end(), upper) != exact.end();
+}
+
+Result<std::filesystem::path> write_fighter_catalog(
+    const std::filesystem::path& output_root,
+    const ContentImportSummary& summary) {
+    const auto out_path =
+        output_root / "derived" / "fighters" / "catalog.json";
+    std::error_code ec;
+    std::filesystem::create_directories(out_path.parent_path(), ec);
+    if (ec) {
+        return Result<std::filesystem::path>::failure(
+            ErrorCode::io_error,
+            "cannot create fighter catalog directory: " + ec.message());
+    }
+
+    std::ofstream out(out_path, std::ios::trunc);
+    if (!out) {
+        return Result<std::filesystem::path>::failure(
+            ErrorCode::io_error,
+            "cannot create fighter catalog");
+    }
+
+    out << "{\n"
+        << "  \"schema\": 1,\n"
+        << "  \"identity_policy\": "
+           "\"retail_hex_id_only_until_names_are_proven\",\n"
+        << "  \"fighters\": [\n";
+
+    for (std::uint32_t fighter = 0u;
+         fighter < 0x1Au;
+         ++fighter) {
+        std::ostringstream id_stream;
+        id_stream << std::uppercase
+                  << std::hex
+                  << std::setw(2)
+                  << std::setfill('0')
+                  << fighter;
+        const auto id = id_stream.str();
+
+        const auto overlay =
+            output_root / "derived" / "fighter_overlay" /
+            ("PL" + id + ".json");
+        const auto hit =
+            output_root / "derived" / "hit" /
+            ("PL" + id + "_HIT.json");
+        const auto tk =
+            output_root / "derived" / "fighter_tk" /
+            ("PL" + id + ".json");
+
+        out << "    {\n"
+            << "      \"id\": \"" << id << "\",\n"
+            << "      \"overlay\": ";
+        if (std::filesystem::exists(overlay)) {
+            out << "\"" << json_escape(
+                path_relative_to(overlay, output_root)) << "\"";
+        } else {
+            out << "null";
+        }
+        out << ",\n      \"hit_table\": ";
+        if (std::filesystem::exists(hit)) {
+            out << "\"" << json_escape(
+                path_relative_to(hit, output_root)) << "\"";
+        } else {
+            out << "null";
+        }
+        out << ",\n      \"tk\": ";
+        if (std::filesystem::exists(tk)) {
+            out << "\"" << json_escape(
+                path_relative_to(tk, output_root)) << "\"";
+        } else {
+            out << "null";
+        }
+
+        out << ",\n      \"packs\": [";
+        bool first_pack = true;
+        for (const auto& entry : summary.entries) {
+            if (entry.kind != ContentKind::graphics_pack) continue;
+            const auto filename =
+                std::filesystem::path{entry.source_path}
+                    .filename()
+                    .string();
+            if (!fighter_pac_matches(filename, id)) continue;
+            if (!first_pack) out << ",";
+            first_pack = false;
+            out << "{\"source\":\""
+                << json_escape(entry.source_path)
+                << "\",\"derived\":\""
+                << json_escape(entry.derived_path)
+                << "\"}";
+        }
+        out << "]\n"
+            << "    }";
+        if (fighter + 1u != 0x1Au) out << ",";
+        out << "\n";
+    }
+
+    out << "  ]\n}\n";
+    if (!out) {
+        return Result<std::filesystem::path>::failure(
+            ErrorCode::io_error,
+            "failed while writing fighter catalog");
+    }
+    return Result<std::filesystem::path>::success(out_path);
+}
+
 Result<void> write_manifest(
     const std::filesystem::path& output_root,
     const ContentImportSummary& summary) {
@@ -1203,6 +1323,14 @@ Result<ContentImportSummary> import_game_content(
         [](const ContentEntry& lhs, const ContentEntry& rhs) {
             return lhs.source_path < rhs.source_path;
         });
+
+    const auto fighter_catalog =
+        write_fighter_catalog(output_root, summary);
+    if (!fighter_catalog) {
+        return Result<ContentImportSummary>::failure(
+            fighter_catalog.error,
+            fighter_catalog.detail);
+    }
 
     const auto manifest = write_manifest(output_root, summary);
     if (!manifest) {
