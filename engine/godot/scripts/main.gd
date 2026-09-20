@@ -195,7 +195,8 @@ func _load_content_manifest() -> void:
         "UI DATA         %d\n" +
         "XA AUDIO        %d\n" +
         "PALETTES        %d\n" +
-        "COLOR METADATA  %d\n\n" +
+        "COLOR METADATA  %d\n" +
+        "FIGHTERS        %d\n\n" +
         "Original PS1 executable/system files are excluded from " +
         "this runtime by design."
     ) % [
@@ -207,6 +208,7 @@ func _load_content_manifest() -> void:
         registry.count_kind("audio_xa"),
         registry.count_kind("palette"),
         registry.count_kind("color_metadata"),
+        registry.fighters.size(),
     ]
 
 func _select_tab(index: int) -> void:
