@@ -1,5 +1,6 @@
 #include "content/content_migration.h"
 #include "content/pac_archive.h"
+#include "content/tim_image.h"
 
 #include "core/disc_media.h"
 #include "core/iso9660.h"
@@ -112,6 +113,67 @@ Result<void> write_bytes(
     return Result<void>::success();
 }
 
+Result<void> write_rgba_tga(
+    const std::filesystem::path& path,
+    std::uint32_t width,
+    std::uint32_t height,
+    const std::vector<std::uint32_t>& rgba8) {
+    if (width == 0u || height == 0u ||
+        rgba8.size() !=
+            static_cast<std::size_t>(width) * height ||
+        width > 0xFFFFu || height > 0xFFFFu) {
+        return Result<void>::failure(
+            ErrorCode::invalid_argument,
+            "invalid RGBA image dimensions");
+    }
+
+    std::error_code ec;
+    std::filesystem::create_directories(path.parent_path(), ec);
+    if (ec) {
+        return Result<void>::failure(
+            ErrorCode::io_error,
+            "cannot create image output directory: " + ec.message());
+    }
+
+    std::ofstream out(path, std::ios::binary | std::ios::trunc);
+    if (!out) {
+        return Result<void>::failure(
+            ErrorCode::io_error,
+            "cannot create TGA output: " + path.string());
+    }
+
+    std::array<std::uint8_t, 18> header{};
+    header[2] = 2u;
+    header[12] = static_cast<std::uint8_t>(width);
+    header[13] = static_cast<std::uint8_t>(width >> 8u);
+    header[14] = static_cast<std::uint8_t>(height);
+    header[15] = static_cast<std::uint8_t>(height >> 8u);
+    header[16] = 32u;
+    header[17] = 0x28u; // top-left origin + 8 alpha bits
+    out.write(
+        reinterpret_cast<const char*>(header.data()),
+        static_cast<std::streamsize>(header.size()));
+
+    for (const auto rgba : rgba8) {
+        const std::array<std::uint8_t, 4> bgra{
+            static_cast<std::uint8_t>(rgba >> 16u),
+            static_cast<std::uint8_t>(rgba >> 8u),
+            static_cast<std::uint8_t>(rgba),
+            static_cast<std::uint8_t>(rgba >> 24u),
+        };
+        out.write(
+            reinterpret_cast<const char*>(bgra.data()),
+            static_cast<std::streamsize>(bgra.size()));
+    }
+
+    if (!out) {
+        return Result<void>::failure(
+            ErrorCode::io_error,
+            "failed while writing TGA output: " + path.string());
+    }
+    return Result<void>::success();
+}
+
 std::uint8_t expand5(std::uint16_t value) noexcept {
     value &= 0x1Fu;
     return static_cast<std::uint8_t>(
@@ -168,13 +230,79 @@ Result<std::filesystem::path> write_pac_split(
                 written.error, written.detail);
         }
 
+        const auto tim_images =
+            decode_sector_aligned_tim_images(chunk.bytes);
+        if (!tim_images) {
+            return Result<std::filesystem::path>::failure(
+                tim_images.error,
+                entry.path + " chunk " + std::to_string(i) +
+                    ": " + tim_images.detail);
+        }
+
         index << "    {\"index\":" << i
               << ",\"type\":\"0x"
               << std::hex << std::setw(4)
               << std::setfill('0') << chunk.type << std::dec
               << "\",\"size\":" << chunk.bytes.size()
               << ",\"file\":\""
-              << json_escape(filename.str()) << "\"}";
+              << json_escape(filename.str()) << "\"";
+
+        if (!tim_images.value.empty()) {
+            index << ",\"tim_images\":[";
+            const auto tim_directory =
+                output_root / "derived" / "tim" / stem;
+            for (std::size_t tim_index = 0u;
+                 tim_index < tim_images.value.size();
+                 ++tim_index) {
+                const auto& image = tim_images.value[tim_index];
+                std::ostringstream tim_name;
+                tim_name << std::setfill('0')
+                         << std::setw(3) << i
+                         << "_type_"
+                         << std::hex << std::setw(4)
+                         << chunk.type << std::dec
+                         << "_off_" << image.source_offset
+                         << "_p" << image.palette_index
+                         << ".tga";
+                const auto tim_path =
+                    tim_directory / tim_name.str();
+                const auto image_written =
+                    write_rgba_tga(
+                        tim_path,
+                        image.width,
+                        image.height,
+                        image.rgba8);
+                if (!image_written) {
+                    return Result<std::filesystem::path>::failure(
+                        image_written.error,
+                        image_written.detail);
+                }
+
+                if (tim_index != 0u) index << ",";
+                index << "{"
+                      << "\"path\":\""
+                      << json_escape(
+                          path_relative_to(
+                              tim_path, output_root))
+                      << "\",\"source_offset\":"
+                      << image.source_offset
+                      << ",\"flags\":" << image.flags
+                      << ",\"width\":" << image.width
+                      << ",\"height\":" << image.height
+                      << ",\"palette\":"
+                      << image.palette_index
+                      << ",\"palette_count\":"
+                      << image.palette_count
+                      << ",\"has_stp\":"
+                      << (image.has_semitransparent_pixels
+                              ? "true"
+                              : "false")
+                      << "}";
+            }
+            index << "]";
+        }
+
+        index << "}";
         if (i + 1u != parsed.value.size()) {
             index << ",";
         }
