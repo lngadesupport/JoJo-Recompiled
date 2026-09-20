@@ -23,4 +23,5 @@ textures/default_filters/use_nearest_mipmap_filter=false
 [jojo]
 target_presentation_fps=240
 content_manifest="res://content/manifest.json"
+fighter_catalog="res://content/derived/fighters/catalog.json"
 ps1_runtime_enabled=false
