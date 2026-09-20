@@ -361,11 +361,11 @@ decode_sector_aligned_tim_images(
 
         const auto decoded = decode_tim_at(bytes, offset);
         if (!decoded) {
-            return Result<std::vector<TimDecodedImage>>::failure(
-                decoded.error,
-                "TIM at sector-aligned offset " +
-                    std::to_string(offset) + ": " +
-                    decoded.detail);
+            // PAC chunks are heterogeneous and may contain an accidental
+            // 0x10 + valid-looking flags at a 2048-byte boundary. Treat this
+            // function as a scanner: only structurally complete TIM records
+            // are assets, while false signatures belong to other formats.
+            continue;
         }
 
         result.insert(
