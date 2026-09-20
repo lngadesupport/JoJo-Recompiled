@@ -684,9 +684,13 @@ Result<std::filesystem::path> write_fighter_tk_json(
         << "  \"source_tkd\": \"/M/"
         << json_escape(stem) << "_TKD.BIN\",\n"
         << "  \"tkc_original_load_base\": \"0x8010D800\",\n"
-        << "  \"runtime_representation\": \"native_offsets_only\",\n"
+        << "  \"runtime_representation\": \"native_offsets_and_records\",\n"
         << "  \"slot_count\": "
         << fighter_tk_slot_count << ",\n"
+        << "  \"tkc_end_offset\": "
+        << parsed.value.tkc_end_offset << ",\n"
+        << "  \"tkd_block_size\": "
+        << parsed.value.tkd_block_size << ",\n"
         << "  \"slots\": [\n";
 
     for (std::size_t index = 0u;
@@ -694,17 +698,12 @@ Result<std::filesystem::path> write_fighter_tk_json(
          ++index) {
         const auto& slot = parsed.value.slots[index];
         out << "    {\"index\":" << index
-            << ",\"tkc_null\":"
-            << (slot.tkc_null ? "true" : "false")
-            << ",\"tkc_offset\":";
-        if (slot.tkc_null) {
-            out << "null";
-        } else {
-            out << slot.tkc_offset;
-        }
-        out << ",\"tkd_value\":"
-            << slot.tkd_value
+            << ",\"tkc_offset\":"
+            << slot.tkc_offset
+            << ",\"tkd_offset\":"
+            << slot.tkd_offset
             << ",\"tkc_records\":[";
+
         for (std::size_t record_index = 0u;
              record_index < slot.tkc_records.size();
              ++record_index) {
@@ -722,7 +721,27 @@ Result<std::filesystem::path> write_fighter_tk_json(
             }
             out << "]}";
         }
+
+        out << "],\"tkd_records\":[";
+        for (std::size_t record_index = 0u;
+             record_index < slot.tkd_records.size();
+             ++record_index) {
+            const auto& record =
+                slot.tkd_records[record_index];
+            if (record_index != 0u) out << ",";
+            out << "{\"source_offset\":"
+                << record.source_offset
+                << ",\"fields\":[";
+            for (std::size_t field = 0u;
+                 field < record.fields.size();
+                 ++field) {
+                if (field != 0u) out << ",";
+                out << record.fields[field];
+            }
+            out << "]}";
+        }
         out << "]}";
+
         if (index + 1u != parsed.value.slots.size()) {
             out << ",";
         }
