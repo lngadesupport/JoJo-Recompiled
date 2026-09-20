@@ -84,7 +84,7 @@ func _build_interface() -> void:
     tabs.add_theme_constant_override("separation", 10)
     add_child(tabs)
 
-    for index in TAB_NAMES.size():
+    for index in range(TAB_NAMES.size()):
         var button := Button.new()
         button.text = TAB_NAMES[index]
         button.custom_minimum_size = Vector2(190, 50)
@@ -211,5 +211,5 @@ func _load_content_manifest() -> void:
 
 func _select_tab(index: int) -> void:
     selected_tab = index
-    for i in tab_buttons.size():
+    for i in range(tab_buttons.size()):
         tab_buttons[i].disabled = i == selected_tab
