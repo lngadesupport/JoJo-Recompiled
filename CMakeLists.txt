@@ -80,6 +80,24 @@ endif()
 add_executable(jojo_ps1_commercial_probe src/tools/ps1_commercial_probe.cpp)
 target_link_libraries(jojo_ps1_commercial_probe PRIVATE jojo_core)
 
+# Content-only migration toolchain. This deliberately does not link jojo_core:
+# only media/ISO9660 reading is reused offline to extract original game content.
+add_library(jojo_content_migration STATIC
+  src/content/content_migration.cpp
+  src/content/fighter_overlay.cpp
+  src/content/fighter_tk.cpp
+  src/content/hit_table.cpp
+  src/content/pac_archive.cpp
+  src/content/tim_image.cpp
+  src/content/xa_audio.cpp
+  src/core/disc_media.cpp
+  src/core/iso9660.cpp
+)
+target_include_directories(jojo_content_migration PUBLIC src)
+
+add_executable(jojo_content_importer src/tools/content_importer.cpp)
+target_link_libraries(jojo_content_importer PRIVATE jojo_content_migration)
+
 add_executable(jojo_online_directory_server src/tools/online_directory_server.cpp)
 target_link_libraries(jojo_online_directory_server PRIVATE jojo_core)
 if(WIN32)
@@ -152,6 +170,34 @@ function(add_jojo_test target source)
 endfunction()
 
 add_jojo_test(jojo_tests tests/test_main.cpp)
+
+add_executable(jojo_content_migration_tests tests/test_content_migration.cpp)
+target_link_libraries(jojo_content_migration_tests PRIVATE jojo_content_migration)
+add_test(NAME jojo_content_migration_tests COMMAND jojo_content_migration_tests)
+
+add_executable(jojo_pac_archive_tests tests/test_pac_archive.cpp)
+target_link_libraries(jojo_pac_archive_tests PRIVATE jojo_content_migration)
+add_test(NAME jojo_pac_archive_tests COMMAND jojo_pac_archive_tests)
+
+add_executable(jojo_tim_image_tests tests/test_tim_image.cpp)
+target_link_libraries(jojo_tim_image_tests PRIVATE jojo_content_migration)
+add_test(NAME jojo_tim_image_tests COMMAND jojo_tim_image_tests)
+
+add_executable(jojo_hit_table_tests tests/test_hit_table.cpp)
+target_link_libraries(jojo_hit_table_tests PRIVATE jojo_content_migration)
+add_test(NAME jojo_hit_table_tests COMMAND jojo_hit_table_tests)
+
+add_executable(jojo_fighter_tk_tests tests/test_fighter_tk.cpp)
+target_link_libraries(jojo_fighter_tk_tests PRIVATE jojo_content_migration)
+add_test(NAME jojo_fighter_tk_tests COMMAND jojo_fighter_tk_tests)
+
+add_executable(jojo_fighter_overlay_tests tests/test_fighter_overlay.cpp)
+target_link_libraries(jojo_fighter_overlay_tests PRIVATE jojo_content_migration)
+add_test(NAME jojo_fighter_overlay_tests COMMAND jojo_fighter_overlay_tests)
+
+add_executable(jojo_xa_audio_tests tests/test_xa_audio.cpp)
+target_link_libraries(jojo_xa_audio_tests PRIVATE jojo_content_migration)
+add_test(NAME jojo_xa_audio_tests COMMAND jojo_xa_audio_tests)
 add_jojo_test(jojo_iso_tests tests/test_iso9660.cpp)
 add_jojo_test(jojo_media_tests tests/test_disc_media.cpp)
 add_jojo_test(jojo_ps1_system_cnf_tests tests/test_ps1_system_cnf.cpp)
