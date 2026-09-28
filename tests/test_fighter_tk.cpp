@@ -117,15 +117,21 @@ int main() {
     CHECK(parsed.value.slots[0].tkc_offset == 0x80u);
     CHECK(parsed.value.slots[0].tkc_records.size() == 1u);
     CHECK(parsed.value.slots[0].tkc_records[0].source_offset == 0x90u);
-    CHECK(parsed.value.slots[0].tkc_records[0].fields[0] == 0x828Au);
-    CHECK(parsed.value.slots[0].tkc_records[0].fields[1] == 0x0055u);
-    CHECK(parsed.value.slots[0].tkc_records[0].fields[3] == 0x0001u);
-    CHECK(parsed.value.slots[0].tkc_records[0].fields[4] == 0x0002u);
+    CHECK(parsed.value.slots[0].tkc_records[0].raw_words[0] == 0x828Au);
+    CHECK(parsed.value.slots[0].tkc_records[0].raw_words[1] == 0x0055u);
+    CHECK(parsed.value.slots[0].tkc_records[0].raw_words[3] == 0x0001u);
+    CHECK(parsed.value.slots[0].tkc_records[0].raw_words[4] == 0x0002u);
+    CHECK(parsed.value.slots[0].tkc_records[0].opcode == 0x8Au);
+    CHECK(parsed.value.slots[0].tkc_records[0].variant == 0x82u);
+    CHECK(parsed.value.slots[0].tkc_records[0].reference_index == 0x55u);
+    CHECK(parsed.value.slots[0].tkc_records[0].reference_flags == 0u);
+    CHECK(parsed.value.slots[0].tkc_records[0].parameter3 == 1u);
+    CHECK(parsed.value.slots[0].tkc_records[0].parameter4 == 2u);
     CHECK(parsed.value.slots[0].tkd_offset == 108u);
     CHECK(parsed.value.slots[0].tkd_records.size() == 2u);
-    CHECK(parsed.value.slots[0].tkd_records[0].fields[0] == -20);
+    CHECK(parsed.value.slots[0].tkd_records[0].raw_words[0] == -20);
     CHECK(parsed.value.slots[0].tkd_records[0].fields[2] == 95);
-    CHECK(parsed.value.slots[0].tkd_records[1].fields[0] == -28);
+    CHECK(parsed.value.slots[0].tkd_records[1].raw_words[0] == -28);
     CHECK(parsed.value.slots[25].tkd_offset == 108u + 25u * 16u);
 
     put32(tkd, 0u, 10u);
