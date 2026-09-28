@@ -1,4 +1,5 @@
 #include "content/content_migration.h"
+#include "content/fighter_native_links.h"
 #include "content/fighter_overlay.h"
 #include "content/fighter_tk.h"
 #include "content/hit_table.h"
@@ -1263,6 +1264,200 @@ std::string path_relative_to(
     return ec ? path.generic_string() : relative.generic_string();
 }
 
+bool summary_has_source(
+    const ContentImportSummary& summary,
+    std::string_view path) {
+    return std::any_of(
+        summary.entries.begin(),
+        summary.entries.end(),
+        [path](const ContentEntry& entry) {
+            return entry.source_path == path;
+        });
+}
+
+Result<std::filesystem::path> write_fighter_native_links_json(
+    const std::filesystem::path& output_root,
+    const Iso9660Image& image,
+    const ContentImportSummary& summary,
+    std::string_view fighter_id) {
+    const auto hit_path =
+        std::string{"/M/PL"} + std::string{fighter_id} + "_HIT.BIN";
+    const auto tkc_path =
+        std::string{"/M/PL"} + std::string{fighter_id} + "_TKC.BIN";
+    const auto tkd_path =
+        std::string{"/M/PL"} + std::string{fighter_id} + "_TKD.BIN";
+    const auto kpln_path =
+        std::string{"/P/KPLN"} + std::string{fighter_id} + ".PAC";
+
+    if (!summary_has_source(summary, hit_path) ||
+        !summary_has_source(summary, tkc_path) ||
+        !summary_has_source(summary, tkd_path) ||
+        !summary_has_source(summary, kpln_path)) {
+        return Result<std::filesystem::path>::success({});
+    }
+
+    const auto hit_bytes =
+        read_iso9660_file(image, hit_path);
+    const auto tkc_bytes =
+        read_iso9660_file(image, tkc_path);
+    const auto tkd_bytes =
+        read_iso9660_file(image, tkd_path);
+    const auto kpln_bytes =
+        read_iso9660_file(image, kpln_path);
+    if (!hit_bytes || !tkc_bytes || !tkd_bytes || !kpln_bytes) {
+        return Result<std::filesystem::path>::failure(
+            ErrorCode::io_error,
+            "failed to reload fighter source data for native link analysis");
+    }
+
+    const auto hit = parse_hit_table(hit_bytes.value);
+    const auto tk =
+        parse_fighter_tk_roots(
+            tkc_bytes.value,
+            tkd_bytes.value);
+    const auto kpln =
+        parse_pac_archive(kpln_bytes.value);
+    if (!hit || !tk || !kpln) {
+        return Result<std::filesystem::path>::failure(
+            ErrorCode::invalid_installation,
+            "fighter source data failed structural parsing for native link analysis");
+    }
+
+    const PacChunk* group_chunk = nullptr;
+    for (const auto& chunk : kpln.value) {
+        if (chunk.type == 0x0800u) {
+            group_chunk = &chunk;
+            break;
+        }
+    }
+    if (!group_chunk) {
+        return Result<std::filesystem::path>::failure(
+            ErrorCode::invalid_installation,
+            "KPLN pack is missing required 0x0800 group table");
+    }
+
+    const auto graphics =
+        parse_kpln_group_table_0800(group_chunk->bytes);
+    if (!graphics) {
+        return Result<std::filesystem::path>::failure(
+            graphics.error,
+            "KPLN 0x0800 failed native link parsing: " +
+                graphics.detail);
+    }
+
+    const auto analysis =
+        analyze_fighter_native_links(
+            hit.value,
+            tk.value,
+            graphics.value);
+
+    const auto directory =
+        output_root / "derived" / "fighters" /
+        std::string{fighter_id};
+    std::error_code ec;
+    std::filesystem::create_directories(directory, ec);
+    if (ec) {
+        return Result<std::filesystem::path>::failure(
+            ErrorCode::io_error,
+            "cannot create fighter native link directory: " +
+                ec.message());
+    }
+
+    const auto out_path = directory / "native_links.json";
+    std::ofstream out(out_path, std::ios::trunc);
+    if (!out) {
+        return Result<std::filesystem::path>::failure(
+            ErrorCode::io_error,
+            "cannot create fighter native link JSON");
+    }
+
+    out << "{\n"
+        << "  \"schema\": 1,\n"
+        << "  \"fighter_id\": \""
+        << json_escape(fighter_id) << "\",\n"
+        << "  \"policy\": "
+           "\"structural_candidates_only_until_consumer_semantics_are_proven\",\n"
+        << "  \"tkc_record_count\": "
+        << analysis.tkc_record_count << ",\n"
+        << "  \"tkc_hit_index_in_range_count\": "
+        << analysis.tkc_hit_index_in_range_count << ",\n"
+        << "  \"tkc_nonempty_hit_candidate_count\": "
+        << analysis.tkc_nonempty_hit_candidate_count << ",\n"
+        << "  \"tkd_record_count\": "
+        << analysis.tkd_record_count << ",\n"
+        << "  \"tkd_graphics_index_in_range_count\": "
+        << analysis.tkd_graphics_index_in_range_count << ",\n"
+        << "  \"graphics_group_count\": "
+        << graphics.value.records.size() << ",\n"
+        << "  \"tkc_hit_candidates\": [\n";
+
+    for (std::size_t index = 0u;
+         index < analysis.tkc_hit_candidates.size();
+         ++index) {
+        const auto& candidate =
+            analysis.tkc_hit_candidates[index];
+        out << "    {\"slot\":"
+            << candidate.slot_index
+            << ",\"record\":"
+            << candidate.record_index
+            << ",\"candidate_hit_table_index\":"
+            << candidate.hit_index
+            << ",\"target_in_range\":"
+            << (candidate.target_in_range ? "true" : "false")
+            << ",\"target_nonempty\":"
+            << (candidate.target_nonempty ? "true" : "false");
+
+        if (candidate.target_in_range &&
+            candidate.target_nonempty) {
+            const auto& rectangle =
+                hit.value.records[candidate.hit_index];
+            out << ",\"candidate_rect\":{"
+                << "\"x_offset\":" << rectangle.x_offset
+                << ",\"y_offset\":" << rectangle.y_offset
+                << ",\"width\":" << rectangle.width
+                << ",\"height\":" << rectangle.height
+                << "}";
+        }
+        out << "}";
+        if (index + 1u !=
+            analysis.tkc_hit_candidates.size()) {
+            out << ",";
+        }
+        out << "\n";
+    }
+
+    out << "  ],\n"
+        << "  \"tkd_graphics_candidates\": [\n";
+    for (std::size_t index = 0u;
+         index < analysis.tkd_graphics_candidates.size();
+         ++index) {
+        const auto& candidate =
+            analysis.tkd_graphics_candidates[index];
+        out << "    {\"slot\":"
+            << candidate.slot_index
+            << ",\"record\":"
+            << candidate.record_index
+            << ",\"candidate_graphics_group_index\":"
+            << candidate.group_index
+            << ",\"target_in_range\":"
+            << (candidate.target_in_range ? "true" : "false")
+            << "}";
+        if (index + 1u !=
+            analysis.tkd_graphics_candidates.size()) {
+            out << ",";
+        }
+        out << "\n";
+    }
+    out << "  ]\n}\n";
+
+    if (!out) {
+        return Result<std::filesystem::path>::failure(
+            ErrorCode::io_error,
+            "failed while writing fighter native link JSON");
+    }
+    return Result<std::filesystem::path>::success(out_path);
+}
+
 bool fighter_pac_matches(
     std::string_view filename,
     std::string_view fighter_id) {
@@ -1329,6 +1524,9 @@ Result<std::filesystem::path> write_fighter_catalog(
         const auto graphics =
             output_root / "derived" / "kpln" /
             ("KPLN" + id) / "graphics.json";
+        const auto native_links =
+            output_root / "derived" / "fighters" /
+            id / "native_links.json";
 
         out << "    {\n"
             << "      \"id\": \"" << id << "\",\n"
@@ -1357,6 +1555,13 @@ Result<std::filesystem::path> write_fighter_catalog(
         if (std::filesystem::exists(graphics)) {
             out << "\"" << json_escape(
                 path_relative_to(graphics, output_root)) << "\"";
+        } else {
+            out << "null";
+        }
+        out << ",\n      \"native_links\": ";
+        if (std::filesystem::exists(native_links)) {
+            out << "\"" << json_escape(
+                path_relative_to(native_links, output_root)) << "\"";
         } else {
             out << "null";
         }
@@ -1767,6 +1972,29 @@ Result<ContentImportSummary> import_game_content(
         [](const ContentEntry& lhs, const ContentEntry& rhs) {
             return lhs.source_path < rhs.source_path;
         });
+
+    for (std::uint32_t fighter = 0u;
+         fighter < 0x1Au;
+         ++fighter) {
+        std::ostringstream id_stream;
+        id_stream << std::uppercase
+                  << std::hex
+                  << std::setw(2)
+                  << std::setfill('0')
+                  << fighter;
+        const auto links =
+            write_fighter_native_links_json(
+                output_root,
+                image.value,
+                summary,
+                id_stream.str());
+        if (!links) {
+            return Result<ContentImportSummary>::failure(
+                links.error,
+                "fighter " + id_stream.str() +
+                    " native links: " + links.detail);
+        }
+    }
 
     const auto fighter_catalog =
         write_fighter_catalog(output_root, summary);
