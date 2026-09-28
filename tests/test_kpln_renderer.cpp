@@ -75,6 +75,30 @@ int main() {
         rendered.value.rgba8[20u];
     CHECK((transparent >> 24u) == 0u);
 
+    // A recovered PL context can override the default side CLUT row.
+    jojo::content::KplnClutWindow custom_row_clut = clut;
+    custom_row_clut.bgr555[
+        static_cast<std::size_t>(
+            0x1e9u - jojo::content::kpln_clut_base_y) *
+            custom_row_clut.width +
+        selector_x] = 0x7C00u;
+    const auto custom_clut_row =
+        jojo::content::render_kpln_cached_frame(
+            frame,
+            custom_row_clut,
+            0u,
+            0u,
+            0u,
+            0u,
+            0u,
+            0x1e9u);
+    CHECK(static_cast<bool>(custom_clut_row));
+    const auto custom_pixel =
+        custom_clut_row.value.rgba8[0];
+    CHECK((custom_pixel & 0xFFu) == 0u);
+    CHECK(((custom_pixel >> 8u) & 0xFFu) == 0u);
+    CHECK(((custom_pixel >> 16u) & 0xFFu) == 255u);
+
     jojo::content::KplnDirectFrame direct_frame{};
     jojo::content::KplnDirectPart direct_part{};
     direct_part.header.columns = 1u;
