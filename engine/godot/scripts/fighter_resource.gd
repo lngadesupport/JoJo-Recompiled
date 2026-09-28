@@ -6,6 +6,7 @@ extends Resource
 @export var hit_table_path: String = ""
 @export var tk_path: String = ""
 @export var pack_paths: PackedStringArray = PackedStringArray()
+@export var visual_paths: PackedStringArray = PackedStringArray()
 
 var _overlay_cache: Dictionary = {}
 var _hit_cache: Dictionary = {}
@@ -29,6 +30,14 @@ static func from_catalog_entry(entry: Dictionary) -> JojoFighterResource:
                 if not derived.is_empty():
                     resource.pack_paths.append(
                         _normalize_content_path(derived))
+
+    var visuals = entry.get("visuals", [])
+    if visuals is Array:
+        for visual in visuals:
+            var visual_path := str(visual)
+            if not visual_path.is_empty():
+                resource.visual_paths.append(
+                    _normalize_content_path(visual_path))
     return resource
 
 func overlay_data() -> Dictionary:
@@ -77,3 +86,22 @@ static func _load_json_dictionary(path: String) -> Dictionary:
     if typeof(parsed) != TYPE_DICTIONARY:
         return {}
     return parsed
+
+
+func load_visual(index: int) -> Texture2D:
+    if index < 0 or index >= visual_paths.size():
+        return null
+    var path := visual_paths[index]
+    if not ResourceLoader.exists(path):
+        return null
+    var resource = ResourceLoader.load(path)
+    if resource is Texture2D:
+        return resource
+    return null
+
+func first_visual() -> Texture2D:
+    for index in range(visual_paths.size()):
+        var texture := load_visual(index)
+        if texture != null:
+            return texture
+    return null
