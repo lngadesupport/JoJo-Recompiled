@@ -220,25 +220,111 @@ func palette_bank_previews() -> Array[Texture2D]:
             textures.append(resource)
     return textures
 
-func graphics_group_count() -> int:
+func direct_frame_count() -> int:
     var data := graphics_data()
-    var table = data.get("group_table", null)
-    if not table is Dictionary:
+    var frames = data.get("direct_frames_0800", null)
+    if not frames is Dictionary:
         return 0
-    return int(table.get("record_count", 0))
+    return int(frames.get("frame_count", 0))
 
-func graphics_group(index: int) -> Dictionary:
+func direct_frame(index: int) -> Dictionary:
     var data := graphics_data()
-    var table = data.get("group_table", null)
-    if not table is Dictionary:
+    var frames = data.get("direct_frames_0800", null)
+    if not frames is Dictionary:
         return {}
-    var records = table.get("records", [])
+    var records = frames.get("frames", [])
     if not records is Array or index < 0 or index >= records.size():
         return {}
     var record = records[index]
-    if record is Dictionary:
-        return record
-    return {}
+    return record if record is Dictionary else {}
+
+func cached_frame_count() -> int:
+    var data := graphics_data()
+    var frames = data.get("cached_frames_0802", null)
+    if not frames is Dictionary:
+        return 0
+    return int(frames.get("frame_count", 0))
+
+func cached_frame(index: int) -> Dictionary:
+    var data := graphics_data()
+    var frames = data.get("cached_frames_0802", null)
+    if not frames is Dictionary:
+        return {}
+    var records = frames.get("frames", [])
+    if not records is Array or index < 0 or index >= records.size():
+        return {}
+    var record = records[index]
+    return record if record is Dictionary else {}
+
+func cached_frame_preview(index: int) -> Texture2D:
+    var frame := cached_frame(index)
+    if frame.is_empty():
+        return null
+    var path := _normalize_content_path(
+        str(frame.get("preview_default_context", "")))
+    if path.is_empty() or not ResourceLoader.exists(path):
+        return null
+    var resource = ResourceLoader.load(path)
+    return resource if resource is Texture2D else null
+
+func indexed_surface_count() -> int:
+    var surfaces = graphics_data().get("indexed_surfaces", [])
+    return surfaces.size() if surfaces is Array else 0
+
+func indexed_surface(index: int) -> Dictionary:
+    var surfaces = graphics_data().get("indexed_surfaces", [])
+    if not surfaces is Array or index < 0 or index >= surfaces.size():
+        return {}
+    var surface = surfaces[index]
+    return surface if surface is Dictionary else {}
+
+func indexed_surface_preview(index: int) -> Texture2D:
+    var surface := indexed_surface(index)
+    if surface.is_empty():
+        return null
+    var path := _normalize_content_path(
+        str(surface.get("preview", "")))
+    if path.is_empty() or not ResourceLoader.exists(path):
+        return null
+    var resource = ResourceLoader.load(path)
+    return resource if resource is Texture2D else null
+
+func clut_palette_count() -> int:
+    var clut = graphics_data().get("clut_windows", null)
+    if not clut is Dictionary:
+        return 0
+    return int(clut.get("palette_count", 0))
+
+func clut_window_preview(palette_id: int) -> Texture2D:
+    var clut = graphics_data().get("clut_windows", null)
+    if not clut is Dictionary:
+        return null
+    var previews = clut.get("previews", [])
+    if not previews is Array:
+        return null
+    for item in previews:
+        if not item is Dictionary:
+            continue
+        if int(item.get("palette_id", -1)) != palette_id:
+            continue
+        var path := _normalize_content_path(
+            str(item.get("preview", "")))
+        if path.is_empty() or not ResourceLoader.exists(path):
+            return null
+        var resource = ResourceLoader.load(path)
+        return resource if resource is Texture2D else null
+    return null
+
+# Transitional aliases. Older inspector/code called the KPLN records "groups".
+# Schema 2 identifies them as direct/cached frames.
+func graphics_group_count() -> int:
+    var cached := cached_frame_count()
+    return cached if cached > 0 else direct_frame_count()
+
+func graphics_group(index: int) -> Dictionary:
+    if cached_frame_count() > 0:
+        return cached_frame(index)
+    return direct_frame(index)
 
 
 func create_indexed_page_material(
@@ -318,14 +404,31 @@ func candidate_hit_rect(slot_index: int, record_index: int) -> Rect2:
             float(rectangle.get("width", 0)),
             float(rectangle.get("height", 0))))
 
-func candidate_graphics_group(
+func candidate_cached_frame(
         slot_index: int,
         record_index: int) -> Dictionary:
     var link := candidate_graphics_link(slot_index, record_index)
-    if not bool(link.get("target_in_range", false)):
+    if not bool(link.get("cached_target_in_range", false)):
         return {}
-    return graphics_group(
-        int(link.get("candidate_graphics_group_index", -1)))
+    return cached_frame(
+        int(link.get("candidate_cached_frame_index", -1)))
+
+func candidate_direct_frame(
+        slot_index: int,
+        record_index: int) -> Dictionary:
+    var link := candidate_graphics_link(slot_index, record_index)
+    if not bool(link.get("direct_target_in_range", false)):
+        return {}
+    return direct_frame(
+        int(link.get("candidate_direct_frame_index", -1)))
+
+func candidate_graphics_group(
+        slot_index: int,
+        record_index: int) -> Dictionary:
+    var cached := candidate_cached_frame(slot_index, record_index)
+    if not cached.is_empty():
+        return cached
+    return candidate_direct_frame(slot_index, record_index)
 
 
 func slot_count() -> int:
