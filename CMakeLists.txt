@@ -87,6 +87,7 @@ add_library(jojo_content_migration STATIC
   src/content/fighter_overlay.cpp
   src/content/fighter_tk.cpp
   src/content/hit_table.cpp
+  src/content/kpln_graphics.cpp
   src/content/pac_archive.cpp
   src/content/pcm_wav.cpp
   src/content/tim_image.cpp
@@ -208,6 +209,10 @@ add_test(NAME jojo_xa_adpcm_decoder_tests COMMAND jojo_xa_adpcm_decoder_tests)
 add_executable(jojo_pcm_wav_tests tests/test_pcm_wav.cpp)
 target_link_libraries(jojo_pcm_wav_tests PRIVATE jojo_content_migration)
 add_test(NAME jojo_pcm_wav_tests COMMAND jojo_pcm_wav_tests)
+
+add_executable(jojo_kpln_graphics_tests tests/test_kpln_graphics.cpp)
+target_link_libraries(jojo_kpln_graphics_tests PRIVATE jojo_content_migration)
+add_test(NAME jojo_kpln_graphics_tests COMMAND jojo_kpln_graphics_tests)
 add_jojo_test(jojo_iso_tests tests/test_iso9660.cpp)
 add_jojo_test(jojo_media_tests tests/test_disc_media.cpp)
 add_jojo_test(jojo_ps1_system_cnf_tests tests/test_ps1_system_cnf.cpp)
