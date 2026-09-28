@@ -1,5 +1,6 @@
 #include "content/fighter_render_context.h"
 
+#include <algorithm>
 #include <set>
 
 namespace jojo::content {
