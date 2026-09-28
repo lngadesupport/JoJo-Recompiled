@@ -32,10 +32,10 @@ Result<HitTable> parse_hit_table(
         const auto* p =
             bytes.data() + index * kRecordBytes;
         auto& record = table.records[index];
-        record.a = le16s(p + 0u);
-        record.b = le16s(p + 2u);
-        record.c = le16s(p + 4u);
-        record.d = le16s(p + 6u);
+        record.x_offset = le16s(p + 0u);
+        record.width = le16s(p + 2u);
+        record.y_offset = le16s(p + 4u);
+        record.height = le16s(p + 6u);
         if (!record.empty()) {
             ++table.nonzero_records;
         }
