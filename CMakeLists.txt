@@ -200,6 +200,10 @@ add_executable(jojo_xa_audio_tests tests/test_xa_audio.cpp)
 target_link_libraries(jojo_xa_audio_tests PRIVATE jojo_content_migration)
 add_test(NAME jojo_xa_audio_tests COMMAND jojo_xa_audio_tests)
 
+add_executable(jojo_xa_adpcm_decoder_tests tests/test_xa_adpcm_decoder.cpp)
+target_link_libraries(jojo_xa_adpcm_decoder_tests PRIVATE jojo_content_migration)
+add_test(NAME jojo_xa_adpcm_decoder_tests COMMAND jojo_xa_adpcm_decoder_tests)
+
 add_executable(jojo_pcm_wav_tests tests/test_pcm_wav.cpp)
 target_link_libraries(jojo_pcm_wav_tests PRIVATE jojo_content_migration)
 add_test(NAME jojo_pcm_wav_tests COMMAND jojo_pcm_wav_tests)
