@@ -30,7 +30,7 @@ std::uint32_t bgr555_to_rgba(
 std::uint32_t descriptor_clut_selector(
     const KplnCachedDescriptor& descriptor,
     std::uint32_t clut_base,
-    std::uint32_t clut_mode,
+    std::int32_t clut_mode,
     std::uint32_t render_mode) noexcept {
     if (clut_mode > 0u) {
         return clut_base;
@@ -265,7 +265,7 @@ Result<KplnRenderedFrame> render_kpln_cached_frame(
     const KplnClutWindow& clut,
     std::uint32_t side,
     std::uint32_t clut_base,
-    std::uint32_t clut_mode,
+    std::int32_t clut_mode,
     std::uint32_t render_mode,
     std::uint32_t orientation,
     std::uint32_t clut_row_base) {
