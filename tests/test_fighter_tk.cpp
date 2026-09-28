@@ -99,11 +99,11 @@ int main() {
         put16(tkd, offset + 0u, -20);
         put16(tkd, offset + 2u, 24);
         put16(tkd, offset + 4u, 95);
-        put16(tkd, offset + 6u, 16);
+        put16(tkd, offset + 6u, 0);
         put16(tkd, offset + 8u, -28);
         put16(tkd, offset + 10u, 47);
         put16(tkd, offset + 12u, 30);
-        put16(tkd, offset + 14u, 67);
+        put16(tkd, offset + 14u, 0);
     }
 
     const auto parsed =
