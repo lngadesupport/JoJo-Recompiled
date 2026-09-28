@@ -187,6 +187,48 @@ expands each nibble into a native index image and exports a grayscale TGA
 index preview. Variable-size `0x0204` graphics remain unresolved and are not
 misclassified as `0x0202`.
 
+## Fighter native cross-link layer
+
+The importer now emits a conservative native relation report for every
+fighter that has HIT + TKC/TKD + KPLN data:
+
+`derived/fighters/<ID>/native_links.json`
+
+This layer deliberately does **not** claim gameplay semantics before the
+original consumers are proven. It records structural candidates only:
+
+- TKC `reference_index` -> candidate HIT table index
+- whether the candidate HIT target is in the 512-entry table
+- whether that target is a non-empty rectangle
+- the candidate rectangle geometry when non-empty
+- TKD `element_index` -> candidate KPLN `0x0800` group index
+- whether the candidate graphics target is inside the decoded group table
+
+The report also records per-fighter coverage counts so the remaining
+relationships can be validated globally instead of by anecdotal examples.
+
+Godot exposes these reports through `JojoFighterResource` and
+`JojoFighterSlotResource`. Each imported fighter can now be addressed as
+26 native slots without reading source BIN/PAC files at runtime.
+
+## Migration Inspector
+
+The native Godot frontend now exposes a migration inspector under
+`DEV TOOLS`.
+
+It can:
+
+- select the imported retail fighter ID
+- select one of the 26 native fighter slots
+- inspect TKC and TKD record counts for that slot
+- inspect candidate HIT and KPLN reference coverage
+- display the converted KPLN indexed page where available
+- select native palette banks and palette rows
+- apply the native indexed-palette shader to the converted page
+
+This tool is intended to prove the remaining sprite/animation relationships
+visually while preserving the content-only runtime rule.
+
 ## Godot native project
 
 Target: **Godot 4.7.2 stable**
@@ -200,6 +242,9 @@ Current native project provides:
 - lazy native texture loading for migrated fighter visuals
 - native `Rect2` exposure for migrated HIT geometry
 - KPLN native graphics metadata access
+- conservative TKC->HIT and TKD->KPLN cross-link reports
+- typed 26-slot `JojoFighterSlotResource` access
+- DEV TOOLS fighter migration inspector
 - native indexed-page texture loading
 - native palette-bank texture loading
 - `indexed_palette.gdshader` for applying converted 16-color palettes to
@@ -209,19 +254,21 @@ Current native project provides:
 
 ## Next frontiers
 
-1. Prove whether TKC `reference_index` directly selects the HIT rectangle
-   table and identify the remaining TKC parameters.
-2. Identify the semantic meaning of TKD element indices/flags and connect them
-   to converted fighter visuals.
-3. Split mixed PL overlays into proven content tables and discard executable
-   MIPS portions from final runtime data.
-4. Build native animation/state resources from TKC/TKD/HIT links.
-5. Finish the KPLN sprite chain by decoding `0x0801/0x0802` and proving
+1. Prove whether TKC `reference_index` is semantically the HIT selector;
+   structural bounds are now exported for every fighter.
+2. Prove whether TKD `element_index` is semantically the KPLN group selector;
+   structural candidate links are now exported and inspectable in Godot.
+3. Finish the KPLN sprite chain by decoding `0x0801/0x0802` and proving
    the meanings of `0x0800` words 1..4.
-6. Decode variable-size KPLN `0x0204` graphics for the remaining 15
+4. Decode variable-size KPLN `0x0204` graphics for the remaining 15
    fighters.
-7. Identify sprite-sheet/animation metadata around converted TIM images.
+5. Split mixed PL overlays into proven content tables and discard executable
+   MIPS portions from final runtime data.
+6. Promote proven TKC/TKD/HIT/KPLN relationships into native animation/state
+   resources.
+7. Identify remaining sprite-sheet/animation metadata around converted TIM
+   images.
 8. Decode stages, UI/story/event tables and remaining PAC resource families.
-7. Convert WAV masters to final streaming/distribution formats where useful.
-8. Validate converted assets against reference output, then stop shipping
-   source-format intermediates for each completed family.
+9. Convert WAV masters to final streaming/distribution formats where useful.
+10. Validate converted assets against reference output, then stop shipping
+    source-format intermediates for each completed family.
