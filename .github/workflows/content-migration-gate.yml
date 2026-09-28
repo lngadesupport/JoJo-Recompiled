@@ -50,6 +50,20 @@ jobs:
           ./build-migration/jojo_xa_audio_tests
           ./build-migration/jojo_xa_adpcm_decoder_tests
           ./build-migration/jojo_pcm_wav_tests
+      - name: Download Godot 4.7.2
+        run: |
+          curl --fail --location --retry 3 \
+            -o godot.zip \
+            https://github.com/godotengine/godot-builds/releases/download/4.7.2-stable/Godot_v4.7.2-stable_linux.x86_64.zip
+          unzip -q godot.zip -d godot-bin
+          chmod +x godot-bin/Godot_v4.7.2-stable_linux.x86_64
+      - name: Validate Godot 4.7.2 project
+        run: |
+          ./godot-bin/Godot_v4.7.2-stable_linux.x86_64 \
+            --headless \
+            --path engine/godot \
+            --editor \
+            --quit
       - name: Upload content importer
         uses: actions/upload-artifact@v4
         with:
