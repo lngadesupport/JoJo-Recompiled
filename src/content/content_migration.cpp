@@ -401,6 +401,61 @@ std::uint8_t expand5(std::uint16_t value) noexcept {
         (value << 3u) | (value >> 2u));
 }
 
+Result<std::filesystem::path> write_pac_palette_bank_preview(
+    const std::filesystem::path& output_root,
+    const DiscFileEntry& entry,
+    std::size_t chunk_index,
+    const PacChunk& chunk,
+    std::size_t& palette_count) {
+    const auto bank = parse_kpln_palette_bank(chunk.bytes);
+    if (!bank) {
+        return Result<std::filesystem::path>::failure(
+            bank.error, bank.detail);
+    }
+    palette_count = bank.value.palettes.size();
+
+    std::vector<std::uint32_t> pixels;
+    pixels.reserve(palette_count * 16u);
+    for (const auto& palette : bank.value.palettes) {
+        for (const auto color : palette.bgr555) {
+            const auto red = expand5(color);
+            const auto green = expand5(color >> 5u);
+            const auto blue = expand5(color >> 10u);
+            const auto alpha =
+                (color & 0x7FFFu) == 0u ? 0u : 255u;
+            pixels.push_back(
+                static_cast<std::uint32_t>(red) |
+                (static_cast<std::uint32_t>(green) << 8u) |
+                (static_cast<std::uint32_t>(blue) << 16u) |
+                (static_cast<std::uint32_t>(alpha) << 24u));
+        }
+    }
+
+    const auto stem =
+        std::filesystem::path{entry.name}.stem().string();
+    std::ostringstream filename;
+    filename << std::setfill('0')
+             << std::setw(3) << chunk_index
+             << "_type_"
+             << std::hex << std::setw(4)
+             << chunk.type << std::dec
+             << ".tga";
+    const auto path =
+        output_root / "derived" / "pac_palettes" /
+        stem / filename.str();
+    const auto written =
+        write_rgba_tga(
+            path,
+            16u,
+            static_cast<std::uint32_t>(palette_count),
+            pixels);
+    if (!written) {
+        return Result<std::filesystem::path>::failure(
+            written.error, written.detail);
+    }
+    return Result<std::filesystem::path>::success(path);
+}
+
 Result<std::filesystem::path> write_kpln_native_graphics(
     const std::filesystem::path& output_root,
     const DiscFileEntry& entry,
@@ -732,6 +787,35 @@ Result<std::filesystem::path> write_pac_split(
                       << "}";
             }
             index << "]";
+        }
+
+        if (chunk.type >= 0x0803u &&
+            chunk.type <= 0x0807u) {
+            std::size_t palette_count = 0u;
+            const auto preview =
+                write_pac_palette_bank_preview(
+                    output_root,
+                    entry,
+                    i,
+                    chunk,
+                    palette_count);
+            if (!preview) {
+                return Result<std::filesystem::path>::failure(
+                    preview.error,
+                    entry.path + " palette chunk " +
+                        std::to_string(i) + ": " +
+                        preview.detail);
+            }
+            index << ",\"palette_bank\":{"
+                  << "\"palette_count\":"
+                  << palette_count
+                  << ",\"colors_per_palette\":16"
+                  << ",\"preview\":\""
+                  << json_escape(
+                      path_relative_to(
+                          preview.value,
+                          output_root))
+                  << "\"}";
         }
 
         index << "}";
