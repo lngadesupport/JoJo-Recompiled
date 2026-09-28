@@ -71,6 +71,41 @@ int main() {
             overlay, 3u, 0u);
     CHECK(too_small.empty());
 
-    std::cout << "fighter render context candidate tests passed\n";
+    std::vector<std::uint8_t> script_overlay(0x200u, 0u);
+    const auto script_address =
+        jojo::content::fighter_overlay_primary_base + 0x80u;
+    // Two different pointer fields resolve to the same script; output must
+    // deduplicate the target while retaining one source pointer location.
+    put16(script_overlay, 0x00u,
+        static_cast<std::uint16_t>(script_address));
+    put16(script_overlay, 0x02u,
+        static_cast<std::uint16_t>(script_address >> 16u));
+    put16(script_overlay, 0x10u,
+        static_cast<std::uint16_t>(script_address));
+    put16(script_overlay, 0x12u,
+        static_cast<std::uint16_t>(script_address >> 16u));
+
+    // Three valid records: length 4, 4, 6.
+    script_overlay[0x80u] = 0x04u;
+    put16(script_overlay, 0x82u, 0x1002u);
+    script_overlay[0x84u] = 0x84u;
+    put16(script_overlay, 0x86u, 0x0005u);
+    script_overlay[0x88u] = 0x06u;
+    put16(script_overlay, 0x8au, 0x2007u);
+    script_overlay[0x8eu] = 0x00u;
+
+    const auto scripts =
+        jojo::content::scan_animation_script_candidates(
+            script_overlay, 10u);
+    CHECK(scripts.size() == 1u);
+    CHECK(scripts[0].target_offset == 0x80u);
+    CHECK(scripts[0].records.size() == 3u);
+    CHECK(scripts[0].records[0].frame_index == 2u);
+    CHECK(scripts[0].records[1].frame_index == 5u);
+    CHECK(scripts[0].records[2].frame_index == 7u);
+    CHECK(scripts[0].records[2].record_length == 6u);
+    CHECK(scripts[0].confidence_score >= 23u);
+
+    std::cout << "fighter render context/script candidate tests passed\n";
     return 0;
 }
