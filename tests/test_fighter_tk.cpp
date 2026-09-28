@@ -61,6 +61,14 @@ int main() {
         tkc,
         jojo::content::fighter_tk_slot_count * 4u,
         jojo::content::fighter_tkc_load_base +
+            static_cast<std::uint32_t>(tkc.size() - 2u));
+
+    // Retail PL09 uses a one-past-file root for an empty TKC slot while
+    // the logical end pointer is two alignment bytes earlier.
+    put32(
+        tkc,
+        6u * 4u,
+        jojo::content::fighter_tkc_load_base +
             static_cast<std::uint32_t>(tkc.size()));
 
     put32(
@@ -102,7 +110,9 @@ int main() {
         jojo::content::parse_fighter_tk_roots(tkc, tkd);
     CHECK(static_cast<bool>(parsed));
     CHECK(parsed.value.slots.size() == 26u);
-    CHECK(parsed.value.tkc_end_offset == tkc.size());
+    CHECK(parsed.value.tkc_end_offset == tkc.size() - 2u);
+    CHECK(parsed.value.slots[6].tkc_offset == tkc.size());
+    CHECK(parsed.value.slots[6].tkc_records.empty());
     CHECK(parsed.value.tkd_block_size == 16u);
     CHECK(parsed.value.slots[0].tkc_offset == 0x80u);
     CHECK(parsed.value.slots[0].tkc_records.size() == 1u);
