@@ -48,11 +48,11 @@ int main() {
     CHECK(parsed.value.records.size() == 512u);
     CHECK(parsed.value.nonzero_records == 2u);
     CHECK(parsed.value.records[0].empty());
-    CHECK(parsed.value.records[1].a == -20);
-    CHECK(parsed.value.records[1].b == 24);
-    CHECK(parsed.value.records[1].c == 95);
-    CHECK(parsed.value.records[1].d == 16);
-    CHECK(parsed.value.records[2].a == -28);
+    CHECK(parsed.value.records[1].x_offset == -20);
+    CHECK(parsed.value.records[1].width == 24);
+    CHECK(parsed.value.records[1].y_offset == 95);
+    CHECK(parsed.value.records[1].height == 16);
+    CHECK(parsed.value.records[2].x_offset == -28);
 
     bytes.resize(4095u);
     CHECK(!jojo::content::parse_hit_table(bytes));
