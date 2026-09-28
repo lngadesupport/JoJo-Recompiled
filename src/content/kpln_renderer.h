@@ -23,7 +23,8 @@ struct KplnRenderedFrame {
     const KplnIndexedPage4bpp& atlas,
     const KplnClutWindow& clut,
     std::uint32_t side,
-    std::uint32_t clut_base);
+    std::uint32_t clut_base,
+    std::uint32_t clut_row_base = 0u);
 
 [[nodiscard]] Result<KplnRenderedFrame> render_kpln_cached_frame(
     const KplnCachedFrame& frame,
