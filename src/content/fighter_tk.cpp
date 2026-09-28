@@ -96,8 +96,16 @@ Result<FighterTkRoots> parse_fighter_tk_roots(
         }
         output.tkc_offset =
             tkc_pointer - fighter_tkc_load_base;
+
+        // Retail PL09 uses the physical one-past-file address for an empty
+        // slot while the logical end pointer is two alignment bytes earlier.
+        // Accept only that exact sentinel; all other out-of-range roots remain
+        // invalid.
+        if (output.tkc_offset == tkc.size()) {
+            continue;
+        }
         if (output.tkc_offset >= roots.tkc_end_offset ||
-            output.tkc_offset >= tkc.size()) {
+            output.tkc_offset > tkc.size()) {
             return Result<FighterTkRoots>::failure(
                 ErrorCode::invalid_installation,
                 "TKC slot root is outside the logical TKC content");
