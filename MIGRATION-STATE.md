@@ -157,6 +157,36 @@ The decoder follows the retail XA 18x128-byte sector layout with four
 predictive filters and independent channel history. Godot consumes WAV, so
 neither SPU/CD-ROM emulation nor an XA decoder is needed at runtime.
 
+## KPLN fighter graphics
+
+The retail `KPLNxx.PAC` family now has a native structural decoder.
+
+Validated across all **26 KPLN fighter packs**:
+
+- **26** native `derived/kpln/KPLNxx/graphics.json` files
+- **2,425** records decoded from resource `0x0800`
+- every `0x0800` record is six 16-bit words
+- word 0 points into a trailing uint16 index list
+- those lists use `0xFFFF` termination; the final PL16 list ends exactly at
+  EOF and is preserved as the retail edge case
+- word 5 is zero in every decoded retail record
+- words 1..4 remain conservatively named until their exact sprite semantics
+  are proven
+
+Resources `0x0803..0x0807` are structurally confirmed as 16-color BGR555
+palette banks:
+
+- **130** palette banks exported across the 26 fighters
+- each bank is an exact multiple of 32 bytes
+- every 32-byte unit is 16 BGR555 colors
+- previews are exported as native RGBA TGA grids
+
+Resource `0x0202` is present for **11 fighters** and is the exact
+**131,072-byte** size required for a 1024x256 4bpp indexed page. The importer
+expands each nibble into a native index image and exports a grayscale TGA
+index preview. Variable-size `0x0204` graphics remain unresolved and are not
+misclassified as `0x0202`.
+
 ## Godot native project
 
 Target: **Godot 4.7.2 stable**
@@ -169,6 +199,11 @@ Current native project provides:
 - typed `JojoFighterResource`
 - lazy native texture loading for migrated fighter visuals
 - native `Rect2` exposure for migrated HIT geometry
+- KPLN native graphics metadata access
+- native indexed-page texture loading
+- native palette-bank texture loading
+- `indexed_palette.gdshader` for applying converted 16-color palettes to
+  converted 4bpp index pages
 - native frontend scaffold
 - no PS1 runtime dependency
 
@@ -181,8 +216,12 @@ Current native project provides:
 3. Split mixed PL overlays into proven content tables and discard executable
    MIPS portions from final runtime data.
 4. Build native animation/state resources from TKC/TKD/HIT links.
-5. Identify sprite-sheet/animation metadata around converted TIM images.
-6. Decode stages, UI/story/event tables and remaining PAC resource families.
+5. Finish the KPLN sprite chain by decoding `0x0801/0x0802` and proving
+   the meanings of `0x0800` words 1..4.
+6. Decode variable-size KPLN `0x0204` graphics for the remaining 15
+   fighters.
+7. Identify sprite-sheet/animation metadata around converted TIM images.
+8. Decode stages, UI/story/event tables and remaining PAC resource families.
 7. Convert WAV masters to final streaming/distribution formats where useful.
 8. Validate converted assets against reference output, then stop shipping
    source-format intermediates for each completed family.
