@@ -1,3 +1,5 @@
+const FighterResource = preload("res://scripts/fighter_resource.gd")
+
 class_name JojoContentRegistry
 extends RefCounted
 
@@ -5,12 +7,14 @@ var manifest: Dictionary = {}
 var entries: Array = []
 var fighter_catalog: Dictionary = {}
 var fighters: Array = []
+var fighter_resources: Array[JojoFighterResource] = []
 
 func load_from(path: String = "res://content/manifest.json") -> bool:
     manifest.clear()
     entries.clear()
     fighter_catalog.clear()
     fighters.clear()
+    fighter_resources.clear()
     if not FileAccess.file_exists(path):
         return false
 
@@ -42,6 +46,10 @@ func load_from(path: String = "res://content/manifest.json") -> bool:
                     "fighters", [])
                 if typeof(loaded_fighters) == TYPE_ARRAY:
                     fighters = loaded_fighters
+                    for fighter in fighters:
+                        if fighter is Dictionary:
+                            fighter_resources.append(
+                                FighterResource.from_catalog_entry(fighter))
     return true
 
 func count_kind(kind: String) -> int:
@@ -71,3 +79,11 @@ func fighter_by_id(id: String) -> Dictionary:
         if fighter is Dictionary and fighter.get("id", "") == normalized:
             return fighter
     return {}
+
+
+func fighter_resource_by_id(id: String) -> JojoFighterResource:
+    var normalized := id.to_upper()
+    for fighter in fighter_resources:
+        if fighter.retail_id == normalized:
+            return fighter
+    return null
