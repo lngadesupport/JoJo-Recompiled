@@ -38,6 +38,7 @@ jobs:
           jojo_xa_audio_tests
           jojo_xa_adpcm_decoder_tests
           jojo_pcm_wav_tests
+          jojo_kpln_graphics_tests
           -j2
       - name: Run content migration tests
         run: |
@@ -50,6 +51,7 @@ jobs:
           ./build-migration/jojo_xa_audio_tests
           ./build-migration/jojo_xa_adpcm_decoder_tests
           ./build-migration/jojo_pcm_wav_tests
+          ./build-migration/jojo_kpln_graphics_tests
       - name: Download Godot 4.7.2
         run: |
           curl --fail --location --retry 3 \
