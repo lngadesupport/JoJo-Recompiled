@@ -3,6 +3,8 @@ extends Resource
 
 const INDEXED_PALETTE_SHADER = preload(
     "res://shaders/indexed_palette.gdshader")
+const FIGHTER_SLOT_RESOURCE = preload(
+    "res://scripts/fighter_slot_resource.gd")
 
 @export var retail_id: String = ""
 @export var overlay_path: String = ""
@@ -18,6 +20,7 @@ var _hit_cache: Dictionary = {}
 var _tk_cache: Dictionary = {}
 var _graphics_cache: Dictionary = {}
 var _native_links_cache: Dictionary = {}
+var _slot_cache: Dictionary = {}
 var _hit_rect_cache: Dictionary = {}
 var _hit_rect_cache_ready := false
 
@@ -99,6 +102,7 @@ func clear_runtime_cache() -> void:
     _tk_cache.clear()
     _graphics_cache.clear()
     _native_links_cache.clear()
+    _slot_cache.clear()
     _hit_rect_cache.clear()
     _hit_rect_cache_ready = false
 
@@ -322,3 +326,29 @@ func candidate_graphics_group(
         return {}
     return graphics_group(
         int(link.get("candidate_graphics_group_index", -1)))
+
+
+func slot_count() -> int:
+    var data := tk_data()
+    return int(data.get("slot_count", 0))
+
+func slot(index: int):
+    if index < 0 or index >= slot_count():
+        return null
+    if _slot_cache.has(index):
+        return _slot_cache[index]
+    var resource = FIGHTER_SLOT_RESOURCE.from_fighter(self, index)
+    _slot_cache[index] = resource
+    return resource
+
+func slot_candidate_hit_rects(index: int) -> Array[Rect2]:
+    var resource = slot(index)
+    if resource == null:
+        return []
+    return resource.candidate_hit_rects()
+
+func slot_candidate_graphics_groups(index: int) -> Array[Dictionary]:
+    var resource = slot(index)
+    if resource == null:
+        return []
+    return resource.candidate_graphics_groups(self)
