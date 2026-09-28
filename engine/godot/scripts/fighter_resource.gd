@@ -466,3 +466,48 @@ func slot_candidate_graphics_groups(index: int) -> Array[Dictionary]:
     if resource == null:
         return []
     return resource.candidate_graphics_groups(self)
+
+
+func render_context_candidates(frame_index: int = -1) -> Array[Dictionary]:
+    var result: Array[Dictionary] = []
+    var candidates = native_links_data().get(
+        "render_context_candidates", [])
+    if not candidates is Array:
+        return result
+    for candidate in candidates:
+        if not candidate is Dictionary:
+            continue
+        if frame_index >= 0 and int(
+                candidate.get("frame_index", -1)) != frame_index:
+            continue
+        result.append(candidate)
+    return result
+
+func best_render_context(frame_index: int) -> Dictionary:
+    var best: Dictionary = {}
+    var best_score := -1
+    for candidate in render_context_candidates(frame_index):
+        if bool(candidate.get("selected_best_for_frame", false)):
+            return candidate
+        var score := int(candidate.get("confidence_score", 0))
+        if score > best_score:
+            best_score = score
+            best = candidate
+    return best
+
+func context_frame_preview(
+        frame_index: int,
+        cached: bool = true,
+        palette_id: int = 0) -> Texture2D:
+    var context := best_render_context(frame_index)
+    if context.is_empty():
+        return null
+    var key := "cached_previews" if cached else "direct_previews"
+    var paths = context.get(key, [])
+    if not paths is Array or palette_id < 0 or palette_id >= paths.size():
+        return null
+    var path := _normalize_content_path(str(paths[palette_id]))
+    if path.is_empty() or not ResourceLoader.exists(path):
+        return null
+    var resource = ResourceLoader.load(path)
+    return resource if resource is Texture2D else null
