@@ -5,12 +5,14 @@ extends Resource
 @export var overlay_path: String = ""
 @export var hit_table_path: String = ""
 @export var tk_path: String = ""
+@export var graphics_path: String = ""
 @export var pack_paths: PackedStringArray = PackedStringArray()
 @export var visual_paths: PackedStringArray = PackedStringArray()
 
 var _overlay_cache: Dictionary = {}
 var _hit_cache: Dictionary = {}
 var _tk_cache: Dictionary = {}
+var _graphics_cache: Dictionary = {}
 var _hit_rect_cache: Dictionary = {}
 var _hit_rect_cache_ready := false
 
@@ -23,6 +25,8 @@ static func from_catalog_entry(entry: Dictionary) -> JojoFighterResource:
         str(entry.get("hit_table", "")))
     resource.tk_path = _normalize_content_path(
         str(entry.get("tk", "")))
+    resource.graphics_path = _normalize_content_path(
+        str(entry.get("graphics", "")))
 
     var packs = entry.get("packs", [])
     if packs is Array:
@@ -57,6 +61,11 @@ func tk_data() -> Dictionary:
         _tk_cache = _load_json_dictionary(tk_path)
     return _tk_cache
 
+func graphics_data() -> Dictionary:
+    if _graphics_cache.is_empty() and not graphics_path.is_empty():
+        _graphics_cache = _load_json_dictionary(graphics_path)
+    return _graphics_cache
+
 func has_overlay() -> bool:
     return not overlay_path.is_empty()
 
@@ -66,10 +75,14 @@ func has_hit_table() -> bool:
 func has_tk_data() -> bool:
     return not tk_path.is_empty()
 
+func has_graphics_data() -> bool:
+    return not graphics_path.is_empty()
+
 func clear_runtime_cache() -> void:
     _overlay_cache.clear()
     _hit_cache.clear()
     _tk_cache.clear()
+    _graphics_cache.clear()
     _hit_rect_cache.clear()
     _hit_rect_cache_ready = false
 
@@ -153,3 +166,56 @@ func _ensure_hit_rect_cache() -> void:
                 float(record.get("x_offset", 0)),
                 float(record.get("y_offset", 0))),
             Vector2(width, height))
+
+
+func indexed_page_preview() -> Texture2D:
+    var data := graphics_data()
+    var page = data.get("indexed_page_4bpp", null)
+    if not page is Dictionary:
+        return null
+    var preview_path := _normalize_content_path(
+        str(page.get("preview", "")))
+    if preview_path.is_empty() or not ResourceLoader.exists(preview_path):
+        return null
+    var resource = ResourceLoader.load(preview_path)
+    if resource is Texture2D:
+        return resource
+    return null
+
+func palette_bank_previews() -> Array[Texture2D]:
+    var textures: Array[Texture2D] = []
+    var data := graphics_data()
+    var banks = data.get("palette_banks", [])
+    if not banks is Array:
+        return textures
+    for bank in banks:
+        if not bank is Dictionary:
+            continue
+        var preview_path := _normalize_content_path(
+            str(bank.get("preview", "")))
+        if preview_path.is_empty() or not ResourceLoader.exists(preview_path):
+            continue
+        var resource = ResourceLoader.load(preview_path)
+        if resource is Texture2D:
+            textures.append(resource)
+    return textures
+
+func graphics_group_count() -> int:
+    var data := graphics_data()
+    var table = data.get("group_table", null)
+    if not table is Dictionary:
+        return 0
+    return int(table.get("record_count", 0))
+
+func graphics_group(index: int) -> Dictionary:
+    var data := graphics_data()
+    var table = data.get("group_table", null)
+    if not table is Dictionary:
+        return {}
+    var records = table.get("records", [])
+    if not records is Array or index < 0 or index >= records.size():
+        return {}
+    var record = records[index]
+    if record is Dictionary:
+        return record
+    return {}
