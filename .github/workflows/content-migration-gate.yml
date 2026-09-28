@@ -43,6 +43,7 @@ jobs:
           jojo_kpln_sprite_frames_tests
           jojo_kpln_clut_tests
           jojo_kpln_renderer_tests
+          jojo_fighter_render_context_tests
           -j2
       - name: Run content migration tests
         run: |
@@ -60,6 +61,7 @@ jobs:
           ./build-migration/jojo_kpln_sprite_frames_tests
           ./build-migration/jojo_kpln_clut_tests
           ./build-migration/jojo_kpln_renderer_tests
+          ./build-migration/jojo_fighter_render_context_tests
       - name: Download Godot 4.7.2
         run: |
           curl --fail --location --retry 3 \
