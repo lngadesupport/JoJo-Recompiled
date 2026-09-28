@@ -40,6 +40,7 @@ jobs:
           jojo_pcm_wav_tests
           jojo_kpln_graphics_tests
           jojo_fighter_native_links_tests
+          jojo_kpln_sprite_frames_tests
           -j2
       - name: Run content migration tests
         run: |
@@ -54,6 +55,7 @@ jobs:
           ./build-migration/jojo_pcm_wav_tests
           ./build-migration/jojo_kpln_graphics_tests
           ./build-migration/jojo_fighter_native_links_tests
+          ./build-migration/jojo_kpln_sprite_frames_tests
       - name: Download Godot 4.7.2
         run: |
           curl --fail --location --retry 3 \
