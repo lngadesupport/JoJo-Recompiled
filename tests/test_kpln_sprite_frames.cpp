@@ -52,8 +52,8 @@ int main() {
     CHECK(parsed_direct.value.size() == 1u);
     CHECK(parsed_direct.value[0].source_record_index == 0u);
     CHECK(parsed_direct.value[0].parts.size() == 1u);
-    CHECK(parsed_direct.value[0].parts[0].columns == 2u);
-    CHECK(parsed_direct.value[0].parts[0].rows == 1u);
+    CHECK(parsed_direct.value[0].parts[0].header.columns == 2u);
+    CHECK(parsed_direct.value[0].parts[0].header.rows == 1u);
     CHECK(parsed_direct.value[0].parts[0].cells.size() == 2u);
     CHECK(parsed_direct.value[0].parts[0].cells[0].tile_word == 0x1234u);
     CHECK(parsed_direct.value[0].parts[0].cells[1].empty);
