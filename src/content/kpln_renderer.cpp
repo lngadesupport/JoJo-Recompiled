@@ -232,7 +232,7 @@ Result<KplnRenderedFrame> render_kpln_direct_frame(
                     const auto raw_color =
                         sample_kpln_clut(
                             clut,
-                            clut_row_base,
+                            effective_clut_row_base,
                             selector,
                             pixel_index);
                     const auto rgba =
@@ -263,7 +263,8 @@ Result<KplnRenderedFrame> render_kpln_cached_frame(
     std::uint32_t clut_base,
     std::uint32_t clut_mode,
     std::uint32_t render_mode,
-    std::uint32_t orientation) {
+    std::uint32_t orientation,
+    std::uint32_t clut_row_base) {
     if (side > 1u || orientation > 3u) {
         return Result<KplnRenderedFrame>::failure(
             ErrorCode::invalid_argument,
@@ -331,8 +332,10 @@ Result<KplnRenderedFrame> render_kpln_cached_frame(
         static_cast<std::size_t>(pixel_count),
         0u);
 
-    const auto clut_row_base =
-        0x1e8u + side;
+    const auto effective_clut_row_base =
+        clut_row_base == 0u
+        ? 0x1e8u + side
+        : clut_row_base;
 
     for (const auto& part : frame.parts) {
         const auto part_x =
