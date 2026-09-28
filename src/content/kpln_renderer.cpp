@@ -32,7 +32,7 @@ std::uint32_t descriptor_clut_selector(
     std::uint32_t clut_base,
     std::int32_t clut_mode,
     std::uint32_t render_mode) noexcept {
-    if (clut_mode > 0u) {
+    if (clut_mode > 0) {
         return clut_base;
     }
     const auto relative =
