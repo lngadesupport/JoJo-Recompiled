@@ -1236,6 +1236,9 @@ Result<std::filesystem::path> write_fighter_catalog(
         const auto tk =
             output_root / "derived" / "fighter_tk" /
             ("PL" + id + ".json");
+        const auto graphics =
+            output_root / "derived" / "kpln" /
+            ("KPLN" + id) / "graphics.json";
 
         out << "    {\n"
             << "      \"id\": \"" << id << "\",\n"
@@ -1257,6 +1260,13 @@ Result<std::filesystem::path> write_fighter_catalog(
         if (std::filesystem::exists(tk)) {
             out << "\"" << json_escape(
                 path_relative_to(tk, output_root)) << "\"";
+        } else {
+            out << "null";
+        }
+        out << ",\n      \"graphics\": ";
+        if (std::filesystem::exists(graphics)) {
+            out << "\"" << json_escape(
+                path_relative_to(graphics, output_root)) << "\"";
         } else {
             out << "null";
         }
