@@ -77,6 +77,39 @@ int main() {
         0x33u);
     CHECK(parsed.value.streams[1].channel == 1u);
 
+    // 4-bit stereo decode fixture. Every sound-group parameter is filter 0,
+    // range 12, so the first block's 0x21 bytes decode directly to
+    // left=+1, right=+2 for 28 frames.
+    jojo::content::XaChannelStream fixture{};
+    fixture.coding = 0x01u;
+    fixture.sample_rate_hz = 37800u;
+    fixture.channel_count = 2u;
+    fixture.adpcm_payload.resize(
+        jojo::content::xa_audio_payload_size, 0u);
+    for (std::size_t group = 0u; group < 18u; ++group) {
+        auto* sound_group =
+            fixture.adpcm_payload.data() + group * 128u;
+        for (std::size_t i = 0u; i < 16u; ++i) {
+            sound_group[i] = 0x0Cu;
+        }
+    }
+    for (std::size_t sample = 0u; sample < 28u; ++sample) {
+        fixture.adpcm_payload[16u + sample * 4u] = 0x21u;
+    }
+
+    const auto pcm =
+        jojo::content::decode_xa_adpcm_pcm16(fixture);
+    CHECK(static_cast<bool>(pcm));
+    CHECK(pcm.value.sample_rate_hz == 37800u);
+    CHECK(pcm.value.channel_count == 2u);
+    CHECK(pcm.value.samples.size() == 4032u);
+    for (std::size_t frame = 0u; frame < 28u; ++frame) {
+        CHECK(pcm.value.samples[frame * 2u + 0u] == 1);
+        CHECK(pcm.value.samples[frame * 2u + 1u] == 2);
+    }
+    CHECK(pcm.value.samples[56u] == 0);
+    CHECK(pcm.value.samples[57u] == 0);
+
     std::cout << "XA audio sector tests passed\n";
     return 0;
 }
