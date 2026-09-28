@@ -1,7 +1,16 @@
 #include "content/fighter_render_context.h"
 
+#include <set>
+
 namespace jojo::content {
 namespace {
+
+std::uint32_t le32(const std::uint8_t* p) noexcept {
+    return static_cast<std::uint32_t>(p[0]) |
+        (static_cast<std::uint32_t>(p[1]) << 8u) |
+        (static_cast<std::uint32_t>(p[2]) << 16u) |
+        (static_cast<std::uint32_t>(p[3]) << 24u);
+}
 
 std::uint16_t le16(const std::uint8_t* p) noexcept {
     return static_cast<std::uint16_t>(
@@ -23,6 +32,92 @@ bool valid_clut_row(std::uint16_t row) noexcept {
 }
 
 } // namespace
+
+std::vector<FighterAnimationScriptCandidate>
+scan_animation_script_candidates(
+    std::span<const std::uint8_t> overlay,
+    std::uint32_t frame_count) {
+    constexpr std::size_t kMinimumRecords = 3u;
+    constexpr std::size_t kMaximumRecords = 256u;
+
+    std::vector<FighterAnimationScriptCandidate> result;
+    if (frame_count == 0u || overlay.size() < 4u) {
+        return result;
+    }
+
+    std::set<std::uint32_t> seen_targets;
+    const auto overlay_end =
+        static_cast<std::uint64_t>(
+            fighter_overlay_primary_base) +
+        overlay.size();
+
+    for (std::size_t pointer_offset = 0u;
+         pointer_offset + 4u <= overlay.size();
+         pointer_offset += 4u) {
+        const auto pointer =
+            le32(overlay.data() + pointer_offset);
+        if (pointer < fighter_overlay_primary_base ||
+            static_cast<std::uint64_t>(pointer) >=
+                overlay_end) {
+            continue;
+        }
+
+        const auto target =
+            pointer - fighter_overlay_primary_base;
+        if (!seen_targets.insert(target).second) {
+            continue;
+        }
+
+        std::vector<FighterAnimationScriptRecord> records;
+        std::size_t cursor = target;
+        for (std::size_t visited = 0u;
+             visited < kMaximumRecords &&
+             cursor + 4u <= overlay.size();
+             ++visited) {
+            const auto command = overlay[cursor];
+            const auto length =
+                static_cast<std::uint8_t>(
+                    command & 0x2Fu);
+            if (length < 4u ||
+                cursor + length > overlay.size()) {
+                break;
+            }
+
+            const auto frame =
+                static_cast<std::uint16_t>(
+                    le16(overlay.data() + cursor + 2u) &
+                    0x0FFFu);
+            if (frame < frame_count) {
+                records.push_back({
+                    static_cast<std::uint32_t>(cursor),
+                    command,
+                    length,
+                    frame,
+                });
+            }
+
+            cursor += length;
+        }
+
+        if (records.size() < kMinimumRecords) {
+            continue;
+        }
+
+        FighterAnimationScriptCandidate candidate{};
+        candidate.source_pointer_offset =
+            static_cast<std::uint32_t>(pointer_offset);
+        candidate.target_offset = target;
+        candidate.confidence_score =
+            static_cast<std::uint32_t>(
+                20u +
+                std::min<std::size_t>(
+                    records.size(), 20u));
+        candidate.records = std::move(records);
+        result.push_back(std::move(candidate));
+    }
+
+    return result;
+}
 
 std::vector<FighterRenderContextCandidate>
 scan_compact_render_context_candidates(
