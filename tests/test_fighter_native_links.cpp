@@ -38,12 +38,9 @@ int main() {
     missing_visual.element_index = 9u;
     tk.slots[0].tkd_records.push_back(missing_visual);
 
-    jojo::content::KplnGroupTable graphics{};
-    graphics.records.resize(2u);
-
     const auto analysis =
         jojo::content::analyze_fighter_native_links(
-            hit, tk, graphics);
+            hit, tk, 2u, 4u);
 
     CHECK(analysis.tkc_record_count == 2u);
     CHECK(analysis.tkc_hit_index_in_range_count == 2u);
@@ -57,12 +54,15 @@ int main() {
     CHECK(!analysis.tkc_hit_candidates[1].target_nonempty);
 
     CHECK(analysis.tkd_record_count == 2u);
-    CHECK(analysis.tkd_graphics_index_in_range_count == 1u);
+    CHECK(analysis.tkd_direct_frame_index_in_range_count == 1u);
+    CHECK(analysis.tkd_cached_frame_index_in_range_count == 1u);
     CHECK(analysis.tkd_graphics_candidates.size() == 2u);
-    CHECK(analysis.tkd_graphics_candidates[0].group_index == 1u);
-    CHECK(analysis.tkd_graphics_candidates[0].target_in_range);
-    CHECK(analysis.tkd_graphics_candidates[1].group_index == 9u);
-    CHECK(!analysis.tkd_graphics_candidates[1].target_in_range);
+    CHECK(analysis.tkd_graphics_candidates[0].element_index == 1u);
+    CHECK(analysis.tkd_graphics_candidates[0].direct_target_in_range);
+    CHECK(analysis.tkd_graphics_candidates[0].cached_target_in_range);
+    CHECK(analysis.tkd_graphics_candidates[1].element_index == 9u);
+    CHECK(!analysis.tkd_graphics_candidates[1].direct_target_in_range);
+    CHECK(!analysis.tkd_graphics_candidates[1].cached_target_in_range);
 
     std::cout << "fighter native link analysis tests passed\n";
     return 0;
