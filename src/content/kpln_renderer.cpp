@@ -59,6 +59,203 @@ std::uint32_t descriptor_transform(
 
 } // namespace
 
+Result<KplnRenderedFrame> render_kpln_direct_frame(
+    const KplnDirectFrame& frame,
+    const KplnIndexedPage4bpp& atlas,
+    const KplnClutWindow& clut,
+    std::uint32_t side,
+    std::uint32_t clut_base) {
+    if (side > 1u) {
+        return Result<KplnRenderedFrame>::failure(
+            ErrorCode::invalid_argument,
+            "KPLN direct render side is outside the retail range");
+    }
+    if (frame.parts.empty() ||
+        atlas.width != 1024u ||
+        atlas.height != 256u ||
+        atlas.indices.size() != 1024u * 256u) {
+        return Result<KplnRenderedFrame>::failure(
+            ErrorCode::invalid_argument,
+            "KPLN direct frame or 0x0202 atlas is invalid");
+    }
+
+    std::int32_t min_x =
+        std::numeric_limits<std::int32_t>::max();
+    std::int32_t min_y =
+        std::numeric_limits<std::int32_t>::max();
+    std::int32_t max_x =
+        std::numeric_limits<std::int32_t>::min();
+    std::int32_t max_y =
+        std::numeric_limits<std::int32_t>::min();
+
+    for (const auto& part : frame.parts) {
+        const auto x =
+            -static_cast<std::int32_t>(
+                part.header.x_offset);
+        const auto y =
+            -static_cast<std::int32_t>(
+                part.header.y_offset);
+        min_x = std::min(min_x, x);
+        min_y = std::min(min_y, y);
+        max_x = std::max(
+            max_x,
+            x + static_cast<std::int32_t>(
+                part.header.columns) * 16);
+        max_y = std::max(
+            max_y,
+            y + static_cast<std::int32_t>(
+                part.header.rows) * 16);
+    }
+
+    if (max_x <= min_x || max_y <= min_y) {
+        return Result<KplnRenderedFrame>::failure(
+            ErrorCode::invalid_installation,
+            "KPLN direct frame has invalid bounds");
+    }
+
+    KplnRenderedFrame output{};
+    output.width =
+        static_cast<std::uint32_t>(max_x - min_x);
+    output.height =
+        static_cast<std::uint32_t>(max_y - min_y);
+    output.origin_x = min_x;
+    output.origin_y = min_y;
+    output.rgba8.assign(
+        static_cast<std::size_t>(output.width) *
+            output.height,
+        0u);
+
+    const auto texture_base_x_units =
+        ((side * 0x100u + 0x180u) >> 4u);
+    constexpr std::uint32_t texture_base_y_page = 0x10u;
+    const auto clut_row_base = 0x1e8u + side;
+
+    for (const auto& part : frame.parts) {
+        const auto part_x =
+            -static_cast<std::int32_t>(
+                part.header.x_offset) -
+            min_x;
+        const auto part_y =
+            -static_cast<std::int32_t>(
+                part.header.y_offset) -
+            min_y;
+
+        for (const auto& cell : part.cells) {
+            if (cell.empty) {
+                continue;
+            }
+
+            const auto texture_value =
+                texture_base_x_units * 0x40u +
+                (cell.tile_word & 0x07FFu) +
+                texture_base_y_page * 0x100u;
+            const auto texture_page =
+                texture_value >> 8u;
+            const auto texture_u =
+                texture_value & 0x00F0u;
+            const auto texture_v =
+                (texture_value & 0x000Fu) * 16u;
+            const auto texture_page_word_x =
+                (texture_page & 0x0Fu) * 0x40u;
+            const auto texture_page_y =
+                (texture_page & 0x10u) != 0u
+                ? 0x100u
+                : 0u;
+            const auto selector =
+                clut_base +
+                static_cast<std::uint32_t>(
+                    cell.tile_word >> 11u);
+
+            const auto dst_x =
+                part_x +
+                static_cast<std::int32_t>(
+                    cell.column) * 16;
+            const auto dst_y =
+                part_y +
+                static_cast<std::int32_t>(
+                    cell.row) * 16;
+
+            for (std::uint32_t y = 0u; y < 16u; ++y) {
+                const auto vram_y =
+                    texture_page_y + texture_v + y;
+                if (vram_y < 0x100u) {
+                    continue;
+                }
+                const auto source_y =
+                    vram_y - 0x100u;
+                if (source_y >= atlas.height) {
+                    continue;
+                }
+
+                for (std::uint32_t x = 0u;
+                     x < 16u;
+                     ++x) {
+                    const auto vram_pixel_x =
+                        texture_page_word_x * 4u +
+                        texture_u + x;
+                    if (vram_pixel_x < 0x180u * 4u) {
+                        continue;
+                    }
+                    const auto source_x =
+                        vram_pixel_x - 0x180u * 4u;
+                    if (source_x >= atlas.width) {
+                        continue;
+                    }
+
+                    const auto target_x =
+                        dst_x +
+                        static_cast<std::int32_t>(x);
+                    const auto target_y =
+                        dst_y +
+                        static_cast<std::int32_t>(y);
+                    if (target_x < 0 ||
+                        target_y < 0 ||
+                        target_x >=
+                            static_cast<std::int32_t>(
+                                output.width) ||
+                        target_y >=
+                            static_cast<std::int32_t>(
+                                output.height)) {
+                        continue;
+                    }
+
+                    const auto pixel_index =
+                        atlas.indices[
+                            static_cast<std::size_t>(
+                                source_y) *
+                                atlas.width +
+                            source_x];
+                    if (pixel_index == 0u) {
+                        continue;
+                    }
+
+                    const auto raw_color =
+                        sample_kpln_clut(
+                            clut,
+                            clut_row_base,
+                            selector,
+                            pixel_index);
+                    const auto rgba =
+                        bgr555_to_rgba(raw_color);
+                    if ((rgba >> 24u) == 0u) {
+                        continue;
+                    }
+
+                    output.rgba8[
+                        static_cast<std::size_t>(
+                            target_y) *
+                            output.width +
+                        static_cast<std::size_t>(
+                            target_x)] = rgba;
+                }
+            }
+        }
+    }
+
+    return Result<KplnRenderedFrame>::success(
+        std::move(output));
+}
+
 Result<KplnRenderedFrame> render_kpln_cached_frame(
     const KplnCachedFrame& frame,
     const KplnClutWindow& clut,
