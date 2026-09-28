@@ -511,3 +511,35 @@ func context_frame_preview(
         return null
     var resource = ResourceLoader.load(path)
     return resource if resource is Texture2D else null
+
+
+func animation_script_candidates() -> Array[Dictionary]:
+    var result: Array[Dictionary] = []
+    var scripts = native_links_data().get(
+        "animation_script_candidates", [])
+    if not scripts is Array:
+        return result
+    for script in scripts:
+        if script is Dictionary:
+            result.append(script)
+    return result
+
+func animation_script_candidate_count() -> int:
+    return animation_script_candidates().size()
+
+func animation_script_candidate(index: int) -> Dictionary:
+    var scripts := animation_script_candidates()
+    if index < 0 or index >= scripts.size():
+        return {}
+    return scripts[index]
+
+func animation_script_frames(index: int) -> PackedInt32Array:
+    var result := PackedInt32Array()
+    var script := animation_script_candidate(index)
+    var records = script.get("records", [])
+    if not records is Array:
+        return result
+    for record in records:
+        if record is Dictionary:
+            result.append(int(record.get("frame_index", -1)))
+    return result
