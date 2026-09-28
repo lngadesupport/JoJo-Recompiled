@@ -412,17 +412,34 @@ Result<std::filesystem::path> write_pac_palette_bank_preview(
     std::size_t chunk_index,
     const PacChunk& chunk,
     std::size_t& palette_count) {
-    const auto bank = parse_kpln_palette_bank(chunk.bytes);
-    if (!bank) {
+    constexpr std::size_t kPaletteBytes = 32u;
+    constexpr std::size_t kColorsPerPalette = 16u;
+    if (chunk.bytes.empty() ||
+        chunk.bytes.size() % kPaletteBytes != 0u) {
         return Result<std::filesystem::path>::failure(
-            bank.error, bank.detail);
+            ErrorCode::unsupported_format,
+            "generic PAC palette preview requires whole 32-byte BGR555 rows");
     }
-    palette_count = bank.value.palettes.size();
+    palette_count =
+        chunk.bytes.size() / kPaletteBytes;
 
     std::vector<std::uint32_t> pixels;
-    pixels.reserve(palette_count * 16u);
-    for (const auto& palette : bank.value.palettes) {
-        for (const auto color : palette.bgr555) {
+    pixels.reserve(palette_count * kColorsPerPalette);
+    for (std::size_t palette = 0u;
+         palette < palette_count;
+         ++palette) {
+        for (std::size_t color_index = 0u;
+             color_index < kColorsPerPalette;
+             ++color_index) {
+            const auto offset =
+                palette * kPaletteBytes +
+                color_index * 2u;
+            const auto color =
+                static_cast<std::uint16_t>(
+                    static_cast<std::uint16_t>(
+                        chunk.bytes[offset]) |
+                    (static_cast<std::uint16_t>(
+                        chunk.bytes[offset + 1u]) << 8u));
             const auto red = expand5(color);
             const auto green = expand5(color >> 5u);
             const auto blue = expand5(color >> 10u);
