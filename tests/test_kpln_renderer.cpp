@@ -75,6 +75,51 @@ int main() {
         rendered.value.rgba8[20u];
     CHECK((transparent >> 24u) == 0u);
 
-    std::cout << "KPLN cached renderer tests passed\n";
+    jojo::content::KplnDirectFrame direct_frame{};
+    jojo::content::KplnDirectPart direct_part{};
+    direct_part.header.columns = 1u;
+    direct_part.header.rows = 1u;
+    direct_part.header.x_offset = 0;
+    direct_part.header.y_offset = 0;
+    direct_part.cells.push_back({0u, 0u, 0u, false});
+    direct_frame.parts.push_back(direct_part);
+
+    jojo::content::KplnIndexedPage4bpp atlas{};
+    atlas.indices.assign(1024u * 256u, 0u);
+    for (std::uint32_t y = 0u; y < 16u; ++y) {
+        for (std::uint32_t x = 0u; x < 16u; ++x) {
+            atlas.indices[
+                static_cast<std::size_t>(y) * 1024u + x] = 1u;
+        }
+    }
+
+    jojo::content::KplnClutWindow direct_clut{};
+    direct_clut.bgr555.assign(
+        static_cast<std::size_t>(direct_clut.width) *
+            direct_clut.height,
+        0u);
+    direct_clut.bgr555[
+        static_cast<std::size_t>(
+            0x1e8u - jojo::content::kpln_clut_base_y) *
+            direct_clut.width +
+        1u] = 0x03E0u;
+
+    const auto direct_render =
+        jojo::content::render_kpln_direct_frame(
+            direct_frame,
+            atlas,
+            direct_clut,
+            0u,
+            0u);
+    CHECK(static_cast<bool>(direct_render));
+    CHECK(direct_render.value.width == 16u);
+    CHECK(direct_render.value.height == 16u);
+    const auto direct_pixel = direct_render.value.rgba8[0];
+    CHECK((direct_pixel & 0xFFu) == 0u);
+    CHECK(((direct_pixel >> 8u) & 0xFFu) == 255u);
+    CHECK(((direct_pixel >> 16u) & 0xFFu) == 0u);
+    CHECK(((direct_pixel >> 24u) & 0xFFu) == 255u);
+
+    std::cout << "KPLN cached/direct renderer tests passed\n";
     return 0;
 }
