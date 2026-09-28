@@ -31,7 +31,7 @@ struct KplnRenderedFrame {
     const KplnClutWindow& clut,
     std::uint32_t side,
     std::uint32_t clut_base,
-    std::uint32_t clut_mode,
+    std::int32_t clut_mode,
     std::uint32_t render_mode,
     std::uint32_t orientation,
     std::uint32_t clut_row_base = 0u);
