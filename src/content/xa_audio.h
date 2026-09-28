@@ -34,7 +34,16 @@ struct XaAudioLayout {
     std::vector<XaChannelStream> streams;
 };
 
+struct XaPcm16Audio {
+    std::uint32_t sample_rate_hz{};
+    std::uint32_t channel_count{};
+    std::vector<std::int16_t> samples;
+};
+
 [[nodiscard]] Result<XaAudioLayout> parse_xa_audio_sectors(
     std::span<const std::uint8_t> raw_sectors);
+
+[[nodiscard]] Result<XaPcm16Audio> decode_xa_adpcm_pcm16(
+    const XaChannelStream& stream);
 
 } // namespace jojo::content
