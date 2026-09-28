@@ -9,6 +9,7 @@ const INDEXED_PALETTE_SHADER = preload(
 @export var hit_table_path: String = ""
 @export var tk_path: String = ""
 @export var graphics_path: String = ""
+@export var native_links_path: String = ""
 @export var pack_paths: PackedStringArray = PackedStringArray()
 @export var visual_paths: PackedStringArray = PackedStringArray()
 
@@ -16,6 +17,7 @@ var _overlay_cache: Dictionary = {}
 var _hit_cache: Dictionary = {}
 var _tk_cache: Dictionary = {}
 var _graphics_cache: Dictionary = {}
+var _native_links_cache: Dictionary = {}
 var _hit_rect_cache: Dictionary = {}
 var _hit_rect_cache_ready := false
 
@@ -30,6 +32,8 @@ static func from_catalog_entry(entry: Dictionary) -> JojoFighterResource:
         str(entry.get("tk", "")))
     resource.graphics_path = _normalize_content_path(
         str(entry.get("graphics", "")))
+    resource.native_links_path = _normalize_content_path(
+        str(entry.get("native_links", "")))
 
     var packs = entry.get("packs", [])
     if packs is Array:
@@ -69,6 +73,11 @@ func graphics_data() -> Dictionary:
         _graphics_cache = _load_json_dictionary(graphics_path)
     return _graphics_cache
 
+func native_links_data() -> Dictionary:
+    if _native_links_cache.is_empty() and not native_links_path.is_empty():
+        _native_links_cache = _load_json_dictionary(native_links_path)
+    return _native_links_cache
+
 func has_overlay() -> bool:
     return not overlay_path.is_empty()
 
@@ -81,11 +90,15 @@ func has_tk_data() -> bool:
 func has_graphics_data() -> bool:
     return not graphics_path.is_empty()
 
+func has_native_links() -> bool:
+    return not native_links_path.is_empty()
+
 func clear_runtime_cache() -> void:
     _overlay_cache.clear()
     _hit_cache.clear()
     _tk_cache.clear()
     _graphics_cache.clear()
+    _native_links_cache.clear()
     _hit_rect_cache.clear()
     _hit_rect_cache_ready = false
 
@@ -260,3 +273,52 @@ func create_indexed_page_material(
     material.set_shader_parameter(
         "palette_rows", float(palette_count))
     return material
+
+
+func candidate_hit_link(slot_index: int, record_index: int) -> Dictionary:
+    var data := native_links_data()
+    var candidates = data.get("tkc_hit_candidates", [])
+    if not candidates is Array:
+        return {}
+    for candidate in candidates:
+        if not candidate is Dictionary:
+            continue
+        if int(candidate.get("slot", -1)) == slot_index and                 int(candidate.get("record", -1)) == record_index:
+            return candidate
+    return {}
+
+func candidate_graphics_link(
+        slot_index: int,
+        record_index: int) -> Dictionary:
+    var data := native_links_data()
+    var candidates = data.get("tkd_graphics_candidates", [])
+    if not candidates is Array:
+        return {}
+    for candidate in candidates:
+        if not candidate is Dictionary:
+            continue
+        if int(candidate.get("slot", -1)) == slot_index and                 int(candidate.get("record", -1)) == record_index:
+            return candidate
+    return {}
+
+func candidate_hit_rect(slot_index: int, record_index: int) -> Rect2:
+    var link := candidate_hit_link(slot_index, record_index)
+    var rectangle = link.get("candidate_rect", null)
+    if not rectangle is Dictionary:
+        return Rect2()
+    return Rect2(
+        Vector2(
+            float(rectangle.get("x_offset", 0)),
+            float(rectangle.get("y_offset", 0))),
+        Vector2(
+            float(rectangle.get("width", 0)),
+            float(rectangle.get("height", 0))))
+
+func candidate_graphics_group(
+        slot_index: int,
+        record_index: int) -> Dictionary:
+    var link := candidate_graphics_link(slot_index, record_index)
+    if not bool(link.get("target_in_range", false)):
+        return {}
+    return graphics_group(
+        int(link.get("candidate_graphics_group_index", -1)))
