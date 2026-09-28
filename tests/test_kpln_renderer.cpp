@@ -77,11 +77,19 @@ int main() {
 
     // A recovered PL context can override the default side CLUT row.
     jojo::content::KplnClutWindow custom_row_clut = clut;
-    custom_row_clut.bgr555[
+    const auto custom_row =
         static_cast<std::size_t>(
             0x1e9u - jojo::content::kpln_clut_base_y) *
-            custom_row_clut.width +
-        selector_x] = 0x7C00u;
+        custom_row_clut.width;
+    const auto selector_7_x = 7u * 16u + 1u;
+    const auto selector_12_x = 12u * 16u + 1u;
+    // Unsigned-promotion bug would incorrectly take clutBase (7).
+    custom_row_clut.bgr555[
+        custom_row + selector_7_x] = 0x03E0u;
+    // Correct negative mode keeps descriptor-relative selection:
+    // clutBase 7 + descriptor selector 5 = selector 12.
+    custom_row_clut.bgr555[
+        custom_row + selector_12_x] = 0x7C00u;
     const auto custom_clut_row =
         jojo::content::render_kpln_cached_frame(
             frame,
