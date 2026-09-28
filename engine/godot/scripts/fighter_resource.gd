@@ -1,6 +1,9 @@
 class_name JojoFighterResource
 extends Resource
 
+const INDEXED_PALETTE_SHADER = preload(
+    "res://shaders/indexed_palette.gdshader")
+
 @export var retail_id: String = ""
 @export var overlay_path: String = ""
 @export var hit_table_path: String = ""
@@ -219,3 +222,41 @@ func graphics_group(index: int) -> Dictionary:
     if record is Dictionary:
         return record
     return {}
+
+
+func create_indexed_page_material(
+        bank_index: int,
+        palette_index: int) -> ShaderMaterial:
+    var data := graphics_data()
+    var banks = data.get("palette_banks", [])
+    if not banks is Array:
+        return null
+    if bank_index < 0 or bank_index >= banks.size():
+        return null
+
+    var bank = banks[bank_index]
+    if not bank is Dictionary:
+        return null
+    var palette_count := int(bank.get("palette_count", 0))
+    if palette_count <= 0:
+        return null
+    if palette_index < 0 or palette_index >= palette_count:
+        return null
+
+    var preview_path := _normalize_content_path(
+        str(bank.get("preview", "")))
+    if preview_path.is_empty() or not ResourceLoader.exists(preview_path):
+        return null
+    var palette_resource = ResourceLoader.load(preview_path)
+    if not palette_resource is Texture2D:
+        return null
+
+    var material := ShaderMaterial.new()
+    material.shader = INDEXED_PALETTE_SHADER
+    material.set_shader_parameter(
+        "palette_texture", palette_resource)
+    material.set_shader_parameter(
+        "palette_row", float(palette_index))
+    material.set_shader_parameter(
+        "palette_rows", float(palette_count))
+    return material
