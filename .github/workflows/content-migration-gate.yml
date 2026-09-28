@@ -36,6 +36,7 @@ jobs:
           jojo_fighter_tk_tests
           jojo_fighter_overlay_tests
           jojo_xa_audio_tests
+          jojo_pcm_wav_tests
           -j2
       - name: Run content migration tests
         run: |
@@ -46,6 +47,7 @@ jobs:
           ./build-migration/jojo_fighter_tk_tests
           ./build-migration/jojo_fighter_overlay_tests
           ./build-migration/jojo_xa_audio_tests
+          ./build-migration/jojo_pcm_wav_tests
       - name: Upload content importer
         uses: actions/upload-artifact@v4
         with:
