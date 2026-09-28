@@ -471,9 +471,15 @@ Result<std::filesystem::path> write_kpln_native_graphics(
                 << static_cast<unsigned>(record.layout_low)
                 << ",\"layout_high\":"
                 << static_cast<unsigned>(record.layout_high)
-                << ",\"field2\":" << record.field2
-                << ",\"field3\":" << record.field3
+                << ",\"raw_field2\":" << record.raw_field2
+                << ",\"raw_field3\":" << record.raw_field3
+                << ",\"signed_field2\":" << record.signed_field2
+                << ",\"signed_field3\":" << record.signed_field3
                 << ",\"field4\":" << record.field4
+                << ",\"list_terminated_by_eof\":"
+                << (record.list_terminated_by_eof
+                        ? "true"
+                        : "false")
                 << ",\"indices\":[";
             for (std::size_t i = 0u;
                  i < record.indices.size();
