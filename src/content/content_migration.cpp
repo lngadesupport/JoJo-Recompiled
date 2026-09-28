@@ -3,7 +3,9 @@
 #include "content/fighter_tk.h"
 #include "content/hit_table.h"
 #include "content/pac_archive.h"
+#include "content/pcm_wav.h"
 #include "content/tim_image.h"
+#include "content/xa_adpcm_decoder.h"
 #include "content/xa_audio.h"
 
 #include "core/disc_media.h"
@@ -219,7 +221,7 @@ Result<std::filesystem::path> write_xa_audio(
     index << "{\n"
           << "  \"source\": \"" << json_escape(entry.path) << "\",\n"
           << "  \"source_representation\": \"raw_mode2_form2\",\n"
-          << "  \"runtime_representation\": \"xa_adpcm_payload_only\",\n"
+          << "  \"runtime_representation\": \"pcm16_wav\",\n"
           << "  \"total_source_sectors\": "
           << parsed.value.total_sectors << ",\n"
           << "  \"audio_sectors\": "
@@ -248,20 +250,65 @@ Result<std::filesystem::path> write_xa_audio(
                 written.error, written.detail);
         }
 
+        const auto decoded =
+            decode_xa_adpcm(
+                stream.coding,
+                stream.adpcm_payload);
+        if (!decoded) {
+            return Result<std::filesystem::path>::failure(
+                decoded.error,
+                entry.path + " channel " +
+                    std::to_string(
+                        static_cast<unsigned>(stream.channel)) +
+                    ": " + decoded.detail);
+        }
+        const auto wav =
+            encode_pcm16_wav(
+                decoded.value.sample_rate_hz,
+                decoded.value.channel_count,
+                decoded.value.samples);
+        if (!wav) {
+            return Result<std::filesystem::path>::failure(
+                wav.error,
+                entry.path + " channel " +
+                    std::to_string(
+                        static_cast<unsigned>(stream.channel)) +
+                    ": " + wav.detail);
+        }
+
+        std::ostringstream wav_filename;
+        wav_filename << "channel_"
+                     << std::setfill('0')
+                     << std::setw(2)
+                     << static_cast<unsigned>(stream.channel)
+                     << ".wav";
+        const auto wav_path =
+            directory / wav_filename.str();
+        const auto wav_written =
+            write_bytes(wav_path, wav.value);
+        if (!wav_written) {
+            return Result<std::filesystem::path>::failure(
+                wav_written.error, wav_written.detail);
+        }
+
         index << "    {"
               << "\"channel\":"
               << static_cast<unsigned>(stream.channel)
               << ",\"coding\":"
               << static_cast<unsigned>(stream.coding)
               << ",\"sample_rate_hz\":"
-              << stream.sample_rate_hz
+              << decoded.value.sample_rate_hz
               << ",\"channels\":"
-              << stream.channel_count
+              << decoded.value.channel_count
               << ",\"sector_count\":"
               << stream.packets.size()
-              << ",\"payload\":\""
+              << ",\"source_payload\":\""
               << json_escape(filename.str())
-              << "\",\"eof_sector_indices\":[";
+              << "\",\"wav\":\""
+              << json_escape(wav_filename.str())
+              << "\",\"pcm_sample_count\":"
+              << decoded.value.samples.size()
+              << ",\"eof_sector_indices\":[";
         bool first_eof = true;
         for (const auto& packet : stream.packets) {
             if (!packet.end_of_file) continue;
