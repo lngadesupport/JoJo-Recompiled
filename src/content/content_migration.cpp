@@ -975,6 +975,7 @@ Result<std::filesystem::path> write_fighter_catalog(
 
         out << ",\n      \"packs\": [";
         bool first_pack = true;
+        std::vector<std::string> visual_paths;
         for (const auto& entry : summary.entries) {
             if (entry.kind != ContentKind::graphics_pack) continue;
             const auto filename =
@@ -989,6 +990,42 @@ Result<std::filesystem::path> write_fighter_catalog(
                 << "\",\"derived\":\""
                 << json_escape(entry.derived_path)
                 << "\"}";
+
+            const auto stem =
+                std::filesystem::path{filename}.stem().string();
+            const auto tim_directory =
+                output_root / "derived" / "tim" / stem;
+            std::error_code scan_ec;
+            if (std::filesystem::is_directory(tim_directory, scan_ec) &&
+                !scan_ec) {
+                for (std::filesystem::directory_iterator it(
+                         tim_directory, scan_ec), end;
+                     !scan_ec && it != end;
+                     it.increment(scan_ec)) {
+                    if (!it->is_regular_file()) continue;
+                    if (ascii_upper(
+                            it->path().extension().string()) != ".TGA") {
+                        continue;
+                    }
+                    visual_paths.push_back(
+                        path_relative_to(
+                            it->path(), output_root));
+                }
+            }
+        }
+        std::sort(visual_paths.begin(), visual_paths.end());
+        visual_paths.erase(
+            std::unique(
+                visual_paths.begin(),
+                visual_paths.end()),
+            visual_paths.end());
+
+        out << "],\n      \"visuals\": [";
+        for (std::size_t visual = 0u;
+             visual < visual_paths.size();
+             ++visual) {
+            if (visual != 0u) out << ",";
+            out << "\"" << json_escape(visual_paths[visual]) << "\"";
         }
         out << "]\n"
             << "    }";
