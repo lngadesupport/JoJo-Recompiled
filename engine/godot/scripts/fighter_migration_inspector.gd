@@ -2,6 +2,8 @@ class_name JojoFighterMigrationInspector
 extends Control
 
 enum ViewMode {
+    CONTEXT_CACHED_FRAME,
+    CONTEXT_DIRECT_FRAME,
     CACHED_FRAME,
     DIRECT_FRAME,
     INDEXED_SURFACE,
@@ -55,6 +57,10 @@ func _build() -> void:
 
     view_select = OptionButton.new()
     view_select.custom_minimum_size = Vector2(190, 44)
+    view_select.add_item(
+        "PL CONTEXT CACHED", ViewMode.CONTEXT_CACHED_FRAME)
+    view_select.add_item(
+        "PL CONTEXT DIRECT", ViewMode.CONTEXT_DIRECT_FRAME)
     view_select.add_item("CACHED FRAME", ViewMode.CACHED_FRAME)
     view_select.add_item("DIRECT FRAME", ViewMode.DIRECT_FRAME)
     view_select.add_item("INDEX SURFACE", ViewMode.INDEXED_SURFACE)
@@ -157,6 +163,10 @@ func _update_ranges(fighter) -> void:
 
     var count := 1
     match _selected_view():
+        ViewMode.CONTEXT_CACHED_FRAME:
+            count = fighter.cached_frame_count()
+        ViewMode.CONTEXT_DIRECT_FRAME:
+            count = fighter.direct_frame_count()
         ViewMode.CACHED_FRAME:
             count = fighter.cached_frame_count()
         ViewMode.DIRECT_FRAME:
@@ -175,6 +185,18 @@ func _update_ranges(fighter) -> void:
 func _preview_for(fighter) -> Texture2D:
     var index := int(item_select.value)
     match _selected_view():
+        ViewMode.CONTEXT_CACHED_FRAME:
+            var contextual_cached := fighter.context_frame_preview(
+                index, true, int(palette_select.value))
+            if contextual_cached != null:
+                return contextual_cached
+            return fighter.cached_frame_preview(index)
+        ViewMode.CONTEXT_DIRECT_FRAME:
+            var contextual_direct := fighter.context_frame_preview(
+                index, false, int(palette_select.value))
+            if contextual_direct != null:
+                return contextual_direct
+            return fighter.direct_frame_preview(index)
         ViewMode.CACHED_FRAME:
             return fighter.cached_frame_preview(index)
         ViewMode.DIRECT_FRAME:
@@ -223,6 +245,10 @@ func _refresh() -> void:
 
     var selected_meta: Dictionary = {}
     match _selected_view():
+        ViewMode.CONTEXT_CACHED_FRAME:
+            selected_meta = fighter.cached_frame(int(item_select.value))
+        ViewMode.CONTEXT_DIRECT_FRAME:
+            selected_meta = fighter.direct_frame(int(item_select.value))
         ViewMode.CACHED_FRAME:
             selected_meta = fighter.cached_frame(int(item_select.value))
         ViewMode.DIRECT_FRAME:
