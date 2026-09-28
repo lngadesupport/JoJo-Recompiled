@@ -9,6 +9,10 @@ std::uint16_t le16(const std::uint8_t* p) noexcept {
         (static_cast<std::uint16_t>(p[1]) << 8u));
 }
 
+std::int16_t le16s(const std::uint8_t* p) noexcept {
+    return static_cast<std::int16_t>(le16(p));
+}
+
 } // namespace
 
 Result<KplnGroupTable> parse_kpln_group_table_0800(
@@ -64,10 +68,14 @@ Result<KplnGroupTable> parse_kpln_group_table_0800(
         record.layout_high =
             static_cast<std::uint8_t>(
                 record.packed_layout >> 8u);
-        record.field2 =
+        record.raw_field2 =
             le16(bytes.data() + offset + 4u);
-        record.field3 =
+        record.raw_field3 =
             le16(bytes.data() + offset + 6u);
+        record.signed_field2 =
+            le16s(bytes.data() + offset + 4u);
+        record.signed_field3 =
+            le16s(bytes.data() + offset + 6u);
         record.field4 =
             le16(bytes.data() + offset + 8u);
         const auto reserved =
@@ -101,7 +109,9 @@ Result<KplnGroupTable> parse_kpln_group_table_0800(
 
         // The retail PL16 data has one final one-word list that consumes the
         // final word of the chunk without an explicit 0xFFFF terminator.
-        if (!terminated && cursor != total_words) {
+        if (!terminated && cursor == total_words) {
+            record.list_terminated_by_eof = true;
+        } else if (!terminated) {
             return Result<KplnGroupTable>::failure(
                 ErrorCode::invalid_installation,
                 "KPLN 0x0800 index list is unterminated");
