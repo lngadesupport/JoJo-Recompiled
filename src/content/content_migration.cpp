@@ -1778,6 +1778,12 @@ Result<std::filesystem::path> write_fighter_native_links_json(
     const PacChunk* direct_chunk = nullptr;
     const PacChunk* tile_pool_chunk = nullptr;
     const PacChunk* cached_chunk = nullptr;
+    const PacChunk* atlas_0202_chunk = nullptr;
+    const PacChunk* pool_0803 = nullptr;
+    const PacChunk* pool_0804 = nullptr;
+    const PacChunk* pool_0805 = nullptr;
+    const PacChunk* pool_0806 = nullptr;
+    const PacChunk* pool_0807 = nullptr;
     for (const auto& chunk : kpln.value) {
         if (chunk.type == 0x0800u) {
             direct_chunk = &chunk;
@@ -1785,11 +1791,28 @@ Result<std::filesystem::path> write_fighter_native_links_json(
             tile_pool_chunk = &chunk;
         } else if (chunk.type == 0x0802u) {
             cached_chunk = &chunk;
+        } else if (chunk.type == 0x0202u) {
+            atlas_0202_chunk = &chunk;
+        } else if (chunk.type == 0x0803u) {
+            pool_0803 = &chunk;
+        } else if (chunk.type == 0x0804u) {
+            pool_0804 = &chunk;
+        } else if (chunk.type == 0x0805u) {
+            pool_0805 = &chunk;
+        } else if (chunk.type == 0x0806u) {
+            pool_0806 = &chunk;
+        } else if (chunk.type == 0x0807u) {
+            pool_0807 = &chunk;
         }
     }
 
-    std::uint32_t direct_frame_count = 0u;
-    std::uint32_t cached_frame_count = 0u;
+    std::vector<KplnDirectFrame> direct_frames;
+    KplnCachedFrameSet cached_frames{};
+    bool has_cached_frames = false;
+    KplnIndexedPage4bpp direct_atlas{};
+    bool has_direct_atlas = false;
+    KplnClutWindows clut_windows{};
+    bool has_clut_windows = false;
 
     if (direct_chunk) {
         const auto direct =
@@ -1801,9 +1824,7 @@ Result<std::filesystem::path> write_fighter_native_links_json(
                 "KPLN 0x0800 failed native link parsing: " +
                     direct.detail);
         }
-        direct_frame_count =
-            static_cast<std::uint32_t>(
-                direct.value.size());
+        direct_frames = direct.value;
     }
 
     if (cached_chunk && tile_pool_chunk) {
@@ -1817,10 +1838,49 @@ Result<std::filesystem::path> write_fighter_native_links_json(
                 "KPLN 0x0802/0x0801 failed native link parsing: " +
                     cached.detail);
         }
-        cached_frame_count =
-            static_cast<std::uint32_t>(
-                cached.value.frames.size());
+        cached_frames = cached.value;
+        has_cached_frames = true;
     }
+
+    if (atlas_0202_chunk) {
+        const auto parsed =
+            parse_kpln_indexed_page_0202(
+                atlas_0202_chunk->bytes);
+        if (!parsed) {
+            return Result<std::filesystem::path>::failure(
+                parsed.error,
+                "KPLN 0x0202 failed native link parsing: " +
+                    parsed.detail);
+        }
+        direct_atlas = parsed.value;
+        has_direct_atlas = true;
+    }
+
+    if (pool_0803 && pool_0804 && pool_0805 &&
+        pool_0806 && pool_0807) {
+        const auto parsed =
+            build_kpln_clut_windows(
+                pool_0803->bytes,
+                pool_0804->bytes,
+                pool_0805->bytes,
+                pool_0806->bytes,
+                pool_0807->bytes);
+        if (!parsed) {
+            return Result<std::filesystem::path>::failure(
+                parsed.error,
+                "KPLN CLUT failed native link parsing: " +
+                    parsed.detail);
+        }
+        clut_windows = parsed.value;
+        has_clut_windows = true;
+    }
+
+    const auto direct_frame_count =
+        static_cast<std::uint32_t>(
+            direct_frames.size());
+    const auto cached_frame_count =
+        static_cast<std::uint32_t>(
+            cached_frames.frames.size());
 
     const auto analysis =
         analyze_fighter_native_links(
@@ -1849,6 +1909,159 @@ Result<std::filesystem::path> write_fighter_native_links_json(
             ErrorCode::io_error,
             "cannot create fighter native link directory: " +
                 ec.message());
+    }
+
+    std::vector<std::int32_t> best_context_index_by_frame(
+        context_frame_count,
+        -1);
+    for (std::size_t index = 0u;
+         index < render_context_candidates.size();
+         ++index) {
+        const auto frame =
+            render_context_candidates[index].frame_index;
+        if (frame >= best_context_index_by_frame.size()) {
+            continue;
+        }
+        const auto current =
+            best_context_index_by_frame[frame];
+        if (current < 0 ||
+            render_context_candidates[index].confidence_score >
+                render_context_candidates[
+                    static_cast<std::size_t>(current)]
+                    .confidence_score) {
+            best_context_index_by_frame[frame] =
+                static_cast<std::int32_t>(index);
+        }
+    }
+
+    std::vector<std::array<std::string, 2>>
+        cached_context_previews(
+            render_context_candidates.size());
+    std::vector<std::array<std::string, 2>>
+        direct_context_previews(
+            render_context_candidates.size());
+
+    if (has_clut_windows) {
+        const auto preview_directory =
+            output_root / "derived" / "kpln" /
+            ("KPLN" + std::string{fighter_id}) /
+            "context_previews";
+        std::filesystem::create_directories(
+            preview_directory, ec);
+        if (ec) {
+            return Result<std::filesystem::path>::failure(
+                ErrorCode::io_error,
+                "cannot create KPLN context preview directory: " +
+                    ec.message());
+        }
+
+        for (std::size_t frame = 0u;
+             frame < best_context_index_by_frame.size();
+             ++frame) {
+            const auto selected =
+                best_context_index_by_frame[frame];
+            if (selected < 0) continue;
+            const auto candidate_index =
+                static_cast<std::size_t>(selected);
+            const auto& context =
+                render_context_candidates[candidate_index];
+
+            for (std::size_t palette_id = 0u;
+                 palette_id < clut_windows.windows.size() &&
+                 palette_id < 2u;
+                 ++palette_id) {
+                const auto& clut =
+                    clut_windows.windows[palette_id];
+
+                if (has_cached_frames &&
+                    frame < cached_frames.frames.size()) {
+                    const auto rendered =
+                        render_kpln_cached_frame(
+                            cached_frames.frames[frame],
+                            clut,
+                            0u,
+                            context.clut_base,
+                            context.clut_mode,
+                            0u,
+                            context.orientation,
+                            context.clut_row_base);
+                    if (rendered) {
+                        std::ostringstream name;
+                        name << "cached_frame_"
+                             << std::setfill('0')
+                             << std::setw(4)
+                             << frame
+                             << "_ctx_"
+                             << std::hex
+                             << context.source_offset
+                             << std::dec
+                             << "_p" << palette_id
+                             << ".tga";
+                        const auto path =
+                            preview_directory /
+                            name.str();
+                        const auto written =
+                            write_rgba_tga(
+                                path,
+                                rendered.value.width,
+                                rendered.value.height,
+                                rendered.value.rgba8);
+                        if (!written) {
+                            return Result<std::filesystem::path>::failure(
+                                written.error,
+                                written.detail);
+                        }
+                        cached_context_previews[
+                            candidate_index][palette_id] =
+                            path_relative_to(
+                                path, output_root);
+                    }
+                }
+
+                if (has_direct_atlas &&
+                    frame < direct_frames.size()) {
+                    const auto rendered =
+                        render_kpln_direct_frame(
+                            direct_frames[frame],
+                            direct_atlas,
+                            clut,
+                            0u,
+                            context.clut_base,
+                            context.clut_row_base);
+                    if (rendered) {
+                        std::ostringstream name;
+                        name << "direct_frame_"
+                             << std::setfill('0')
+                             << std::setw(4)
+                             << frame
+                             << "_ctx_"
+                             << std::hex
+                             << context.source_offset
+                             << std::dec
+                             << "_p" << palette_id
+                             << ".tga";
+                        const auto path =
+                            preview_directory /
+                            name.str();
+                        const auto written =
+                            write_rgba_tga(
+                                path,
+                                rendered.value.width,
+                                rendered.value.height,
+                                rendered.value.rgba8);
+                        if (!written) {
+                            return Result<std::filesystem::path>::failure(
+                                written.error,
+                                written.detail);
+                        }
+                        direct_context_previews[
+                            candidate_index][palette_id] =
+                            path_relative_to(
+                                path, output_root);
+                    }
+                }
+            }
+        }
     }
 
     const auto out_path = directory / "native_links.json";
@@ -1975,7 +2188,41 @@ Result<std::filesystem::path> write_fighter_native_links_json(
             << static_cast<unsigned>(candidate.orientation)
             << ",\"confidence_score\":"
             << candidate.confidence_score
-            << "}";
+            << ",\"selected_best_for_frame\":"
+            << ((candidate.frame_index <
+                    best_context_index_by_frame.size() &&
+                 best_context_index_by_frame[
+                    candidate.frame_index] ==
+                    static_cast<std::int32_t>(index))
+                    ? "true"
+                    : "false")
+            << ",\"cached_previews\":[";
+        for (std::size_t palette_id = 0u;
+             palette_id < 2u;
+             ++palette_id) {
+            if (palette_id != 0u) out << ",";
+            const auto& path =
+                cached_context_previews[index][palette_id];
+            if (path.empty()) {
+                out << "null";
+            } else {
+                out << "\"" << json_escape(path) << "\"";
+            }
+        }
+        out << "],\"direct_previews\":[";
+        for (std::size_t palette_id = 0u;
+             palette_id < 2u;
+             ++palette_id) {
+            if (palette_id != 0u) out << ",";
+            const auto& path =
+                direct_context_previews[index][palette_id];
+            if (path.empty()) {
+                out << "null";
+            } else {
+                out << "\"" << json_escape(path) << "\"";
+            }
+        }
+        out << "]}";
         if (index + 1u !=
             render_context_candidates.size()) {
             out << ",";
