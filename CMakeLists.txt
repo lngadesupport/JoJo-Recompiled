@@ -89,7 +89,9 @@ add_library(jojo_content_migration STATIC
   src/content/fighter_tk.cpp
   src/content/hit_table.cpp
   src/content/kpln_graphics.cpp
+  src/content/kpln_clut.cpp
   src/content/kpln_sprite_frames.cpp
+  src/content/kpln_renderer.cpp
   src/content/pac_archive.cpp
   src/content/pcm_wav.cpp
   src/content/tim_image.cpp
@@ -223,6 +225,14 @@ add_test(NAME jojo_fighter_native_links_tests COMMAND jojo_fighter_native_links_
 add_executable(jojo_kpln_sprite_frames_tests tests/test_kpln_sprite_frames.cpp)
 target_link_libraries(jojo_kpln_sprite_frames_tests PRIVATE jojo_content_migration)
 add_test(NAME jojo_kpln_sprite_frames_tests COMMAND jojo_kpln_sprite_frames_tests)
+
+add_executable(jojo_kpln_clut_tests tests/test_kpln_clut.cpp)
+target_link_libraries(jojo_kpln_clut_tests PRIVATE jojo_content_migration)
+add_test(NAME jojo_kpln_clut_tests COMMAND jojo_kpln_clut_tests)
+
+add_executable(jojo_kpln_renderer_tests tests/test_kpln_renderer.cpp)
+target_link_libraries(jojo_kpln_renderer_tests PRIVATE jojo_content_migration)
+add_test(NAME jojo_kpln_renderer_tests COMMAND jojo_kpln_renderer_tests)
 add_jojo_test(jojo_iso_tests tests/test_iso9660.cpp)
 add_jojo_test(jojo_media_tests tests/test_disc_media.cpp)
 add_jojo_test(jojo_ps1_system_cnf_tests tests/test_ps1_system_cnf.cpp)
