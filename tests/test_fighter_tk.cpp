@@ -129,9 +129,13 @@ int main() {
     CHECK(parsed.value.slots[0].tkc_records[0].parameter4 == 2u);
     CHECK(parsed.value.slots[0].tkd_offset == 108u);
     CHECK(parsed.value.slots[0].tkd_records.size() == 2u);
-    CHECK(parsed.value.slots[0].tkd_records[0].raw_words[0] == -20);
-    CHECK(parsed.value.slots[0].tkd_records[0].fields[2] == 95);
-    CHECK(parsed.value.slots[0].tkd_records[1].raw_words[0] == -28);
+    CHECK(parsed.value.slots[0].tkd_records[0].offset_x == -20);
+    CHECK(parsed.value.slots[0].tkd_records[0].offset_y == 24);
+    CHECK(parsed.value.slots[0].tkd_records[0].packed_element == 95u);
+    CHECK(parsed.value.slots[0].tkd_records[0].element_index == 95u);
+    CHECK(parsed.value.slots[0].tkd_records[0].element_flags == 0u);
+    CHECK(parsed.value.slots[0].tkd_records[0].reserved == 0);
+    CHECK(parsed.value.slots[0].tkd_records[1].offset_x == -28);
     CHECK(parsed.value.slots[25].tkd_offset == 108u + 25u * 16u);
 
     put32(tkd, 0u, 10u);
