@@ -1915,6 +1915,10 @@ Result<std::filesystem::path> write_fighter_native_links_json(
             overlay_bytes.value,
             context_frame_count,
             0u);
+    const auto animation_script_candidates =
+        scan_animation_script_candidates(
+            overlay_bytes.value,
+            context_frame_count);
 
     const auto directory =
         output_root / "derived" / "fighters" /
@@ -2113,6 +2117,8 @@ Result<std::filesystem::path> write_fighter_native_links_json(
         << cached_frame_count << ",\n"
         << "  \"render_context_candidate_count\": "
         << render_context_candidates.size() << ",\n"
+        << "  \"animation_script_candidate_count\": "
+        << animation_script_candidates.size() << ",\n"
         << "  \"tkc_hit_candidates\": [\n";
 
     for (std::size_t index = 0u;
@@ -2242,6 +2248,43 @@ Result<std::filesystem::path> write_fighter_native_links_json(
         out << "]}";
         if (index + 1u !=
             render_context_candidates.size()) {
+            out << ",";
+        }
+        out << "\n";
+    }
+    out << "  ],\n"
+        << "  \"animation_script_candidates\": [\n";
+    for (std::size_t index = 0u;
+         index < animation_script_candidates.size();
+         ++index) {
+        const auto& script =
+            animation_script_candidates[index];
+        out << "    {\"source_pointer_offset\":"
+            << script.source_pointer_offset
+            << ",\"target_offset\":"
+            << script.target_offset
+            << ",\"confidence_score\":"
+            << script.confidence_score
+            << ",\"records\":[";
+        for (std::size_t record_index = 0u;
+             record_index < script.records.size();
+             ++record_index) {
+            const auto& record =
+                script.records[record_index];
+            if (record_index != 0u) out << ",";
+            out << "{\"source_offset\":"
+                << record.source_offset
+                << ",\"command\":"
+                << static_cast<unsigned>(record.command)
+                << ",\"record_length\":"
+                << static_cast<unsigned>(record.record_length)
+                << ",\"frame_index\":"
+                << record.frame_index
+                << "}";
+        }
+        out << "]}";
+        if (index + 1u !=
+            animation_script_candidates.size()) {
             out << ",";
         }
         out << "\n";
