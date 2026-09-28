@@ -5,7 +5,8 @@ namespace jojo::content {
 FighterNativeLinkAnalysis analyze_fighter_native_links(
     const HitTable& hit,
     const FighterTkRoots& tk,
-    const KplnGroupTable& graphics) {
+    std::uint32_t direct_frame_count,
+    std::uint32_t cached_frame_count) {
     FighterNativeLinkAnalysis analysis{};
 
     for (std::size_t slot_index = 0u;
@@ -48,11 +49,16 @@ FighterNativeLinkAnalysis analyze_fighter_native_links(
                 static_cast<std::uint32_t>(slot_index);
             candidate.record_index =
                 static_cast<std::uint32_t>(record_index);
-            candidate.group_index = record.element_index;
-            candidate.target_in_range =
-                record.element_index < graphics.records.size();
-            if (candidate.target_in_range) {
-                ++analysis.tkd_graphics_index_in_range_count;
+            candidate.element_index = record.element_index;
+            candidate.direct_target_in_range =
+                record.element_index < direct_frame_count;
+            candidate.cached_target_in_range =
+                record.element_index < cached_frame_count;
+            if (candidate.direct_target_in_range) {
+                ++analysis.tkd_direct_frame_index_in_range_count;
+            }
+            if (candidate.cached_target_in_range) {
+                ++analysis.tkd_cached_frame_index_in_range_count;
             }
             ++analysis.tkd_record_count;
             analysis.tkd_graphics_candidates.push_back(candidate);
