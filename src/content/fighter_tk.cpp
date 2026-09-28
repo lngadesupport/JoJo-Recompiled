@@ -209,6 +209,11 @@ Result<FighterTkRoots> parse_fighter_tk_roots(
                     record.packed_element & 0xF000u);
             record.reserved =
                 le16s(tkd.data() + record_offset + 6u);
+            if (record.reserved != 0) {
+                return Result<FighterTkRoots>::failure(
+                    ErrorCode::invalid_installation,
+                    "TKD reserved field is non-zero");
+            }
             output.tkd_records.push_back(record);
         }
     }
