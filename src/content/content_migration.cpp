@@ -1,6 +1,7 @@
 #include "content/content_migration.h"
 #include "content/fighter_native_links.h"
 #include "content/fighter_overlay.h"
+#include "content/fighter_render_context.h"
 #include "content/fighter_tk.h"
 #include "content/hit_table.h"
 #include "content/kpln_graphics.h"
@@ -1725,6 +1726,8 @@ Result<std::filesystem::path> write_fighter_native_links_json(
     const Iso9660Image& image,
     const ContentImportSummary& summary,
     std::string_view fighter_id) {
+    const auto overlay_path =
+        std::string{"/M/PL"} + std::string{fighter_id} + ".BIN";
     const auto hit_path =
         std::string{"/M/PL"} + std::string{fighter_id} + "_HIT.BIN";
     const auto tkc_path =
@@ -1734,13 +1737,16 @@ Result<std::filesystem::path> write_fighter_native_links_json(
     const auto kpln_path =
         std::string{"/P/KPLN"} + std::string{fighter_id} + ".PAC";
 
-    if (!summary_has_source(summary, hit_path) ||
+    if (!summary_has_source(summary, overlay_path) ||
+        !summary_has_source(summary, hit_path) ||
         !summary_has_source(summary, tkc_path) ||
         !summary_has_source(summary, tkd_path) ||
         !summary_has_source(summary, kpln_path)) {
         return Result<std::filesystem::path>::success({});
     }
 
+    const auto overlay_bytes =
+        read_iso9660_file(image, overlay_path);
     const auto hit_bytes =
         read_iso9660_file(image, hit_path);
     const auto tkc_bytes =
@@ -1749,7 +1755,8 @@ Result<std::filesystem::path> write_fighter_native_links_json(
         read_iso9660_file(image, tkd_path);
     const auto kpln_bytes =
         read_iso9660_file(image, kpln_path);
-    if (!hit_bytes || !tkc_bytes || !tkd_bytes || !kpln_bytes) {
+    if (!overlay_bytes || !hit_bytes || !tkc_bytes ||
+        !tkd_bytes || !kpln_bytes) {
         return Result<std::filesystem::path>::failure(
             ErrorCode::io_error,
             "failed to reload fighter source data for native link analysis");
@@ -1822,6 +1829,16 @@ Result<std::filesystem::path> write_fighter_native_links_json(
             direct_frame_count,
             cached_frame_count);
 
+    const auto context_frame_count =
+        std::max(
+            direct_frame_count,
+            cached_frame_count);
+    const auto render_context_candidates =
+        scan_compact_render_context_candidates(
+            overlay_bytes.value,
+            context_frame_count,
+            0u);
+
     const auto directory =
         output_root / "derived" / "fighters" /
         std::string{fighter_id};
@@ -1864,6 +1881,8 @@ Result<std::filesystem::path> write_fighter_native_links_json(
         << direct_frame_count << ",\n"
         << "  \"cached_frame_count\": "
         << cached_frame_count << ",\n"
+        << "  \"render_context_candidate_count\": "
+        << render_context_candidates.size() << ",\n"
         << "  \"tkc_hit_candidates\": [\n";
 
     for (std::size_t index = 0u;
@@ -1925,6 +1944,40 @@ Result<std::filesystem::path> write_fighter_native_links_json(
             << "}";
         if (index + 1u !=
             analysis.tkd_graphics_candidates.size()) {
+            out << ",";
+        }
+        out << "\n";
+    }
+    out << "  ],\n"
+        << "  \"render_context_candidates\": [\n";
+    for (std::size_t index = 0u;
+         index < render_context_candidates.size();
+         ++index) {
+        const auto& candidate =
+            render_context_candidates[index];
+        out << "    {\"source_offset\":"
+            << candidate.source_offset
+            << ",\"frame_index\":"
+            << candidate.frame_index
+            << ",\"clut_mode\":"
+            << static_cast<int>(candidate.clut_mode)
+            << ",\"clut_base\":"
+            << static_cast<unsigned>(candidate.clut_base)
+            << ",\"clut_row_base\":"
+            << candidate.clut_row_base
+            << ",\"asset_slot\":"
+            << static_cast<unsigned>(candidate.asset_slot)
+            << ",\"flip_a\":"
+            << static_cast<unsigned>(candidate.flip_a)
+            << ",\"flip_b\":"
+            << static_cast<unsigned>(candidate.flip_b)
+            << ",\"orientation\":"
+            << static_cast<unsigned>(candidate.orientation)
+            << ",\"confidence_score\":"
+            << candidate.confidence_score
+            << "}";
+        if (index + 1u !=
+            render_context_candidates.size()) {
             out << ",";
         }
         out << "\n";
