@@ -4,6 +4,9 @@
 #include "content/fighter_tk.h"
 #include "content/hit_table.h"
 #include "content/kpln_graphics.h"
+#include "content/kpln_sprite_frames.h"
+#include "content/kpln_renderer.h"
+#include "content/kpln_clut.h"
 #include "content/pac_archive.h"
 #include "content/pcm_wav.h"
 #include "content/tim_image.h"
@@ -473,6 +476,110 @@ Result<std::filesystem::path> write_kpln_native_graphics(
             "cannot create KPLN output directory: " + ec.message());
     }
 
+    const PacChunk* direct_0800 = nullptr;
+    const PacChunk* tiles_0801 = nullptr;
+    const PacChunk* cached_0802 = nullptr;
+    const PacChunk* surface_0202 = nullptr;
+    const PacChunk* surface_0204 = nullptr;
+    const PacChunk* pool_0803 = nullptr;
+    const PacChunk* pool_0804 = nullptr;
+    const PacChunk* pool_0805 = nullptr;
+    const PacChunk* pool_0806 = nullptr;
+    const PacChunk* pool_0807 = nullptr;
+
+    for (const auto& chunk : chunks) {
+        switch (chunk.type) {
+            case 0x0800u: direct_0800 = &chunk; break;
+            case 0x0801u: tiles_0801 = &chunk; break;
+            case 0x0802u: cached_0802 = &chunk; break;
+            case 0x0202u: surface_0202 = &chunk; break;
+            case 0x0204u: surface_0204 = &chunk; break;
+            case 0x0803u: pool_0803 = &chunk; break;
+            case 0x0804u: pool_0804 = &chunk; break;
+            case 0x0805u: pool_0805 = &chunk; break;
+            case 0x0806u: pool_0806 = &chunk; break;
+            case 0x0807u: pool_0807 = &chunk; break;
+            default: break;
+        }
+    }
+
+    auto write_index_preview =
+        [&](const std::filesystem::path& path,
+            std::uint32_t width,
+            std::uint32_t height,
+            const std::vector<std::uint8_t>& indices)
+            -> Result<void> {
+        if (indices.size() !=
+            static_cast<std::size_t>(width) * height) {
+            return Result<void>::failure(
+                ErrorCode::invalid_argument,
+                "indexed preview dimensions do not match pixel data");
+        }
+        std::vector<std::uint32_t> rgba;
+        rgba.reserve(indices.size());
+        for (const auto index : indices) {
+            const auto level =
+                static_cast<std::uint32_t>(index) * 17u;
+            rgba.push_back(
+                level |
+                (level << 8u) |
+                (level << 16u) |
+                0xFF000000u);
+        }
+        return write_rgba_tga(path, width, height, rgba);
+    };
+
+    std::vector<KplnDirectFrame> direct_frames;
+    if (direct_0800) {
+        const auto parsed =
+            parse_kpln_direct_frames_0800(
+                direct_0800->bytes);
+        if (!parsed) {
+            return Result<std::filesystem::path>::failure(
+                parsed.error,
+                entry.path + " 0x0800: " + parsed.detail);
+        }
+        direct_frames = parsed.value;
+    }
+
+    KplnCachedFrameSet cached_frames{};
+    bool has_cached_frames = false;
+    if (cached_0802 && tiles_0801) {
+        const auto parsed =
+            parse_kpln_cached_frames_0802(
+                cached_0802->bytes,
+                tiles_0801->bytes);
+        if (!parsed) {
+            return Result<std::filesystem::path>::failure(
+                parsed.error,
+                entry.path + " 0x0802/0x0801: " +
+                    parsed.detail);
+        }
+        cached_frames = parsed.value;
+        has_cached_frames = true;
+    }
+
+    KplnClutWindows clut_windows{};
+    bool has_clut_windows = false;
+    if (pool_0803 && pool_0804 && pool_0805 &&
+        pool_0806 && pool_0807) {
+        const auto parsed =
+            build_kpln_clut_windows(
+                pool_0803->bytes,
+                pool_0804->bytes,
+                pool_0805->bytes,
+                pool_0806->bytes,
+                pool_0807->bytes);
+        if (!parsed) {
+            return Result<std::filesystem::path>::failure(
+                parsed.error,
+                entry.path + " CLUT pools: " +
+                    parsed.detail);
+        }
+        clut_windows = parsed.value;
+        has_clut_windows = true;
+    }
+
     const auto index_path = directory / "graphics.json";
     std::ofstream out(index_path, std::ios::trunc);
     if (!out) {
@@ -481,67 +588,262 @@ Result<std::filesystem::path> write_kpln_native_graphics(
             "cannot create KPLN graphics JSON");
     }
 
-    const PacChunk* group_chunk = nullptr;
-    const PacChunk* page_chunk = nullptr;
-    std::vector<const PacChunk*> palette_chunks;
-    for (const auto& chunk : chunks) {
-        if (chunk.type == 0x0800u) {
-            group_chunk = &chunk;
-        } else if (chunk.type == 0x0202u) {
-            page_chunk = &chunk;
-        } else if (
-            chunk.type >= 0x0803u &&
-            chunk.type <= 0x0807u) {
-            palette_chunks.push_back(&chunk);
-        }
-    }
-
     out << "{\n"
-        << "  \"source\": \"" << json_escape(entry.path) << "\",\n"
-        << "  \"schema\": 1,\n"
-        << "  \"group_table\": ";
+        << "  \"source\": \""
+        << json_escape(entry.path) << "\",\n"
+        << "  \"schema\": 2,\n"
+        << "  \"tile_size\": 16,\n"
+        << "  \"direct_frames_0800\": {"
+        << "\"frame_count\":" << direct_frames.size()
+        << ",\"frames\":[";
 
-    if (group_chunk) {
-        const auto groups =
-            parse_kpln_group_table_0800(group_chunk->bytes);
-        if (!groups) {
-            return Result<std::filesystem::path>::failure(
-                groups.error,
-                entry.path + " 0x0800: " + groups.detail);
-        }
-        out << "{\"record_count\":"
-            << groups.value.records.size()
-            << ",\"records\":[";
-        for (std::size_t index = 0u;
-             index < groups.value.records.size();
-             ++index) {
-            const auto& record =
-                groups.value.records[index];
-            if (index != 0u) out << ",";
-            out << "{\"index\":" << index
-                << ",\"list_word_offset\":"
-                << record.list_word_offset
-                << ",\"packed_layout\":"
-                << record.packed_layout
-                << ",\"layout_low\":"
-                << static_cast<unsigned>(record.layout_low)
-                << ",\"layout_high\":"
-                << static_cast<unsigned>(record.layout_high)
-                << ",\"raw_field2\":" << record.raw_field2
-                << ",\"raw_field3\":" << record.raw_field3
-                << ",\"signed_field2\":" << record.signed_field2
-                << ",\"signed_field3\":" << record.signed_field3
-                << ",\"field4\":" << record.field4
-                << ",\"list_terminated_by_eof\":"
-                << (record.list_terminated_by_eof
+    for (std::size_t frame_index = 0u;
+         frame_index < direct_frames.size();
+         ++frame_index) {
+        const auto& frame = direct_frames[frame_index];
+        if (frame_index != 0u) out << ",";
+        out << "{\"index\":" << frame_index
+            << ",\"source_record_index\":"
+            << frame.source_record_index
+            << ",\"parts\":[";
+        for (std::size_t part_index = 0u;
+             part_index < frame.parts.size();
+             ++part_index) {
+            const auto& part = frame.parts[part_index];
+            if (part_index != 0u) out << ",";
+            out << "{\"data_offset_words\":"
+                << part.header.data_offset_units
+                << ",\"columns\":"
+                << static_cast<unsigned>(
+                    part.header.columns)
+                << ",\"rows\":"
+                << static_cast<unsigned>(
+                    part.header.rows)
+                << ",\"x_offset\":"
+                << part.header.x_offset
+                << ",\"y_offset\":"
+                << part.header.y_offset
+                << ",\"marker\":"
+                << part.header.marker
+                << ",\"continues\":"
+                << (part.header.continues
                         ? "true"
                         : "false")
-                << ",\"indices\":[";
-            for (std::size_t i = 0u;
-                 i < record.indices.size();
-                 ++i) {
-                if (i != 0u) out << ",";
-                out << record.indices[i];
+                << ",\"cells\":[";
+            for (std::size_t cell_index = 0u;
+                 cell_index < part.cells.size();
+                 ++cell_index) {
+                const auto& cell = part.cells[cell_index];
+                if (cell_index != 0u) out << ",";
+                out << "{\"column\":" << cell.column
+                    << ",\"row\":" << cell.row
+                    << ",\"tile_word\":"
+                    << cell.tile_word
+                    << ",\"empty\":"
+                    << (cell.empty ? "true" : "false")
+                    << "}";
+            }
+            out << "]}";
+        }
+        out << "]}";
+    }
+    out << "]},\n";
+
+    out << "  \"cached_frames_0802\": ";
+    if (has_cached_frames) {
+        const auto tile_directory =
+            directory / "tiles_0801";
+        std::filesystem::create_directories(
+            tile_directory, ec);
+        if (ec) {
+            return Result<std::filesystem::path>::failure(
+                ErrorCode::io_error,
+                "cannot create KPLN tile directory: " +
+                    ec.message());
+        }
+
+        std::set<std::uint32_t> written_tiles;
+        out << "{\"frame_count\":"
+            << cached_frames.frames.size()
+            << ",\"unique_tile_count\":"
+            << cached_frames.unique_tile_offsets.size()
+            << ",\"frames\":[";
+
+        for (std::size_t frame_index = 0u;
+             frame_index < cached_frames.frames.size();
+             ++frame_index) {
+            const auto& frame =
+                cached_frames.frames[frame_index];
+
+            std::string preview_relative;
+            std::int32_t preview_origin_x = 0;
+            std::int32_t preview_origin_y = 0;
+            if (has_clut_windows &&
+                !clut_windows.windows.empty()) {
+                const auto rendered =
+                    render_kpln_cached_frame(
+                        frame,
+                        clut_windows.windows[0],
+                        0u,
+                        0u,
+                        0u,
+                        0u,
+                        0u);
+                if (rendered) {
+                    std::ostringstream preview_name;
+                    preview_name << "frame_"
+                                 << std::setfill('0')
+                                 << std::setw(4)
+                                 << frame_index
+                                 << "_default.tga";
+                    const auto preview_path =
+                        directory / "cached_previews" /
+                        preview_name.str();
+                    const auto preview_written =
+                        write_rgba_tga(
+                            preview_path,
+                            rendered.value.width,
+                            rendered.value.height,
+                            rendered.value.rgba8);
+                    if (!preview_written) {
+                        return Result<std::filesystem::path>::failure(
+                            preview_written.error,
+                            preview_written.detail);
+                    }
+                    preview_relative =
+                        path_relative_to(
+                            preview_path, output_root);
+                    preview_origin_x =
+                        rendered.value.origin_x;
+                    preview_origin_y =
+                        rendered.value.origin_y;
+                }
+            }
+
+            if (frame_index != 0u) out << ",";
+            out << "{\"index\":" << frame_index
+                << ",\"source_record_index\":"
+                << frame.source_record_index
+                << ",\"preview_default_context\":";
+            if (preview_relative.empty()) {
+                out << "null";
+            } else {
+                out << "\"" << json_escape(
+                    preview_relative) << "\"";
+            }
+            out << ",\"preview_origin_x\":"
+                << preview_origin_x
+                << ",\"preview_origin_y\":"
+                << preview_origin_y
+                << ",\"parts\":[";
+
+            for (std::size_t part_index = 0u;
+                 part_index < frame.parts.size();
+                 ++part_index) {
+                const auto& part =
+                    frame.parts[part_index];
+                if (part_index != 0u) out << ",";
+                out << "{\"data_offset_dwords\":"
+                    << part.header.data_offset_units
+                    << ",\"columns\":"
+                    << static_cast<unsigned>(
+                        part.header.columns)
+                    << ",\"rows\":"
+                    << static_cast<unsigned>(
+                        part.header.rows)
+                    << ",\"x_offset\":"
+                    << part.header.x_offset
+                    << ",\"y_offset\":"
+                    << part.header.y_offset
+                    << ",\"descriptor_limit\":"
+                    << part.header.marker
+                    << ",\"visible_bit_count\":"
+                    << part.visible_bit_count
+                    << ",\"continues\":"
+                    << (part.header.continues
+                            ? "true"
+                            : "false")
+                    << ",\"cells\":[";
+
+                for (std::size_t cell_index = 0u;
+                     cell_index < part.cells.size();
+                     ++cell_index) {
+                    const auto& cell =
+                        part.cells[cell_index];
+                    if (cell_index != 0u) out << ",";
+                    out << "{\"column\":"
+                        << cell.column
+                        << ",\"row\":"
+                        << cell.row
+                        << ",\"visible\":"
+                        << (cell.visible
+                                ? "true"
+                                : "false");
+                    if (cell.has_descriptor) {
+                        const auto& descriptor =
+                            cell.descriptor;
+                        std::string tile_relative;
+                        if (written_tiles.insert(
+                                descriptor.stream_offset)
+                                .second) {
+                            std::ostringstream tile_name;
+                            tile_name << "tile_"
+                                      << std::hex
+                                      << std::setw(6)
+                                      << std::setfill('0')
+                                      << descriptor.stream_offset
+                                      << std::dec
+                                      << ".tga";
+                            const auto tile_path =
+                                tile_directory /
+                                tile_name.str();
+                            const auto tile_written =
+                                write_index_preview(
+                                    tile_path,
+                                    16u,
+                                    16u,
+                                    descriptor.tile_indices);
+                            if (!tile_written) {
+                                return Result<std::filesystem::path>::failure(
+                                    tile_written.error,
+                                    tile_written.detail);
+                            }
+                        }
+
+                        std::ostringstream tile_name;
+                        tile_name << "tile_"
+                                  << std::hex
+                                  << std::setw(6)
+                                  << std::setfill('0')
+                                  << descriptor.stream_offset
+                                  << std::dec
+                                  << ".tga";
+                        tile_relative =
+                            path_relative_to(
+                                tile_directory /
+                                    tile_name.str(),
+                                output_root);
+
+                        out << ",\"descriptor\":{"
+                            << "\"raw\":"
+                            << descriptor.raw
+                            << ",\"stream_offset\":"
+                            << descriptor.stream_offset
+                            << ",\"clut_selector\":"
+                            << static_cast<unsigned>(
+                                descriptor.clut_selector)
+                            << ",\"transform\":"
+                            << static_cast<unsigned>(
+                                descriptor.transform)
+                            << ",\"compressed_bytes\":"
+                            << descriptor.compressed_bytes_consumed
+                            << ",\"tile_preview\":\""
+                            << json_escape(tile_relative)
+                            << "\"}";
+                    }
+                    out << "}";
+                }
+                out << "]}";
             }
             out << "]}";
         }
@@ -549,37 +851,28 @@ Result<std::filesystem::path> write_kpln_native_graphics(
     } else {
         out << "null";
     }
+    out << ",\n";
 
-    out << ",\n  \"indexed_page_4bpp\": ";
-    if (page_chunk) {
+    out << "  \"indexed_surfaces\": [";
+    bool first_surface = true;
+
+    if (surface_0202) {
         const auto page =
-            parse_kpln_indexed_page_0202(page_chunk->bytes);
+            parse_kpln_indexed_page_0202(
+                surface_0202->bytes);
         if (!page) {
             return Result<std::filesystem::path>::failure(
                 page.error,
                 entry.path + " 0x0202: " + page.detail);
         }
-
-        std::vector<std::uint32_t> preview;
-        preview.reserve(page.value.indices.size());
-        for (const auto index : page.value.indices) {
-            const auto level =
-                static_cast<std::uint32_t>(index) * 17u;
-            preview.push_back(
-                level |
-                (level << 8u) |
-                (level << 16u) |
-                0xFF000000u);
-        }
-
         const auto page_path =
-            directory / "index_page_4bpp.tga";
+            directory / "surface_0202_4bpp.tga";
         const auto written =
-            write_rgba_tga(
+            write_index_preview(
                 page_path,
                 page.value.width,
                 page.value.height,
-                preview);
+                page.value.indices);
         if (!written) {
             return Result<std::filesystem::path>::failure(
                 written.error, written.detail);
@@ -590,75 +883,164 @@ Result<std::filesystem::path> write_kpln_native_graphics(
             << ",\"index_bits\":4"
             << ",\"preview\":\""
             << json_escape(
-                path_relative_to(page_path, output_root))
+                path_relative_to(
+                    page_path, output_root))
+            << "\"}";
+        first_surface = false;
+    }
+
+    if (surface_0204) {
+        const auto page =
+            parse_kpln_indexed_surface_0204(
+                surface_0204->bytes);
+        if (!page) {
+            return Result<std::filesystem::path>::failure(
+                page.error,
+                entry.path + " 0x0204: " + page.detail);
+        }
+        const auto page_path =
+            directory / "surface_0204_4bpp.tga";
+        const auto written =
+            write_index_preview(
+                page_path,
+                page.value.width,
+                page.value.height,
+                page.value.indices);
+        if (!written) {
+            return Result<std::filesystem::path>::failure(
+                written.error, written.detail);
+        }
+        if (!first_surface) out << ",";
+        out << "{\"source_type\":\"0x0204\""
+            << ",\"width\":" << page.value.width
+            << ",\"height\":" << page.value.height
+            << ",\"index_bits\":4"
+            << ",\"preview\":\""
+            << json_escape(
+                path_relative_to(
+                    page_path, output_root))
+            << "\"}";
+        first_surface = false;
+    }
+    out << "],\n";
+
+    // Compatibility alias for the current Godot inspector. Prefer 0x0202,
+    // otherwise expose the placed 0x0204 surface.
+    out << "  \"indexed_page_4bpp\": ";
+    if (surface_0202) {
+        const auto page =
+            parse_kpln_indexed_page_0202(
+                surface_0202->bytes);
+        out << "{\"source_type\":\"0x0202\""
+            << ",\"width\":" << page.value.width
+            << ",\"height\":" << page.value.height
+            << ",\"preview\":\""
+            << json_escape(
+                path_relative_to(
+                    directory /
+                        "surface_0202_4bpp.tga",
+                    output_root))
+            << "\"}";
+    } else if (surface_0204) {
+        const auto page =
+            parse_kpln_indexed_surface_0204(
+                surface_0204->bytes);
+        out << "{\"source_type\":\"0x0204\""
+            << ",\"width\":" << page.value.width
+            << ",\"height\":" << page.value.height
+            << ",\"preview\":\""
+            << json_escape(
+                path_relative_to(
+                    directory /
+                        "surface_0204_4bpp.tga",
+                    output_root))
             << "\"}";
     } else {
         out << "null";
     }
+    out << ",\n";
 
-    out << ",\n  \"palette_banks\": [";
-    for (std::size_t bank_index = 0u;
-         bank_index < palette_chunks.size();
-         ++bank_index) {
-        const auto* chunk = palette_chunks[bank_index];
-        const auto bank =
-            parse_kpln_palette_bank(chunk->bytes);
-        if (!bank) {
-            return Result<std::filesystem::path>::failure(
-                bank.error,
-                entry.path + " palette bank: " + bank.detail);
-        }
-
-        std::vector<std::uint32_t> pixels;
-        pixels.reserve(bank.value.palettes.size() * 16u);
-        for (const auto& palette : bank.value.palettes) {
-            for (const auto color : palette.bgr555) {
+    out << "  \"clut_windows\": ";
+    if (has_clut_windows) {
+        out << "{\"palette_count\":"
+            << clut_windows.palette_count
+            << ",\"width\":"
+            << kpln_clut_width_words
+            << ",\"height\":"
+            << kpln_clut_height
+            << ",\"previews\":[";
+        for (std::size_t palette_id = 0u;
+             palette_id < clut_windows.windows.size();
+             ++palette_id) {
+            const auto& window =
+                clut_windows.windows[palette_id];
+            std::vector<std::uint32_t> rgba;
+            rgba.reserve(window.bgr555.size());
+            for (const auto color : window.bgr555) {
                 const auto red = expand5(color);
                 const auto green = expand5(color >> 5u);
                 const auto blue = expand5(color >> 10u);
                 const auto alpha =
-                    (color & 0x7FFFu) == 0u ? 0u : 255u;
-                pixels.push_back(
+                    (color & 0x7FFFu) == 0u
+                    ? 0u
+                    : 255u;
+                rgba.push_back(
                     static_cast<std::uint32_t>(red) |
                     (static_cast<std::uint32_t>(green) << 8u) |
                     (static_cast<std::uint32_t>(blue) << 16u) |
                     (static_cast<std::uint32_t>(alpha) << 24u));
             }
-        }
 
-        std::ostringstream name;
-        name << "palette_"
-             << std::hex << std::setw(4)
-             << std::setfill('0')
-             << chunk->type << std::dec
-             << ".tga";
-        const auto palette_path =
-            directory / name.str();
-        const auto written =
-            write_rgba_tga(
-                palette_path,
-                16u,
-                static_cast<std::uint32_t>(
-                    bank.value.palettes.size()),
-                pixels);
-        if (!written) {
-            return Result<std::filesystem::path>::failure(
-                written.error, written.detail);
-        }
+            std::ostringstream name;
+            name << "clut_palette_"
+                 << palette_id
+                 << ".tga";
+            const auto clut_path =
+                directory / name.str();
+            const auto written =
+                write_rgba_tga(
+                    clut_path,
+                    window.width,
+                    window.height,
+                    rgba);
+            if (!written) {
+                return Result<std::filesystem::path>::failure(
+                    written.error, written.detail);
+            }
 
-        if (bank_index != 0u) out << ",";
-        out << "{\"type\":\"0x"
-            << std::hex << std::setw(4)
-            << std::setfill('0') << chunk->type << std::dec
-            << "\",\"palette_count\":"
-            << bank.value.palettes.size()
-            << ",\"colors_per_palette\":16"
-            << ",\"preview\":\""
-            << json_escape(
-                path_relative_to(palette_path, output_root))
-            << "\"}";
+            if (palette_id != 0u) out << ",";
+            out << "{\"palette_id\":"
+                << palette_id
+                << ",\"preview\":\""
+                << json_escape(
+                    path_relative_to(
+                        clut_path, output_root))
+                << "\"}";
+        }
+        out << "]}";
+    } else {
+        out << "null";
     }
-    out << "]\n}\n";
+
+    // Compatibility count for code that previously called these "groups".
+    out << ",\n  \"group_table\": {"
+        << "\"record_count\":"
+        << (has_cached_frames
+                ? cached_frames.frames.size()
+                : direct_frames.size())
+        << ",\"semantic_alias\":"
+           "\"deprecated_use_cached_or_direct_frames\""
+        << ",\"records\":[]},\n";
+
+    out << "  \"format_notes\": {"
+        << "\"0800\":\"direct_12_byte_frame_records\","
+        << "\"0801\":\"compressed_16x16_4bpp_tile_streams\","
+        << "\"0802\":\"cached_frame_records_masks_descriptors\","
+        << "\"descriptor_low24\":\"0801_stream_offset\","
+        << "\"descriptor_bits24_29\":\"relative_clut_selector\","
+        << "\"descriptor_bits30_31\":\"tile_transform\""
+        << "}\n"
+        << "}\n";
 
     if (!out) {
         return Result<std::filesystem::path>::failure(
