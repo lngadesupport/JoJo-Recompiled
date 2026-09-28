@@ -14,9 +14,12 @@ struct KplnGroupRecord {
     std::uint16_t packed_layout{};
     std::uint8_t layout_low{};
     std::uint8_t layout_high{};
-    std::uint16_t field2{};
-    std::uint16_t field3{};
+    std::uint16_t raw_field2{};
+    std::uint16_t raw_field3{};
+    std::int16_t signed_field2{};
+    std::int16_t signed_field3{};
     std::uint16_t field4{};
+    bool list_terminated_by_eof{};
     std::vector<std::uint16_t> indices;
 };
 
