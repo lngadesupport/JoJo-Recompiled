@@ -64,7 +64,8 @@ Result<KplnRenderedFrame> render_kpln_direct_frame(
     const KplnIndexedPage4bpp& atlas,
     const KplnClutWindow& clut,
     std::uint32_t side,
-    std::uint32_t clut_base) {
+    std::uint32_t clut_base,
+    std::uint32_t clut_row_base) {
     if (side > 1u) {
         return Result<KplnRenderedFrame>::failure(
             ErrorCode::invalid_argument,
@@ -128,7 +129,10 @@ Result<KplnRenderedFrame> render_kpln_direct_frame(
     const auto texture_base_x_units =
         ((side * 0x100u + 0x180u) >> 4u);
     constexpr std::uint32_t texture_base_y_page = 0x10u;
-    const auto clut_row_base = 0x1e8u + side;
+    const auto effective_clut_row_base =
+        clut_row_base == 0u
+        ? 0x1e8u + side
+        : clut_row_base;
 
     for (const auto& part : frame.parts) {
         const auto part_x =
@@ -416,7 +420,7 @@ Result<KplnRenderedFrame> render_kpln_cached_frame(
                     const auto raw_color =
                         sample_kpln_clut(
                             clut,
-                            clut_row_base,
+                            effective_clut_row_base,
                             selector,
                             pixel_index);
                     const auto rgba =
