@@ -238,6 +238,17 @@ func direct_frame(index: int) -> Dictionary:
     var record = records[index]
     return record if record is Dictionary else {}
 
+func direct_frame_preview(index: int) -> Texture2D:
+    var frame := direct_frame(index)
+    if frame.is_empty():
+        return null
+    var path := _normalize_content_path(
+        str(frame.get("preview_default_context", "")))
+    if path.is_empty() or not ResourceLoader.exists(path):
+        return null
+    var resource = ResourceLoader.load(path)
+    return resource if resource is Texture2D else null
+
 func cached_frame_count() -> int:
     var data := graphics_data()
     var frames = data.get("cached_frames_0802", null)
