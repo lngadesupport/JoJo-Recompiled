@@ -90,6 +90,7 @@ add_library(jojo_content_migration STATIC
   src/content/pac_archive.cpp
   src/content/pcm_wav.cpp
   src/content/tim_image.cpp
+  src/content/xa_adpcm_decoder.cpp
   src/content/xa_audio.cpp
   src/core/disc_media.cpp
   src/core/iso9660.cpp
