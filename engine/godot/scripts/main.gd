@@ -1,10 +1,13 @@
 extends Control
 
 const ContentRegistry = preload("res://scripts/content_registry.gd")
+const MigrationInspector = preload(
+    "res://scripts/fighter_migration_inspector.gd")
 
 var registry := ContentRegistry.new()
 var status_label: Label
 var content_label: Label
+var migration_inspector: Control
 var selected_tab := 0
 var tab_buttons: Array[Button] = []
 
@@ -152,6 +155,12 @@ func _build_interface() -> void:
         "font_color", Color("#c9ebf7"))
     add_child(content_label)
 
+    migration_inspector = MigrationInspector.new()
+    migration_inspector.position = Vector2(535, 330)
+    migration_inspector.size = Vector2(1210, 540)
+    migration_inspector.visible = false
+    add_child(migration_inspector)
+
     var footer := Label.new()
     footer.position = Vector2(56, 1018)
     footer.size = Vector2(1780, 36)
@@ -186,6 +195,7 @@ func _load_content_manifest() -> void:
             str(registry.manifest.get("source_format", "unknown")),
         ]
     )
+    migration_inspector.setup(registry)
 
     content_label.text = (
         "GRAPHICS PACKS   %d\n" +
@@ -215,3 +225,11 @@ func _select_tab(index: int) -> void:
     selected_tab = index
     for i in range(tab_buttons.size()):
         tab_buttons[i].disabled = i == selected_tab
+
+    var dev_tools := selected_tab == 3
+    if content_label != null:
+        content_label.visible = not dev_tools
+    if migration_inspector != null:
+        migration_inspector.visible = dev_tools
+    if status_label != null:
+        status_label.visible = true
