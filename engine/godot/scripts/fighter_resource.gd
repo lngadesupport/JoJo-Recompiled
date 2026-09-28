@@ -11,6 +11,8 @@ extends Resource
 var _overlay_cache: Dictionary = {}
 var _hit_cache: Dictionary = {}
 var _tk_cache: Dictionary = {}
+var _hit_rect_cache: Dictionary = {}
+var _hit_rect_cache_ready := false
 
 static func from_catalog_entry(entry: Dictionary) -> JojoFighterResource:
     var resource := JojoFighterResource.new()
@@ -68,6 +70,8 @@ func clear_runtime_cache() -> void:
     _overlay_cache.clear()
     _hit_cache.clear()
     _tk_cache.clear()
+    _hit_rect_cache.clear()
+    _hit_rect_cache_ready = false
 
 static func _normalize_content_path(path: String) -> String:
     if path.is_empty() or path == "null":
@@ -105,3 +109,47 @@ func first_visual() -> Texture2D:
         if texture != null:
             return texture
     return null
+
+
+func hit_rect(index: int) -> Rect2:
+    _ensure_hit_rect_cache()
+    if not _hit_rect_cache.has(index):
+        return Rect2()
+    return _hit_rect_cache[index]
+
+func has_hit_rect(index: int) -> bool:
+    _ensure_hit_rect_cache()
+    return _hit_rect_cache.has(index)
+
+func hit_rect_indices() -> PackedInt32Array:
+    _ensure_hit_rect_cache()
+    var indices := PackedInt32Array()
+    for key in _hit_rect_cache.keys():
+        indices.append(int(key))
+    indices.sort()
+    return indices
+
+func _ensure_hit_rect_cache() -> void:
+    if _hit_rect_cache_ready:
+        return
+    _hit_rect_cache_ready = true
+    _hit_rect_cache.clear()
+
+    var data := hit_table()
+    var records = data.get("records", [])
+    if not records is Array:
+        return
+
+    for record in records:
+        if not record is Dictionary:
+            continue
+        var index := int(record.get("index", -1))
+        var width := float(record.get("width", 0))
+        var height := float(record.get("height", 0))
+        if index < 0 or width <= 0.0 or height <= 0.0:
+            continue
+        _hit_rect_cache[index] = Rect2(
+            Vector2(
+                float(record.get("x_offset", 0)),
+                float(record.get("y_offset", 0))),
+            Vector2(width, height))
