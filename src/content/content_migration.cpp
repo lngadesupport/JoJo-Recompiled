@@ -837,7 +837,7 @@ Result<std::filesystem::path> write_hit_table_json(
         << "  \"record_count\": 512,\n"
         << "  \"nonzero_records\": "
         << parsed.value.nonzero_records << ",\n"
-        << "  \"field_semantics\": \"unresolved_four_signed_int16\",\n"
+        << "  \"field_semantics\": \"x_offset_width_y_offset_height\",\n"
         << "  \"records\": [\n";
 
     bool first = true;
@@ -849,10 +849,10 @@ Result<std::filesystem::path> write_hit_table_json(
         if (!first) out << ",\n";
         first = false;
         out << "    {\"index\":" << index
-            << ",\"a\":" << record.a
-            << ",\"b\":" << record.b
-            << ",\"c\":" << record.c
-            << ",\"d\":" << record.d
+            << ",\"x_offset\":" << record.x_offset
+            << ",\"width\":" << record.width
+            << ",\"y_offset\":" << record.y_offset
+            << ",\"height\":" << record.height
             << "}";
     }
     out << "\n  ]\n}\n";
