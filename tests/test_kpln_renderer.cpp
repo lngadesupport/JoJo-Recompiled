@@ -88,7 +88,8 @@ int main() {
             custom_row_clut,
             0u,
             0u,
-            0u,
+            7u,
+            -1,
             0u,
             0u,
             0x1e9u);
