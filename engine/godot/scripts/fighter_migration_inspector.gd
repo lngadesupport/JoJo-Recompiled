@@ -178,8 +178,9 @@ func _preview_for(fighter) -> Texture2D:
         ViewMode.CACHED_FRAME:
             return fighter.cached_frame_preview(index)
         ViewMode.DIRECT_FRAME:
-            # Direct 0x0800 frames are decoded structurally. Until their
-            # complete texture context is proven, show the indexed source.
+            var direct := fighter.direct_frame_preview(index)
+            if direct != null:
+                return direct
             return fighter.indexed_surface_preview(0)
         ViewMode.INDEXED_SURFACE:
             return fighter.indexed_surface_preview(index)
