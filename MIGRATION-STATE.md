@@ -159,75 +159,116 @@ neither SPU/CD-ROM emulation nor an XA decoder is needed at runtime.
 
 ## KPLN fighter graphics
 
-The retail `KPLNxx.PAC` family now has a native structural decoder.
+The KPLN model has been upgraded to **schema 2**. The earlier interpretation
+of `0x0800` as a generic group/list table has been retired from code and
+tests.
 
-Validated across all **26 KPLN fighter packs**:
+The evidence-backed native formats are now:
 
-- **26** native `derived/kpln/KPLNxx/graphics.json` files
-- **2,425** records decoded from resource `0x0800`
-- every `0x0800` record is six 16-bit words
-- word 0 points into a trailing uint16 index list
-- those lists use `0xFFFF` termination; the final PL16 list ends exactly at
-  EOF and is preserved as the retail edge case
-- word 5 is zero in every decoded retail record
-- words 1..4 remain conservatively named until their exact sprite semantics
-  are proven
+- `0x0800`: direct sprite-frame records, 12 bytes per record
+- `0x0801`: compressed tile streams; one referenced stream expands to
+  **128 bytes = one 16x16 4bpp tile**
+- `0x0802`: cached sprite-frame records using visibility bitmasks plus
+  32-bit tile descriptors
+- cached descriptor low 24 bits: byte offset into `0x0801`
+- cached descriptor bits 24..29: relative CLUT selector in the normal cached
+  rendering modes
+- cached descriptor bits 30..31: tile transform
+  (identity / vertical flip / horizontal flip / both)
+- `0x0202`: 1024x256 4bpp indexed atlas where present
+- `0x0204`: direct VRAM-style 4bpp uploads normalized into horizontal
+  16x256 strips instead of exposing VRAM to Godot
 
-Resources `0x0803..0x0807` are structurally confirmed as 16-color BGR555
-palette banks:
+The importer now emits native 16x16 decoded tile previews, direct/cached
+frame structures, indexed surfaces, and CPU-rendered frame previews.
+Neither path submits PS1 GPU commands.
 
-- **130** palette banks exported across the 26 fighters
-- each bank is an exact multiple of 32 bytes
-- every 32-byte unit is 16 BGR555 colors
-- previews are exported as native RGBA TGA grids
+The CLUT model was also corrected. `0x0803..0x0807` are **not five
+interchangeable 16-color palette banks**. They populate defined regions of a
+native reconstruction of the retail CLUT window:
 
-Resource `0x0202` is present for **11 fighters** and is the exact
-**131,072-byte** size required for a 1024x256 4bpp indexed page. The importer
-expands each nibble into a native index image and exports a grayscale TGA
-index preview. Variable-size `0x0204` graphics remain unresolved and are not
-misclassified as `0x0202`.
+- window width: **0x180 words (384 colors)**
+- window height: **0x18 rows**
+- base source row: **0x1e0**
+- `0x0803`: fixed 0x100-byte stride per palette ID
+- `0x0804..0x0806`: dynamic pools split across the retail palette IDs
+- `0x0807`: fixed two-row slabs used by both sides
+
+The renderer accepts recovered CLUT base, signed CLUT mode, CLUT row and
+orientation. Negative CLUT modes remain signed; a regression test prevents
+the old unsigned-promotion error.
+
+`derived/kpln/KPLNxx/graphics.json` is now schema 2 and can contain:
+
+- direct `0x0800` frames and parts
+- cached `0x0802` frames and parts
+- decompressed `0x0801` tile previews
+- native `0x0202` / `0x0204` indexed surfaces
+- reconstructed CLUT-window previews
+- default-context direct/cached frame previews
+
+The original USA-disc inventory and PAC/TIM counts above remain retail
+validated. The new KPLN schema-2 implementation is covered by focused
+decoder/renderer tests and the Godot validation gate; a fresh complete
+schema-2 import of the USA BIN is still required before publishing global
+schema-2 retail frame/tile counts.
+
 
 ## Fighter native cross-link layer
 
-The importer now emits a conservative native relation report for every
-fighter that has HIT + TKC/TKD + KPLN data:
+The importer emits a conservative native relation report for every fighter
+that has the required HIT + TKC/TKD + KPLN sources:
 
 `derived/fighters/<ID>/native_links.json`
 
-This layer deliberately does **not** claim gameplay semantics before the
-original consumers are proven. It records structural candidates only:
+The report uses schema 2 and deliberately labels unresolved relationships as
+candidates:
 
-- TKC `reference_index` -> candidate HIT table index
-- whether the candidate HIT target is in the 512-entry table
-- whether that target is a non-empty rectangle
-- the candidate rectangle geometry when non-empty
-- TKD `element_index` -> candidate KPLN `0x0800` group index
-- whether the candidate graphics target is inside the decoded group table
+- TKC `reference_index` -> candidate HIT-table index
+- in-range/non-empty HIT evidence plus candidate rectangle geometry
+- TKD `element_index` -> candidate **direct `0x0800` frame** index
+- TKD `element_index` -> candidate **cached `0x0802` frame** index
+- independent bounds/coverage counters for the two KPLN frame spaces
 
-The report also records per-fighter coverage counts so the remaining
-relationships can be validated globally instead of by anecdotal examples.
+The importer also scans `PLxx.BIN` for conservative 0x28-byte compact render
+context candidates without executing MIPS. Candidate fields include:
 
-Godot exposes these reports through `JojoFighterResource` and
-`JojoFighterSlotResource`. Each imported fighter can now be addressed as
+- frame index
+- signed CLUT mode
+- CLUT base
+- CLUT row
+- asset slot
+- flip/orientation fields
+- source offset and confidence score
+
+For each frame the highest-scoring compact candidate can be used to produce
+diagnostic direct/cached previews for palette IDs 0 and 1. These previews are
+evidence for reverse engineering; the candidate scanner is not promoted to
+gameplay semantics until its consumer relationship is proven.
+
+Godot exposes the report through `JojoFighterResource` and
+`JojoFighterSlotResource`. Each imported fighter can be addressed as
 26 native slots without reading source BIN/PAC files at runtime.
+
 
 ## Migration Inspector
 
-The native Godot frontend now exposes a migration inspector under
-`DEV TOOLS`.
+The native Godot frontend exposes a migration inspector under `DEV TOOLS`.
 
-It can:
+It can select fighter and one of the 26 native slots, then inspect:
 
-- select the imported retail fighter ID
-- select one of the 26 native fighter slots
-- inspect TKC and TKD record counts for that slot
-- inspect candidate HIT and KPLN reference coverage
-- display the converted KPLN indexed page where available
-- select native palette banks and palette rows
-- apply the native indexed-palette shader to the converted page
+- TKC/TKD record counts and candidate HIT references
+- independent TKD -> direct/cached frame coverage
+- default cached-frame previews
+- default direct-frame previews
+- best recovered PL-context cached/direct previews
+- normalized indexed surfaces
+- reconstructed CLUT windows
+- fallback converted TIM visuals
 
-This tool is intended to prove the remaining sprite/animation relationships
-visually while preserving the content-only runtime rule.
+This tool is specifically for proving the remaining animation/render
+relationships visually while preserving the content-only runtime rule.
+
 
 ## Godot native project
 
@@ -254,21 +295,16 @@ Current native project provides:
 
 ## Next frontiers
 
-1. Prove whether TKC `reference_index` is semantically the HIT selector;
-   structural bounds are now exported for every fighter.
-2. Prove whether TKD `element_index` is semantically the KPLN group selector;
-   structural candidate links are now exported and inspectable in Godot.
-3. Finish the KPLN sprite chain by decoding `0x0801/0x0802` and proving
-   the meanings of `0x0800` words 1..4.
-4. Decode variable-size KPLN `0x0204` graphics for the remaining 15
-   fighters.
-5. Split mixed PL overlays into proven content tables and discard executable
-   MIPS portions from final runtime data.
-6. Promote proven TKC/TKD/HIT/KPLN relationships into native animation/state
+1. Run the complete schema-2 importer against the USA retail BIN and publish
+   global direct/cached frame, tile, CLUT and context-candidate counts.
+2. Prove whether TKC `reference_index` is semantically the HIT selector.
+3. Prove which KPLN frame space(s) TKD `element_index` selects in gameplay.
+4. Identify USA animation-interpreter call sites/signatures in `PLxx.BIN`
+   before using any region-specific absolute function address.
+5. Convert proven PL animation-script sequences into native Godot animation
    resources.
-7. Identify remaining sprite-sheet/animation metadata around converted TIM
-   images.
-8. Decode stages, UI/story/event tables and remaining PAC resource families.
-9. Convert WAV masters to final streaming/distribution formats where useful.
-10. Validate converted assets against reference output, then stop shipping
-    source-format intermediates for each completed family.
+6. Split remaining mixed PL overlays into proven content tables and discard
+   executable MIPS portions from final runtime data.
+7. Decode stages, UI/story/event tables and remaining PAC resource families.
+8. Validate converted assets against reference output and stop shipping
+   source-format intermediates for each completed family.
