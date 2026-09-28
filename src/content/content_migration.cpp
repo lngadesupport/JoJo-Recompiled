@@ -759,12 +759,26 @@ Result<std::filesystem::path> write_fighter_tk_json(
             if (record_index != 0u) out << ",";
             out << "{\"source_offset\":"
                 << record.source_offset
-                << ",\"fields\":[";
+                << ",\"opcode\":"
+                << static_cast<unsigned>(record.opcode)
+                << ",\"variant\":"
+                << static_cast<unsigned>(record.variant)
+                << ",\"reference_index\":"
+                << record.reference_index
+                << ",\"reference_flags\":"
+                << record.reference_flags
+                << ",\"parameter2\":"
+                << record.parameter2
+                << ",\"parameter3\":"
+                << record.parameter3
+                << ",\"parameter4\":"
+                << record.parameter4
+                << ",\"raw_words\":[";
             for (std::size_t field = 0u;
-                 field < record.fields.size();
+                 field < record.raw_words.size();
                  ++field) {
                 if (field != 0u) out << ",";
-                out << record.fields[field];
+                out << record.raw_words[field];
             }
             out << "]}";
         }
@@ -778,14 +792,19 @@ Result<std::filesystem::path> write_fighter_tk_json(
             if (record_index != 0u) out << ",";
             out << "{\"source_offset\":"
                 << record.source_offset
-                << ",\"fields\":[";
-            for (std::size_t field = 0u;
-                 field < record.fields.size();
-                 ++field) {
-                if (field != 0u) out << ",";
-                out << record.fields[field];
-            }
-            out << "]}";
+                << ",\"offset_x\":"
+                << record.offset_x
+                << ",\"offset_y\":"
+                << record.offset_y
+                << ",\"packed_element\":"
+                << record.packed_element
+                << ",\"element_index\":"
+                << record.element_index
+                << ",\"element_flags\":"
+                << record.element_flags
+                << ",\"reserved\":"
+                << record.reserved
+                << "}";
         }
         out << "]}";
 
