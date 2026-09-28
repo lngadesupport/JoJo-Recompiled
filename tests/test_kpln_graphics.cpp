@@ -41,7 +41,7 @@ int main() {
 
     put16(groups, 6u, 16u);
     put16(groups, 7u, 0x0305u);
-    put16(groups, 8u, 46u);
+    put16(groups, 8u, static_cast<std::uint16_t>(-8));
     put16(groups, 9u, 106u);
     put16(groups, 10u, 13u);
     put16(groups, 11u, 0u);
@@ -60,7 +60,11 @@ int main() {
     CHECK(parsed_groups.value.records[0].layout_low == 6u);
     CHECK(parsed_groups.value.records[0].layout_high == 2u);
     CHECK(parsed_groups.value.records[0].indices.size() == 3u);
+    CHECK(parsed_groups.value.records[1].raw_field2 == 0xFFF8u);
+    CHECK(parsed_groups.value.records[1].signed_field2 == -8);
+    CHECK(parsed_groups.value.records[1].signed_field3 == 106);
     CHECK(parsed_groups.value.records[1].indices.size() == 2u);
+    CHECK(parsed_groups.value.records[1].list_terminated_by_eof);
     CHECK(parsed_groups.value.records[1].indices[0] == 23u);
 
     std::vector<std::uint8_t> palettes(64u, 0u);
