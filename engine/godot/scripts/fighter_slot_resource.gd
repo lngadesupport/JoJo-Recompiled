@@ -75,21 +75,49 @@ func candidate_hit_indices() -> PackedInt32Array:
             "candidate_hit_table_index", -1)))
     return result
 
-func candidate_graphics_group_indices() -> PackedInt32Array:
+func candidate_cached_frame_indices() -> PackedInt32Array:
     var result := PackedInt32Array()
     for candidate in graphics_candidates:
         if not candidate is Dictionary:
             continue
-        if not bool(candidate.get("target_in_range", false)):
+        if not bool(candidate.get("cached_target_in_range", false)):
             continue
         result.append(int(candidate.get(
-            "candidate_graphics_group_index", -1)))
+            "candidate_cached_frame_index", -1)))
     return result
 
-func candidate_graphics_groups(fighter) -> Array[Dictionary]:
-    var result: Array[Dictionary] = []
-    for group_index in candidate_graphics_group_indices():
-        var group = fighter.graphics_group(int(group_index))
-        if group is Dictionary and not group.is_empty():
-            result.append(group)
+func candidate_direct_frame_indices() -> PackedInt32Array:
+    var result := PackedInt32Array()
+    for candidate in graphics_candidates:
+        if not candidate is Dictionary:
+            continue
+        if not bool(candidate.get("direct_target_in_range", false)):
+            continue
+        result.append(int(candidate.get(
+            "candidate_direct_frame_index", -1)))
     return result
+
+func candidate_cached_frames(fighter) -> Array[Dictionary]:
+    var result: Array[Dictionary] = []
+    for frame_index in candidate_cached_frame_indices():
+        var frame = fighter.cached_frame(int(frame_index))
+        if frame is Dictionary and not frame.is_empty():
+            result.append(frame)
+    return result
+
+func candidate_direct_frames(fighter) -> Array[Dictionary]:
+    var result: Array[Dictionary] = []
+    for frame_index in candidate_direct_frame_indices():
+        var frame = fighter.direct_frame(int(frame_index))
+        if frame is Dictionary and not frame.is_empty():
+            result.append(frame)
+    return result
+
+# Transitional aliases for earlier inspector code.
+func candidate_graphics_group_indices() -> PackedInt32Array:
+    var cached := candidate_cached_frame_indices()
+    return cached if not cached.is_empty() else candidate_direct_frame_indices()
+
+func candidate_graphics_groups(fighter) -> Array[Dictionary]:
+    var cached := candidate_cached_frames(fighter)
+    return cached if not cached.is_empty() else candidate_direct_frames(fighter)
