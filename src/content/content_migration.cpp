@@ -580,6 +580,22 @@ Result<std::filesystem::path> write_kpln_native_graphics(
         has_clut_windows = true;
     }
 
+    KplnIndexedPage4bpp direct_atlas_0202{};
+    bool has_direct_atlas_0202 = false;
+    if (surface_0202) {
+        const auto parsed =
+            parse_kpln_indexed_page_0202(
+                surface_0202->bytes);
+        if (!parsed) {
+            return Result<std::filesystem::path>::failure(
+                parsed.error,
+                entry.path + " 0x0202: " +
+                    parsed.detail);
+        }
+        direct_atlas_0202 = parsed.value;
+        has_direct_atlas_0202 = true;
+    }
+
     const auto index_path = directory / "graphics.json";
     std::ofstream out(index_path, std::ios::trunc);
     if (!out) {
@@ -601,10 +617,65 @@ Result<std::filesystem::path> write_kpln_native_graphics(
          frame_index < direct_frames.size();
          ++frame_index) {
         const auto& frame = direct_frames[frame_index];
+        std::string preview_relative;
+        std::int32_t preview_origin_x = 0;
+        std::int32_t preview_origin_y = 0;
+        if (has_direct_atlas_0202 &&
+            has_clut_windows &&
+            !clut_windows.windows.empty()) {
+            const auto rendered =
+                render_kpln_direct_frame(
+                    frame,
+                    direct_atlas_0202,
+                    clut_windows.windows[0],
+                    0u,
+                    0u);
+            if (rendered) {
+                std::ostringstream preview_name;
+                preview_name << "frame_"
+                             << std::setfill('0')
+                             << std::setw(4)
+                             << frame_index
+                             << "_default.tga";
+                const auto preview_path =
+                    directory / "direct_previews" /
+                    preview_name.str();
+                const auto preview_written =
+                    write_rgba_tga(
+                        preview_path,
+                        rendered.value.width,
+                        rendered.value.height,
+                        rendered.value.rgba8);
+                if (!preview_written) {
+                    return Result<std::filesystem::path>::failure(
+                        preview_written.error,
+                        preview_written.detail);
+                }
+                preview_relative =
+                    path_relative_to(
+                        preview_path, output_root);
+                preview_origin_x =
+                    rendered.value.origin_x;
+                preview_origin_y =
+                    rendered.value.origin_y;
+            }
+        }
+
         if (frame_index != 0u) out << ",";
         out << "{\"index\":" << frame_index
             << ",\"source_record_index\":"
             << frame.source_record_index
+            << ",\"preview_default_context\":";
+        if (preview_relative.empty()) {
+            out << "null";
+        } else {
+            out << "\"" << json_escape(
+                preview_relative) << "\"";
+        }
+        out << ",\"preview_origin_x\":"
+            << preview_origin_x
+            << ",\"preview_origin_y\":"
+            << preview_origin_y
             << ",\"parts\":[";
         for (std::size_t part_index = 0u;
              part_index < frame.parts.size();
@@ -856,30 +927,22 @@ Result<std::filesystem::path> write_kpln_native_graphics(
     out << "  \"indexed_surfaces\": [";
     bool first_surface = true;
 
-    if (surface_0202) {
-        const auto page =
-            parse_kpln_indexed_page_0202(
-                surface_0202->bytes);
-        if (!page) {
-            return Result<std::filesystem::path>::failure(
-                page.error,
-                entry.path + " 0x0202: " + page.detail);
-        }
+    if (has_direct_atlas_0202) {
         const auto page_path =
             directory / "surface_0202_4bpp.tga";
         const auto written =
             write_index_preview(
                 page_path,
-                page.value.width,
-                page.value.height,
-                page.value.indices);
+                direct_atlas_0202.width,
+                direct_atlas_0202.height,
+                direct_atlas_0202.indices);
         if (!written) {
             return Result<std::filesystem::path>::failure(
                 written.error, written.detail);
         }
         out << "{\"source_type\":\"0x0202\""
-            << ",\"width\":" << page.value.width
-            << ",\"height\":" << page.value.height
+            << ",\"width\":" << direct_atlas_0202.width
+            << ",\"height\":" << direct_atlas_0202.height
             << ",\"index_bits\":4"
             << ",\"preview\":\""
             << json_escape(
