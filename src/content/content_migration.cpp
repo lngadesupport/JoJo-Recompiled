@@ -1705,33 +1705,59 @@ Result<std::filesystem::path> write_fighter_native_links_json(
             "fighter source data failed structural parsing for native link analysis");
     }
 
-    const PacChunk* group_chunk = nullptr;
+    const PacChunk* direct_chunk = nullptr;
+    const PacChunk* tile_pool_chunk = nullptr;
+    const PacChunk* cached_chunk = nullptr;
     for (const auto& chunk : kpln.value) {
         if (chunk.type == 0x0800u) {
-            group_chunk = &chunk;
-            break;
+            direct_chunk = &chunk;
+        } else if (chunk.type == 0x0801u) {
+            tile_pool_chunk = &chunk;
+        } else if (chunk.type == 0x0802u) {
+            cached_chunk = &chunk;
         }
     }
-    if (!group_chunk) {
-        return Result<std::filesystem::path>::failure(
-            ErrorCode::invalid_installation,
-            "KPLN pack is missing required 0x0800 group table");
+
+    std::uint32_t direct_frame_count = 0u;
+    std::uint32_t cached_frame_count = 0u;
+
+    if (direct_chunk) {
+        const auto direct =
+            parse_kpln_direct_frames_0800(
+                direct_chunk->bytes);
+        if (!direct) {
+            return Result<std::filesystem::path>::failure(
+                direct.error,
+                "KPLN 0x0800 failed native link parsing: " +
+                    direct.detail);
+        }
+        direct_frame_count =
+            static_cast<std::uint32_t>(
+                direct.value.size());
     }
 
-    const auto graphics =
-        parse_kpln_group_table_0800(group_chunk->bytes);
-    if (!graphics) {
-        return Result<std::filesystem::path>::failure(
-            graphics.error,
-            "KPLN 0x0800 failed native link parsing: " +
-                graphics.detail);
+    if (cached_chunk && tile_pool_chunk) {
+        const auto cached =
+            parse_kpln_cached_frames_0802(
+                cached_chunk->bytes,
+                tile_pool_chunk->bytes);
+        if (!cached) {
+            return Result<std::filesystem::path>::failure(
+                cached.error,
+                "KPLN 0x0802/0x0801 failed native link parsing: " +
+                    cached.detail);
+        }
+        cached_frame_count =
+            static_cast<std::uint32_t>(
+                cached.value.frames.size());
     }
 
     const auto analysis =
         analyze_fighter_native_links(
             hit.value,
             tk.value,
-            graphics.value);
+            direct_frame_count,
+            cached_frame_count);
 
     const auto directory =
         output_root / "derived" / "fighters" /
@@ -1754,7 +1780,7 @@ Result<std::filesystem::path> write_fighter_native_links_json(
     }
 
     out << "{\n"
-        << "  \"schema\": 1,\n"
+        << "  \"schema\": 2,\n"
         << "  \"fighter_id\": \""
         << json_escape(fighter_id) << "\",\n"
         << "  \"policy\": "
@@ -1767,10 +1793,14 @@ Result<std::filesystem::path> write_fighter_native_links_json(
         << analysis.tkc_nonempty_hit_candidate_count << ",\n"
         << "  \"tkd_record_count\": "
         << analysis.tkd_record_count << ",\n"
-        << "  \"tkd_graphics_index_in_range_count\": "
-        << analysis.tkd_graphics_index_in_range_count << ",\n"
-        << "  \"graphics_group_count\": "
-        << graphics.value.records.size() << ",\n"
+        << "  \"tkd_direct_frame_index_in_range_count\": "
+        << analysis.tkd_direct_frame_index_in_range_count << ",\n"
+        << "  \"tkd_cached_frame_index_in_range_count\": "
+        << analysis.tkd_cached_frame_index_in_range_count << ",\n"
+        << "  \"direct_frame_count\": "
+        << direct_frame_count << ",\n"
+        << "  \"cached_frame_count\": "
+        << cached_frame_count << ",\n"
         << "  \"tkc_hit_candidates\": [\n";
 
     for (std::size_t index = 0u;
@@ -1819,10 +1849,16 @@ Result<std::filesystem::path> write_fighter_native_links_json(
             << candidate.slot_index
             << ",\"record\":"
             << candidate.record_index
-            << ",\"candidate_graphics_group_index\":"
-            << candidate.group_index
-            << ",\"target_in_range\":"
-            << (candidate.target_in_range ? "true" : "false")
+            << ",\"candidate_element_index\":"
+            << candidate.element_index
+            << ",\"candidate_direct_frame_index\":"
+            << candidate.element_index
+            << ",\"candidate_cached_frame_index\":"
+            << candidate.element_index
+            << ",\"direct_target_in_range\":"
+            << (candidate.direct_target_in_range ? "true" : "false")
+            << ",\"cached_target_in_range\":"
+            << (candidate.cached_target_in_range ? "true" : "false")
             << "}";
         if (index + 1u !=
             analysis.tkd_graphics_candidates.size()) {
