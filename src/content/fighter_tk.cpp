@@ -138,14 +138,34 @@ Result<FighterTkRoots> parse_fighter_tk_roots(
             FighterTkcRecord record{};
             record.source_offset = leaf_offset;
             for (std::size_t field = 0u;
-                 field < record.fields.size();
+                 field < record.raw_words.size();
                  ++field) {
-                record.fields[field] =
+                record.raw_words[field] =
                     le16(
                         tkc.data() +
                         leaf_offset +
                         field * 2u);
             }
+            if ((record.raw_words[0] & 0x00FFu) != 0x008Au) {
+                return Result<FighterTkRoots>::failure(
+                    ErrorCode::invalid_installation,
+                    "TKC leaf record does not use retail opcode 0x8A");
+            }
+            record.opcode =
+                static_cast<std::uint8_t>(
+                    record.raw_words[0] & 0x00FFu);
+            record.variant =
+                static_cast<std::uint8_t>(
+                    record.raw_words[0] >> 8u);
+            record.reference_index =
+                static_cast<std::uint16_t>(
+                    record.raw_words[1] & 0x3FFFu);
+            record.reference_flags =
+                static_cast<std::uint16_t>(
+                    record.raw_words[1] & 0xC000u);
+            record.parameter2 = record.raw_words[2];
+            record.parameter3 = record.raw_words[3];
+            record.parameter4 = record.raw_words[4];
             output.tkc_records.push_back(record);
         }
         if (!terminated) {
@@ -175,15 +195,20 @@ Result<FighterTkRoots> parse_fighter_tk_roots(
                 tkd_offset + record_index * 8u;
             FighterTkdRecord record{};
             record.source_offset = record_offset;
-            for (std::size_t field = 0u;
-                 field < record.fields.size();
-                 ++field) {
-                record.fields[field] =
-                    le16s(
-                        tkd.data() +
-                        record_offset +
-                        field * 2u);
-            }
+            record.offset_x =
+                le16s(tkd.data() + record_offset + 0u);
+            record.offset_y =
+                le16s(tkd.data() + record_offset + 2u);
+            record.packed_element =
+                le16(tkd.data() + record_offset + 4u);
+            record.element_index =
+                static_cast<std::uint16_t>(
+                    record.packed_element & 0x0FFFu);
+            record.element_flags =
+                static_cast<std::uint16_t>(
+                    record.packed_element & 0xF000u);
+            record.reserved =
+                le16s(tkd.data() + record_offset + 6u);
             output.tkd_records.push_back(record);
         }
     }
