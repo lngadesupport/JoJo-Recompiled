@@ -2,6 +2,7 @@
 #include "content/fighter_overlay.h"
 #include "content/fighter_tk.h"
 #include "content/hit_table.h"
+#include "content/kpln_graphics.h"
 #include "content/pac_archive.h"
 #include "content/pcm_wav.h"
 #include "content/tim_image.h"
@@ -400,6 +401,211 @@ std::uint8_t expand5(std::uint16_t value) noexcept {
         (value << 3u) | (value >> 2u));
 }
 
+Result<std::filesystem::path> write_kpln_native_graphics(
+    const std::filesystem::path& output_root,
+    const DiscFileEntry& entry,
+    const std::vector<PacChunk>& chunks) {
+    const auto stem =
+        std::filesystem::path{entry.name}.stem().string();
+    const auto directory =
+        output_root / "derived" / "kpln" / stem;
+    std::error_code ec;
+    std::filesystem::create_directories(directory, ec);
+    if (ec) {
+        return Result<std::filesystem::path>::failure(
+            ErrorCode::io_error,
+            "cannot create KPLN output directory: " + ec.message());
+    }
+
+    const auto index_path = directory / "graphics.json";
+    std::ofstream out(index_path, std::ios::trunc);
+    if (!out) {
+        return Result<std::filesystem::path>::failure(
+            ErrorCode::io_error,
+            "cannot create KPLN graphics JSON");
+    }
+
+    const PacChunk* group_chunk = nullptr;
+    const PacChunk* page_chunk = nullptr;
+    std::vector<const PacChunk*> palette_chunks;
+    for (const auto& chunk : chunks) {
+        if (chunk.type == 0x0800u) {
+            group_chunk = &chunk;
+        } else if (chunk.type == 0x0202u) {
+            page_chunk = &chunk;
+        } else if (
+            chunk.type >= 0x0803u &&
+            chunk.type <= 0x0807u) {
+            palette_chunks.push_back(&chunk);
+        }
+    }
+
+    out << "{\n"
+        << "  \"source\": \"" << json_escape(entry.path) << "\",\n"
+        << "  \"schema\": 1,\n"
+        << "  \"group_table\": ";
+
+    if (group_chunk) {
+        const auto groups =
+            parse_kpln_group_table_0800(group_chunk->bytes);
+        if (!groups) {
+            return Result<std::filesystem::path>::failure(
+                groups.error,
+                entry.path + " 0x0800: " + groups.detail);
+        }
+        out << "{\"record_count\":"
+            << groups.value.records.size()
+            << ",\"records\":[";
+        for (std::size_t index = 0u;
+             index < groups.value.records.size();
+             ++index) {
+            const auto& record =
+                groups.value.records[index];
+            if (index != 0u) out << ",";
+            out << "{\"index\":" << index
+                << ",\"list_word_offset\":"
+                << record.list_word_offset
+                << ",\"packed_layout\":"
+                << record.packed_layout
+                << ",\"layout_low\":"
+                << static_cast<unsigned>(record.layout_low)
+                << ",\"layout_high\":"
+                << static_cast<unsigned>(record.layout_high)
+                << ",\"field2\":" << record.field2
+                << ",\"field3\":" << record.field3
+                << ",\"field4\":" << record.field4
+                << ",\"indices\":[";
+            for (std::size_t i = 0u;
+                 i < record.indices.size();
+                 ++i) {
+                if (i != 0u) out << ",";
+                out << record.indices[i];
+            }
+            out << "]}";
+        }
+        out << "]}";
+    } else {
+        out << "null";
+    }
+
+    out << ",\n  \"indexed_page_4bpp\": ";
+    if (page_chunk) {
+        const auto page =
+            parse_kpln_indexed_page_0202(page_chunk->bytes);
+        if (!page) {
+            return Result<std::filesystem::path>::failure(
+                page.error,
+                entry.path + " 0x0202: " + page.detail);
+        }
+
+        std::vector<std::uint32_t> preview;
+        preview.reserve(page.value.indices.size());
+        for (const auto index : page.value.indices) {
+            const auto level =
+                static_cast<std::uint32_t>(index) * 17u;
+            preview.push_back(
+                level |
+                (level << 8u) |
+                (level << 16u) |
+                0xFF000000u);
+        }
+
+        const auto page_path =
+            directory / "index_page_4bpp.tga";
+        const auto written =
+            write_rgba_tga(
+                page_path,
+                page.value.width,
+                page.value.height,
+                preview);
+        if (!written) {
+            return Result<std::filesystem::path>::failure(
+                written.error, written.detail);
+        }
+        out << "{\"source_type\":\"0x0202\""
+            << ",\"width\":" << page.value.width
+            << ",\"height\":" << page.value.height
+            << ",\"index_bits\":4"
+            << ",\"preview\":\""
+            << json_escape(
+                path_relative_to(page_path, output_root))
+            << "\"}";
+    } else {
+        out << "null";
+    }
+
+    out << ",\n  \"palette_banks\": [";
+    for (std::size_t bank_index = 0u;
+         bank_index < palette_chunks.size();
+         ++bank_index) {
+        const auto* chunk = palette_chunks[bank_index];
+        const auto bank =
+            parse_kpln_palette_bank(chunk->bytes);
+        if (!bank) {
+            return Result<std::filesystem::path>::failure(
+                bank.error,
+                entry.path + " palette bank: " + bank.detail);
+        }
+
+        std::vector<std::uint32_t> pixels;
+        pixels.reserve(bank.value.palettes.size() * 16u);
+        for (const auto& palette : bank.value.palettes) {
+            for (const auto color : palette.bgr555) {
+                const auto red = expand5(color);
+                const auto green = expand5(color >> 5u);
+                const auto blue = expand5(color >> 10u);
+                const auto alpha =
+                    (color & 0x7FFFu) == 0u ? 0u : 255u;
+                pixels.push_back(
+                    static_cast<std::uint32_t>(red) |
+                    (static_cast<std::uint32_t>(green) << 8u) |
+                    (static_cast<std::uint32_t>(blue) << 16u) |
+                    (static_cast<std::uint32_t>(alpha) << 24u));
+            }
+        }
+
+        std::ostringstream name;
+        name << "palette_"
+             << std::hex << std::setw(4)
+             << std::setfill('0')
+             << chunk->type << std::dec
+             << ".tga";
+        const auto palette_path =
+            directory / name.str();
+        const auto written =
+            write_rgba_tga(
+                palette_path,
+                16u,
+                static_cast<std::uint32_t>(
+                    bank.value.palettes.size()),
+                pixels);
+        if (!written) {
+            return Result<std::filesystem::path>::failure(
+                written.error, written.detail);
+        }
+
+        if (bank_index != 0u) out << ",";
+        out << "{\"type\":\"0x"
+            << std::hex << std::setw(4)
+            << std::setfill('0') << chunk->type << std::dec
+            << "\",\"palette_count\":"
+            << bank.value.palettes.size()
+            << ",\"colors_per_palette\":16"
+            << ",\"preview\":\""
+            << json_escape(
+                path_relative_to(palette_path, output_root))
+            << "\"}";
+    }
+    out << "]\n}\n";
+
+    if (!out) {
+        return Result<std::filesystem::path>::failure(
+            ErrorCode::io_error,
+            "failed while writing KPLN graphics JSON");
+    }
+    return Result<std::filesystem::path>::success(index_path);
+}
+
 Result<std::filesystem::path> write_pac_split(
     const std::filesystem::path& output_root,
     const DiscFileEntry& entry,
@@ -535,6 +741,22 @@ Result<std::filesystem::path> write_pac_split(
             ErrorCode::io_error,
             "failed while writing PAC chunk manifest");
     }
+
+    const auto upper_name = ascii_upper(entry.name);
+    if (starts_with(upper_name, "KPLN") &&
+        ends_with(upper_name, ".PAC")) {
+        const auto native_graphics =
+            write_kpln_native_graphics(
+                output_root,
+                entry,
+                parsed.value);
+        if (!native_graphics) {
+            return Result<std::filesystem::path>::failure(
+                native_graphics.error,
+                native_graphics.detail);
+        }
+    }
+
     return Result<std::filesystem::path>::success(index_path);
 }
 
