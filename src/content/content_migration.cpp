@@ -1849,11 +1849,15 @@ Result<std::filesystem::path> write_fighter_native_links_json(
             overlay_bytes.value,
             context_frame_count);
     std::uint32_t frame_sequence_candidate_count = 0u;
+    std::uint32_t canonical_frame_sequence_candidate_count = 0u;
     std::uint32_t tkc_like_candidate_count = 0u;
     for (const auto& candidate : animation_script_candidates) {
         if (candidate.classification ==
             FighterAnimationCandidateClass::frame_sequence_like) {
             ++frame_sequence_candidate_count;
+            if (candidate.canonical_sequence_root) {
+                ++canonical_frame_sequence_candidate_count;
+            }
         } else if (
             candidate.classification ==
             FighterAnimationCandidateClass::tkc_like) {
@@ -2062,6 +2066,8 @@ Result<std::filesystem::path> write_fighter_native_links_json(
         << animation_script_candidates.size() << ",\n"
         << "  \"frame_sequence_candidate_count\": "
         << frame_sequence_candidate_count << ",\n"
+        << "  \"canonical_frame_sequence_candidate_count\": "
+        << canonical_frame_sequence_candidate_count << ",\n"
         << "  \"tkc_like_candidate_count\": "
         << tkc_like_candidate_count << ",\n"
         << "  \"tkc_hit_candidates\": [\n";
@@ -2227,6 +2233,8 @@ Result<std::filesystem::path> write_fighter_native_links_json(
             << script.command_46_count
             << ",\"command_8a_count\":"
             << script.command_8a_count
+            << ",\"canonical_sequence_root\":"
+            << (script.canonical_sequence_root ? "true" : "false")
             << ",\"records\":[";
         for (std::size_t record_index = 0u;
              record_index < script.records.size();
