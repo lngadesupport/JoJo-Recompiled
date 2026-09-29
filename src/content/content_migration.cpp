@@ -740,18 +740,6 @@ Result<std::filesystem::path> write_kpln_native_graphics(
 
     out << "  \"cached_frames_0802\": ";
     if (has_cached_frames) {
-        const auto tile_directory =
-            directory / "tiles_0801";
-        std::filesystem::create_directories(
-            tile_directory, ec);
-        if (ec) {
-            return Result<std::filesystem::path>::failure(
-                ErrorCode::io_error,
-                "cannot create KPLN tile directory: " +
-                    ec.message());
-        }
-
-        std::set<std::uint32_t> written_tiles;
         out << "{\"frame_count\":"
             << cached_frames.frames.size()
             << ",\"unique_tile_count\":"
@@ -871,48 +859,6 @@ Result<std::filesystem::path> write_kpln_native_graphics(
                     if (cell.has_descriptor) {
                         const auto& descriptor =
                             cell.descriptor;
-                        std::string tile_relative;
-                        if (written_tiles.insert(
-                                descriptor.stream_offset)
-                                .second) {
-                            std::ostringstream tile_name;
-                            tile_name << "tile_"
-                                      << std::hex
-                                      << std::setw(6)
-                                      << std::setfill('0')
-                                      << descriptor.stream_offset
-                                      << std::dec
-                                      << ".tga";
-                            const auto tile_path =
-                                tile_directory /
-                                tile_name.str();
-                            const auto tile_written =
-                                write_index_preview(
-                                    tile_path,
-                                    16u,
-                                    16u,
-                                    descriptor.tile_indices);
-                            if (!tile_written) {
-                                return Result<std::filesystem::path>::failure(
-                                    tile_written.error,
-                                    tile_written.detail);
-                            }
-                        }
-
-                        std::ostringstream tile_name;
-                        tile_name << "tile_"
-                                  << std::hex
-                                  << std::setw(6)
-                                  << std::setfill('0')
-                                  << descriptor.stream_offset
-                                  << std::dec
-                                  << ".tga";
-                        tile_relative =
-                            path_relative_to(
-                                tile_directory /
-                                    tile_name.str(),
-                                output_root);
-
                         out << ",\"descriptor\":{"
                             << "\"raw\":"
                             << descriptor.raw
@@ -926,9 +872,7 @@ Result<std::filesystem::path> write_kpln_native_graphics(
                                 descriptor.transform)
                             << ",\"compressed_bytes\":"
                             << descriptor.compressed_bytes_consumed
-                            << ",\"tile_preview\":\""
-                            << json_escape(tile_relative)
-                            << "\"}";
+                            << "}";
                     }
                     out << "}";
                 }
@@ -1119,7 +1063,8 @@ Result<std::filesystem::path> write_kpln_native_graphics(
         << "\"0802\":\"cached_frame_records_masks_descriptors\","
         << "\"descriptor_low24\":\"0801_stream_offset\","
         << "\"descriptor_bits24_29\":\"relative_clut_selector\","
-        << "\"descriptor_bits30_31\":\"tile_transform\""
+        << "\"descriptor_bits30_31\":\"tile_transform\","
+        << "\"tile_previews\":\"omitted_runtime_uses_composed_frames\""
         << "}\n"
         << "}\n";
 
