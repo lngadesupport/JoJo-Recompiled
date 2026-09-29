@@ -71,7 +71,7 @@ func _build() -> void:
     view_select.add_item("CLUT WINDOW", ViewMode.CLUT_WINDOW)
     view_select.add_item("FIRST VISUAL", ViewMode.FIRST_VISUAL)
     view_select.add_item(
-        "ANIMATION CANDIDATE", ViewMode.ANIMATION_CANDIDATE)
+        "FRAME SEQUENCE", ViewMode.ANIMATION_CANDIDATE)
     view_select.item_selected.connect(_on_view_changed)
     controls.add_child(view_select)
 
@@ -215,7 +215,7 @@ func _update_ranges(fighter) -> void:
         ViewMode.FIRST_VISUAL:
             count = max(1, fighter.visual_paths.size())
         ViewMode.ANIMATION_CANDIDATE:
-            count = max(1, fighter.animation_script_candidate_count())
+            count = max(1, fighter.frame_sequence_candidate_count())
 
     item_select.max_value = max(0, count - 1)
     if int(item_select.value) >= count and count > 0:
@@ -223,7 +223,7 @@ func _update_ranges(fighter) -> void:
 
     var step_count := 1
     if _selected_view() == ViewMode.ANIMATION_CANDIDATE:
-        var script := fighter.animation_script_candidate(
+        var script := fighter.frame_sequence_candidate(
             int(item_select.value))
         var records = script.get("records", [])
         if records is Array:
@@ -356,7 +356,7 @@ func _refresh() -> void:
         "CLUT palette IDs: %d\n\n" +
         "selected source record: %d\n" +
         "selected frame parts: %d\n" +
-        "animation candidates: %d\n" +
+        "frame-sequence candidates: %d\n" +
         "animation records: %d\n" +
         "animation score: %d\n" +
         "animation frame: %d\n\n" +
@@ -379,7 +379,7 @@ func _refresh() -> void:
         fighter.clut_palette_count(),
         selected_source_record,
         selected_parts,
-        fighter.animation_script_candidate_count(),
+        fighter.frame_sequence_candidate_count(),
         animation_records,
         animation_score,
         animation_frame,
@@ -393,7 +393,7 @@ func _refresh() -> void:
 
 
 func _animation_frame_index(fighter) -> int:
-    var script := fighter.animation_script_candidate(
+    var script := fighter.frame_sequence_candidate(
         int(item_select.value))
     var records = script.get("records", [])
     if not records is Array or records.is_empty():
