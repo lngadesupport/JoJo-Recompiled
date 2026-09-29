@@ -12,7 +12,13 @@ struct FighterAnimationScriptRecord {
     std::uint32_t source_offset{};
     std::uint8_t command{};
     std::uint8_t record_length{};
+    std::uint8_t operand0{};
+    std::uint8_t operand0_flags{};
+    std::uint8_t duration_candidate_ticks{};
+    std::uint16_t raw_frame_word{};
     std::uint16_t frame_index{};
+    std::uint16_t frame_flags{};
+    std::uint16_t parameter_word{};
 };
 
 enum class FighterAnimationCandidateClass : std::uint8_t {
