@@ -215,7 +215,7 @@ func _update_ranges(fighter) -> void:
         ViewMode.FIRST_VISUAL:
             count = max(1, fighter.visual_paths.size())
         ViewMode.ANIMATION_CANDIDATE:
-            count = max(1, fighter.frame_sequence_candidate_count())
+            count = max(1, fighter.canonical_frame_sequence_candidate_count())
 
     item_select.max_value = max(0, count - 1)
     if int(item_select.value) >= count and count > 0:
@@ -223,7 +223,7 @@ func _update_ranges(fighter) -> void:
 
     var step_count := 1
     if _selected_view() == ViewMode.ANIMATION_CANDIDATE:
-        var script := fighter.frame_sequence_candidate(
+        var script := fighter.canonical_frame_sequence_candidate(
             int(item_select.value))
         var records = script.get("records", [])
         if records is Array:
@@ -356,7 +356,7 @@ func _refresh() -> void:
         "CLUT palette IDs: %d\n\n" +
         "selected source record: %d\n" +
         "selected frame parts: %d\n" +
-        "frame-sequence candidates: %d\n" +
+        "canonical frame sequences: %d\n" +
         "animation records: %d\n" +
         "animation score: %d\n" +
         "animation frame: %d\n\n" +
