@@ -75,18 +75,21 @@ Result<KplnClutWindows> build_kpln_clut_windows(
     std::span<const std::uint8_t> pool_0805,
     std::span<const std::uint8_t> pool_0806,
     std::span<const std::uint8_t> pool_0807) {
-    if (pool_0803.size() < 0x100u ||
-        pool_0803.size() % 0x100u != 0u) {
-        return Result<KplnClutWindows>::failure(
-            ErrorCode::unsupported_format,
-            "KPLN 0x0803 CLUT pool must use 0x100-byte palette strides");
-    }
-
-    const auto dynamic_valid = [](
+    const auto split_two_valid = [](
         std::span<const std::uint8_t> bytes) {
+        // Retail KPLN CLUT pools are always two palette IDs. Most 0x0803
+        // pools use 0x100 bytes per ID, while KPLN15 legitimately uses a
+        // compact 0x40-byte fixed slice per ID.
         return bytes.size() >= 4u &&
             bytes.size() % 4u == 0u;
     };
+    if (!split_two_valid(pool_0803)) {
+        return Result<KplnClutWindows>::failure(
+            ErrorCode::unsupported_format,
+            "KPLN 0x0803 CLUT pool cannot split across two palette IDs");
+    }
+
+    const auto dynamic_valid = split_two_valid;
     if (!dynamic_valid(pool_0804) ||
         !dynamic_valid(pool_0805) ||
         !dynamic_valid(pool_0806)) {
@@ -95,16 +98,8 @@ Result<KplnClutWindows> build_kpln_clut_windows(
             "KPLN dynamic CLUT pools must split evenly across two palette IDs");
     }
 
-    const auto count_0803 =
-        static_cast<std::uint32_t>(
-            pool_0803.size() / 0x100u);
-    const auto palette_count =
-        std::min<std::uint32_t>(count_0803, 2u);
-    if (palette_count == 0u) {
-        return Result<KplnClutWindows>::failure(
-            ErrorCode::unsupported_format,
-            "KPLN CLUT set contains no palette IDs");
-    }
+    constexpr std::uint32_t palette_count = 2u;
+    const auto stride_0803 = pool_0803.size() / palette_count;
 
     KplnClutWindows result{};
     result.palette_count = palette_count;
@@ -122,8 +117,8 @@ Result<KplnClutWindows> build_kpln_clut_windows(
         const auto fixed_0803 =
             pool_0803.subspan(
                 static_cast<std::size_t>(palette_id) *
-                    0x100u,
-                0x100u);
+                    stride_0803,
+                stride_0803);
         const auto stride_0804 = pool_0804.size() / 2u;
         const auto stride_0805 = pool_0805.size() / 2u;
         const auto stride_0806 = pool_0806.size() / 2u;
