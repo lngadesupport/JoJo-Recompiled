@@ -105,6 +105,72 @@ int main() {
     CHECK(scripts[0].records[2].frame_index == 7u);
     CHECK(scripts[0].records[2].record_length == 6u);
     CHECK(scripts[0].confidence_score >= 23u);
+    CHECK(
+        scripts[0].classification ==
+        jojo::content::FighterAnimationCandidateClass::generic);
+
+    // A 0x46/6-byte family with changing frame indices is retained but
+    // promoted as a frame-sequence-like candidate.
+    std::vector<std::uint8_t> frame_sequence_overlay(0x100u, 0u);
+    const auto frame_sequence_address =
+        jojo::content::fighter_overlay_primary_base + 0x40u;
+    put16(
+        frame_sequence_overlay,
+        0x00u,
+        static_cast<std::uint16_t>(frame_sequence_address));
+    put16(
+        frame_sequence_overlay,
+        0x02u,
+        static_cast<std::uint16_t>(frame_sequence_address >> 16u));
+    for (std::size_t i = 0u; i < 4u; ++i) {
+        const auto offset = 0x40u + i * 6u;
+        frame_sequence_overlay[offset] = 0x46u;
+        put16(
+            frame_sequence_overlay,
+            offset + 2u,
+            static_cast<std::uint16_t>(i + 1u));
+    }
+    const auto frame_sequences =
+        jojo::content::scan_animation_script_candidates(
+            frame_sequence_overlay, 10u);
+    CHECK(frame_sequences.size() == 1u);
+    CHECK(
+        frame_sequences[0].classification ==
+        jojo::content::FighterAnimationCandidateClass::frame_sequence_like);
+    CHECK(frame_sequences[0].command_46_count == 4u);
+    CHECK(frame_sequences[0].unique_frame_count == 4u);
+    CHECK(frame_sequences[0].confidence_score >= 40u);
+
+    // A pure 0x8A/10-byte stream matches the already-confirmed TKC leaf
+    // signature and must not be promoted as an animation sequence.
+    std::vector<std::uint8_t> tkc_like_overlay(0x100u, 0u);
+    const auto tkc_like_address =
+        jojo::content::fighter_overlay_primary_base + 0x40u;
+    put16(
+        tkc_like_overlay,
+        0x00u,
+        static_cast<std::uint16_t>(tkc_like_address));
+    put16(
+        tkc_like_overlay,
+        0x02u,
+        static_cast<std::uint16_t>(tkc_like_address >> 16u));
+    for (std::size_t i = 0u; i < 3u; ++i) {
+        const auto offset = 0x40u + i * 10u;
+        tkc_like_overlay[offset] = 0x8Au;
+        put16(
+            tkc_like_overlay,
+            offset + 2u,
+            static_cast<std::uint16_t>(i + 1u));
+    }
+    const auto tkc_like =
+        jojo::content::scan_animation_script_candidates(
+            tkc_like_overlay, 10u);
+    CHECK(tkc_like.size() == 1u);
+    CHECK(
+        tkc_like[0].classification ==
+        jojo::content::FighterAnimationCandidateClass::tkc_like);
+    CHECK(tkc_like[0].command_8a_count == 3u);
+    CHECK(tkc_like[0].confidence_score == 0u);
 
     std::cout << "fighter render context/script candidate tests passed\n";
     return 0;
