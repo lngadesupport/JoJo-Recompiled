@@ -34,17 +34,17 @@ void put32(
 } // namespace
 
 int main() {
-    // 0x0800 direct frame: one 2x1 part. The matrix begins at word 12
-    // (byte 24), after one live record plus a zero-marker sentinel record.
-    std::vector<std::uint8_t> direct(28u, 0u);
-    put16(direct, 0u, 12u);
+    // 0x0800 direct frame: one 2x1 record. The first data offset itself
+    // terminates the table: word 6 = byte 12.
+    std::vector<std::uint8_t> direct(16u, 0u);
+    put16(direct, 0u, 6u);
     put16(direct, 2u, 0x0102u);
     put16(direct, 4u, 4u);
     put16(direct, 6u, 8u);
     put16(direct, 8u, 1u);
     put16(direct, 10u, 0u);
-    put16(direct, 24u, 0x1234u);
-    put16(direct, 26u, 0xFFFFu);
+    put16(direct, 12u, 0x1234u);
+    put16(direct, 14u, 0xFFFFu);
 
     const auto parsed_direct =
         jojo::content::parse_kpln_direct_frames_0800(direct);
@@ -58,20 +58,20 @@ int main() {
     CHECK(parsed_direct.value[0].parts[0].cells[0].tile_word == 0x1234u);
     CHECK(parsed_direct.value[0].parts[0].cells[1].empty);
 
-    // 0x0802 cached frame: one visible cell in a 2x1 matrix. Data begins
-    // at dword 6 (byte 24): 4-byte mask then one descriptor dword.
-    std::vector<std::uint8_t> cached(32u, 0u);
-    put16(cached, 0u, 6u);
+    // 0x0802 cached frame: one visible cell in a 2x1 matrix. The first
+    // data offset terminates the table: dword 3 = byte 12.
+    std::vector<std::uint8_t> cached(20u, 0u);
+    put16(cached, 0u, 3u);
     put16(cached, 2u, 0x0102u);
     put16(cached, 4u, 5u);
     put16(cached, 6u, 9u);
     put16(cached, 8u, 1u);
     put16(cached, 10u, 0u);
-    cached[24u] = 0x80u;
+    cached[12u] = 0x80u;
 
     const std::uint32_t descriptor =
         3u | (5u << 24u) | (2u << 30u);
-    put32(cached, 28u, descriptor);
+    put32(cached, 16u, descriptor);
 
     // 0x0801 compressed tile stream at offset 3. One control byte marks all
     // eight tokens as compressed runs; each token emits 16 identical bytes.
@@ -108,9 +108,9 @@ int main() {
     // The retail marker is the exact number of visible cells/descriptors.
     // A mask with one visible cell cannot claim two descriptors.
     auto mismatched_cached = cached;
-    mismatched_cached.resize(36u, 0u);
+    mismatched_cached.resize(24u, 0u);
     put16(mismatched_cached, 8u, 2u);
-    put32(mismatched_cached, 32u, descriptor);
+    put32(mismatched_cached, 20u, descriptor);
     const auto mismatched =
         jojo::content::parse_kpln_cached_frames_0802(
             mismatched_cached, tile_pool);
