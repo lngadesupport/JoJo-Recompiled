@@ -122,6 +122,16 @@ int main() {
         frame_sequence_overlay,
         0x02u,
         static_cast<std::uint16_t>(frame_sequence_address >> 16u));
+    const auto nested_sequence_address =
+        frame_sequence_address + 6u;
+    put16(
+        frame_sequence_overlay,
+        0x08u,
+        static_cast<std::uint16_t>(nested_sequence_address));
+    put16(
+        frame_sequence_overlay,
+        0x0au,
+        static_cast<std::uint16_t>(nested_sequence_address >> 16u));
     for (std::size_t i = 0u; i < 4u; ++i) {
         const auto offset = 0x40u + i * 6u;
         frame_sequence_overlay[offset] = 0x46u;
@@ -133,13 +143,26 @@ int main() {
     const auto frame_sequences =
         jojo::content::scan_animation_script_candidates(
             frame_sequence_overlay, 10u);
-    CHECK(frame_sequences.size() == 1u);
+    CHECK(frame_sequences.size() == 2u);
+    const jojo::content::FighterAnimationScriptCandidate* root = nullptr;
+    const jojo::content::FighterAnimationScriptCandidate* nested = nullptr;
+    for (const auto& candidate : frame_sequences) {
+        if (candidate.target_offset == 0x40u) root = &candidate;
+        if (candidate.target_offset == 0x46u) nested = &candidate;
+    }
+    CHECK(root != nullptr);
+    CHECK(nested != nullptr);
     CHECK(
-        frame_sequences[0].classification ==
+        root->classification ==
         jojo::content::FighterAnimationCandidateClass::frame_sequence_like);
-    CHECK(frame_sequences[0].command_46_count == 4u);
-    CHECK(frame_sequences[0].unique_frame_count == 4u);
-    CHECK(frame_sequences[0].confidence_score >= 40u);
+    CHECK(root->command_46_count == 4u);
+    CHECK(root->unique_frame_count == 4u);
+    CHECK(root->confidence_score >= 40u);
+    CHECK(root->canonical_sequence_root);
+    CHECK(
+        nested->classification ==
+        jojo::content::FighterAnimationCandidateClass::frame_sequence_like);
+    CHECK(!nested->canonical_sequence_root);
 
     // A pure 0x8A/10-byte stream matches the already-confirmed TKC leaf
     // signature and must not be promoted as an animation sequence.
