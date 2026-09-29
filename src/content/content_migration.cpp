@@ -1848,6 +1848,18 @@ Result<std::filesystem::path> write_fighter_native_links_json(
         scan_animation_script_candidates(
             overlay_bytes.value,
             context_frame_count);
+    std::uint32_t frame_sequence_candidate_count = 0u;
+    std::uint32_t tkc_like_candidate_count = 0u;
+    for (const auto& candidate : animation_script_candidates) {
+        if (candidate.classification ==
+            FighterAnimationCandidateClass::frame_sequence_like) {
+            ++frame_sequence_candidate_count;
+        } else if (
+            candidate.classification ==
+            FighterAnimationCandidateClass::tkc_like) {
+            ++tkc_like_candidate_count;
+        }
+    }
 
     const auto directory =
         output_root / "derived" / "fighters" /
@@ -2048,6 +2060,10 @@ Result<std::filesystem::path> write_fighter_native_links_json(
         << render_context_candidates.size() << ",\n"
         << "  \"animation_script_candidate_count\": "
         << animation_script_candidates.size() << ",\n"
+        << "  \"frame_sequence_candidate_count\": "
+        << frame_sequence_candidate_count << ",\n"
+        << "  \"tkc_like_candidate_count\": "
+        << tkc_like_candidate_count << ",\n"
         << "  \"tkc_hit_candidates\": [\n";
 
     for (std::size_t index = 0u;
@@ -2188,12 +2204,29 @@ Result<std::filesystem::path> write_fighter_native_links_json(
          ++index) {
         const auto& script =
             animation_script_candidates[index];
+        const char* classification = "generic";
+        if (script.classification ==
+            FighterAnimationCandidateClass::frame_sequence_like) {
+            classification = "frame_sequence_like";
+        } else if (
+            script.classification ==
+            FighterAnimationCandidateClass::tkc_like) {
+            classification = "tkc_like";
+        }
         out << "    {\"source_pointer_offset\":"
             << script.source_pointer_offset
             << ",\"target_offset\":"
             << script.target_offset
             << ",\"confidence_score\":"
             << script.confidence_score
+            << ",\"classification\":\""
+            << classification
+            << "\",\"unique_frame_count\":"
+            << script.unique_frame_count
+            << ",\"command_46_count\":"
+            << script.command_46_count
+            << ",\"command_8a_count\":"
+            << script.command_8a_count
             << ",\"records\":[";
         for (std::size_t record_index = 0u;
              record_index < script.records.size();
