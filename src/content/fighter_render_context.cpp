@@ -157,6 +157,44 @@ scan_animation_script_candidates(
         result.push_back(std::move(candidate));
     }
 
+    // Multiple overlay pointers can legitimately target interior records of
+    // the same 0x46 frame-sequence table. Preserve every candidate for audit,
+    // but mark only maximal non-contained sequences as canonical roots.
+    for (auto& candidate : result) {
+        if (candidate.classification !=
+            FighterAnimationCandidateClass::frame_sequence_like ||
+            candidate.records.empty()) {
+            continue;
+        }
+        candidate.canonical_sequence_root = true;
+        const auto start = candidate.target_offset;
+        const auto& last = candidate.records.back();
+        const auto end =
+            static_cast<std::uint64_t>(last.source_offset) +
+            last.record_length;
+
+        for (const auto& other : result) {
+            if (&other == &candidate ||
+                other.classification !=
+                    FighterAnimationCandidateClass::frame_sequence_like ||
+                other.records.empty()) {
+                continue;
+            }
+            const auto other_start = other.target_offset;
+            const auto& other_last = other.records.back();
+            const auto other_end =
+                static_cast<std::uint64_t>(other_last.source_offset) +
+                other_last.record_length;
+
+            if (other_start <= start &&
+                end <= other_end &&
+                (other_start < start || end < other_end)) {
+                candidate.canonical_sequence_root = false;
+                break;
+            }
+        }
+    }
+
     return result;
 }
 
