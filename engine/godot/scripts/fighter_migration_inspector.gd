@@ -327,12 +327,32 @@ func _refresh() -> void:
     var animation_frame := -1
     var animation_records := 0
     var animation_score := 0
+    var sequence_duration_candidate := 0
+    var sequence_operand_flags := 0
+    var sequence_frame_flags := 0
+    var sequence_parameter_word := 0
     if _selected_view() == ViewMode.ANIMATION_CANDIDATE:
         var script := fighter.animation_script_candidate(
             int(item_select.value))
         var script_records = script.get("records", [])
         if script_records is Array:
             animation_records = script_records.size()
+            if not script_records.is_empty():
+                var step := clampi(
+                    int(step_select.value),
+                    0,
+                    script_records.size() - 1)
+                var current_record = script_records[step]
+                if current_record is Dictionary:
+                    sequence_duration_candidate = int(
+                        current_record.get(
+                            "duration_candidate_ticks", 0))
+                    sequence_operand_flags = int(
+                        current_record.get("operand0_flags", 0))
+                    sequence_frame_flags = int(
+                        current_record.get("frame_flags", 0))
+                    sequence_parameter_word = int(
+                        current_record.get("parameter_word", 0))
         animation_score = int(script.get("confidence_score", 0))
         animation_frame = _animation_frame_index(fighter)
     if not selected_meta.is_empty():
@@ -359,7 +379,11 @@ func _refresh() -> void:
         "canonical frame sequences: %d\n" +
         "animation records: %d\n" +
         "animation score: %d\n" +
-        "animation frame: %d\n\n" +
+        "animation frame: %d\n" +
+        "duration candidate: %d\n" +
+        "operand flags: 0x%02X\n" +
+        "frame flags: 0x%04X\n" +
+        "parameter word: 0x%04X\n\n" +
         "TKC refs in HIT range: %d / %d\n" +
         "TKD refs in direct range: %d / %d\n" +
         "TKD refs in cached range: %d / %d"
@@ -383,6 +407,10 @@ func _refresh() -> void:
         animation_records,
         animation_score,
         animation_frame,
+        sequence_duration_candidate,
+        sequence_operand_flags,
+        sequence_frame_flags,
+        sequence_parameter_word,
         int(links.get("tkc_hit_index_in_range_count", 0)),
         int(links.get("tkc_record_count", 0)),
         int(links.get("tkd_direct_frame_index_in_range_count", 0)),
