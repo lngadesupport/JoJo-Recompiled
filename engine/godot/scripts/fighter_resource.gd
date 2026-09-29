@@ -571,3 +571,20 @@ func frame_sequence_frames(index: int) -> PackedInt32Array:
         if record is Dictionary:
             result.append(int(record.get("frame_index", -1)))
     return result
+
+
+func canonical_frame_sequence_candidates() -> Array[Dictionary]:
+    var result: Array[Dictionary] = []
+    for script in frame_sequence_candidates():
+        if bool(script.get("canonical_sequence_root", false)):
+            result.append(script)
+    return result
+
+func canonical_frame_sequence_candidate_count() -> int:
+    return canonical_frame_sequence_candidates().size()
+
+func canonical_frame_sequence_candidate(index: int) -> Dictionary:
+    var scripts := canonical_frame_sequence_candidates()
+    if index < 0 or index >= scripts.size():
+        return {}
+    return scripts[index]
