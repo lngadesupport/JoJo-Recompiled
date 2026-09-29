@@ -49,17 +49,31 @@ Result<KplnFrameHeader> read_header(
     return Result<KplnFrameHeader>::success(header);
 }
 
-std::size_t find_record_table_end(
-    std::span<const std::uint8_t> bytes) {
-    const auto record_count = bytes.size() / 12u;
-    for (std::size_t i = 0u; i < record_count; ++i) {
-        const auto marker =
-            le16(bytes.data() + i * 12u + 8u);
-        if (marker == 0u) {
-            return i;
-        }
+Result<std::size_t> read_record_table_count(
+    std::span<const std::uint8_t> bytes,
+    std::size_t data_offset_unit_bytes) {
+    constexpr std::size_t kRecordBytes = 12u;
+    if (bytes.size() < kRecordBytes ||
+        data_offset_unit_bytes == 0u) {
+        return Result<std::size_t>::failure(
+            ErrorCode::unsupported_format,
+            "KPLN frame table is too small");
     }
-    return record_count;
+
+    const auto first_data_units =
+        static_cast<std::size_t>(le16(bytes.data()));
+    const auto first_data_offset =
+        first_data_units * data_offset_unit_bytes;
+    if (first_data_offset < kRecordBytes ||
+        first_data_offset > bytes.size() ||
+        first_data_offset % kRecordBytes != 0u) {
+        return Result<std::size_t>::failure(
+            ErrorCode::invalid_installation,
+            "KPLN first data offset does not terminate a 12-byte record table");
+    }
+
+    return Result<std::size_t>::success(
+        first_data_offset / kRecordBytes);
 }
 
 std::vector<std::uint8_t> expand_4bpp(
@@ -86,11 +100,13 @@ parse_kpln_direct_frames_0800(
             "KPLN 0x0800 frame data is too small");
     }
 
-    const auto table_records =
-        find_record_table_end(frame_bytes);
-    if (table_records == 0u) {
-        return Result<std::vector<KplnDirectFrame>>::success({});
+    const auto table_count =
+        read_record_table_count(frame_bytes, 2u);
+    if (!table_count) {
+        return Result<std::vector<KplnDirectFrame>>::failure(
+            table_count.error, table_count.detail);
     }
+    const auto table_records = table_count.value;
 
     std::vector<KplnDirectFrame> frames;
     std::size_t record_index = 0u;
@@ -269,8 +285,13 @@ parse_kpln_cached_frames_0802(
             "KPLN 0x0802 frame data is too small");
     }
 
-    const auto table_records =
-        find_record_table_end(frame_bytes);
+    const auto table_count =
+        read_record_table_count(frame_bytes, 4u);
+    if (!table_count) {
+        return Result<KplnCachedFrameSet>::failure(
+            table_count.error, table_count.detail);
+    }
+    const auto table_records = table_count.value;
     KplnCachedFrameSet result{};
     std::set<std::uint32_t> unique_offsets;
     std::size_t record_index = 0u;
