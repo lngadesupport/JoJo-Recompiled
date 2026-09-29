@@ -214,6 +214,44 @@ schema-2 import of the USA BIN is still required before publishing global
 schema-2 retail frame/tile counts.
 
 
+## Retail KPLN end-to-end validation
+
+The current KPLN decoder has now been exercised against all 26 retail fighter
+packs from the USA disc, not only synthetic fixtures.
+
+Confirmed totals:
+
+- **2,425** live direct-frame records from `0x0800`
+- **10,154** live cached-frame records from `0x0802`
+- **281,521** cached tile references
+- **165,240** unique `0x0801` compressed tile streams
+- every cached visibility mask has an MSB-first set-bit count exactly equal to
+  its retail descriptor count
+- every low-24-bit cached tile stream offset stays inside `0x0801`
+- every unique referenced `0x0801` stream decodes to one 16x16 4bpp tile
+- **0** referenced tile streams failed decompression
+- **0** decoded streams overlap the next referenced stream
+
+The record-table boundary is not a zero-marker sentinel. It is derived from
+the first record's data offset:
+
+- `0x0800`: data-offset unit = 16-bit word
+- `0x0802`: data-offset unit = 32-bit dword
+
+This matters because valid retail records can contain marker zero. Sentinel
+scanning would truncate or overrun several fighters.
+
+KPLN15 also confirms a compact CLUT variant. It keeps two palette IDs but
+uses a 0x40-byte fixed `0x0803` slice per ID instead of the usual 0x100
+bytes. CLUT import therefore derives the fixed stride from the pool size
+rather than hard-coding one retail layout.
+
+A full content-only import of the USA BIN succeeds with:
+
+- **1,072** content files imported
+- **3** PS1 runtime/system files excluded
+- **542,289,549** source content bytes imported
+
 ## Fighter native cross-link layer
 
 The importer emits a conservative native relation report for every fighter
@@ -250,6 +288,14 @@ Godot exposes the report through `JojoFighterResource` and
 `JojoFighterSlotResource`. Each imported fighter can be addressed as
 26 native slots without reading source BIN/PAC files at runtime.
 
+
+## Animation Candidate playback
+
+DEV TOOLS can now play structural animation-script candidates recovered from
+the fighter overlay. Playback intentionally uses a fixed inspection cadence;
+it does not claim that the original command timing has been decoded yet.
+Each candidate step resolves its imported `frame_index` to the best available
+contextual cached frame, then falls back to cached/direct frame previews.
 
 ## Migration Inspector
 
@@ -308,3 +354,15 @@ Current native project provides:
 7. Decode stages, UI/story/event tables and remaining PAC resource families.
 8. Validate converted assets against reference output and stop shipping
    source-format intermediates for each completed family.
+
+
+## Import-size optimization
+
+The runtime import no longer writes redundant per-tile TGA previews for every
+unique 0x0801 stream. Frame previews already contain the composed graphics,
+so the 165,240 diagnostic tile images added roughly 652 MiB without runtime
+value.
+
+The decoded XA ADPCM intermediate payloads are also no longer retained after
+PCM16 WAV generation. This removes roughly 419 MiB of duplicated audio data
+from the imported tree while retaining stream metadata and native WAV audio.
