@@ -15,10 +15,21 @@ struct FighterAnimationScriptRecord {
     std::uint16_t frame_index{};
 };
 
+enum class FighterAnimationCandidateClass : std::uint8_t {
+    generic,
+    tkc_like,
+    frame_sequence_like,
+};
+
 struct FighterAnimationScriptCandidate {
     std::uint32_t source_pointer_offset{};
     std::uint32_t target_offset{};
     std::uint32_t confidence_score{};
+    FighterAnimationCandidateClass classification{
+        FighterAnimationCandidateClass::generic};
+    std::uint32_t unique_frame_count{};
+    std::uint32_t command_46_count{};
+    std::uint32_t command_8a_count{};
     std::vector<FighterAnimationScriptRecord> records;
 };
 
