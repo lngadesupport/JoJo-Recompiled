@@ -108,11 +108,51 @@ scan_animation_script_candidates(
         candidate.source_pointer_offset =
             static_cast<std::uint32_t>(pointer_offset);
         candidate.target_offset = target;
+
+        std::set<std::uint16_t> unique_frames;
+        bool all_tkc_signature = true;
+        for (const auto& record : records) {
+            unique_frames.insert(record.frame_index);
+            if (record.command == 0x46u &&
+                record.record_length == 6u) {
+                ++candidate.command_46_count;
+            }
+            if (record.command == 0x8au &&
+                record.record_length == 10u) {
+                ++candidate.command_8a_count;
+            } else {
+                all_tkc_signature = false;
+            }
+        }
+        candidate.unique_frame_count =
+            static_cast<std::uint32_t>(
+                unique_frames.size());
+
+        const auto sequence_threshold =
+            (records.size() * 3u + 3u) / 4u;
+        if (all_tkc_signature) {
+            candidate.classification =
+                FighterAnimationCandidateClass::tkc_like;
+        } else if (
+            candidate.command_46_count >= sequence_threshold &&
+            candidate.unique_frame_count > 1u) {
+            candidate.classification =
+                FighterAnimationCandidateClass::frame_sequence_like;
+        }
+
         candidate.confidence_score =
             static_cast<std::uint32_t>(
                 20u +
                 std::min<std::size_t>(
                     records.size(), 20u));
+        if (candidate.classification ==
+            FighterAnimationCandidateClass::frame_sequence_like) {
+            candidate.confidence_score += 20u;
+        } else if (candidate.classification ==
+            FighterAnimationCandidateClass::tkc_like) {
+            candidate.confidence_score = 0u;
+        }
+
         candidate.records = std::move(records);
         result.push_back(std::move(candidate));
     }
