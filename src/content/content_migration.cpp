@@ -2248,8 +2248,21 @@ Result<std::filesystem::path> write_fighter_native_links_json(
                 << static_cast<unsigned>(record.command)
                 << ",\"record_length\":"
                 << static_cast<unsigned>(record.record_length)
+                << ",\"operand0\":"
+                << static_cast<unsigned>(record.operand0)
+                << ",\"operand0_flags\":"
+                << static_cast<unsigned>(record.operand0_flags)
+                << ",\"duration_candidate_ticks\":"
+                << static_cast<unsigned>(
+                    record.duration_candidate_ticks)
+                << ",\"raw_frame_word\":"
+                << record.raw_frame_word
                 << ",\"frame_index\":"
                 << record.frame_index
+                << ",\"frame_flags\":"
+                << record.frame_flags
+                << ",\"parameter_word\":"
+                << record.parameter_word
                 << "}";
         }
         out << "]}";
