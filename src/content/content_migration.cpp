@@ -228,6 +228,7 @@ Result<std::filesystem::path> write_xa_audio(
           << "  \"source\": \"" << json_escape(entry.path) << "\",\n"
           << "  \"source_representation\": \"raw_mode2_form2\",\n"
           << "  \"runtime_representation\": \"pcm16_wav\",\n"
+          << "  \"source_adpcm_payload_retained\": false,\n"
           << "  \"total_source_sectors\": "
           << parsed.value.total_sectors << ",\n"
           << "  \"audio_sectors\": "
@@ -241,21 +242,6 @@ Result<std::filesystem::path> write_xa_audio(
          ++stream_index) {
         const auto& stream =
             parsed.value.streams[stream_index];
-        std::ostringstream filename;
-        filename << "channel_"
-                 << std::setfill('0')
-                 << std::setw(2)
-                 << static_cast<unsigned>(stream.channel)
-                 << ".xaadpcm";
-        const auto payload_path =
-            directory / filename.str();
-        const auto written =
-            write_bytes(payload_path, stream.adpcm_payload);
-        if (!written) {
-            return Result<std::filesystem::path>::failure(
-                written.error, written.detail);
-        }
-
         const auto decoded =
             decode_xa_adpcm(
                 stream.coding,
@@ -308,9 +294,7 @@ Result<std::filesystem::path> write_xa_audio(
               << decoded.value.channel_count
               << ",\"sector_count\":"
               << stream.packets.size()
-              << ",\"source_payload\":\""
-              << json_escape(filename.str())
-              << "\",\"wav\":\""
+              << ",\"wav\":\""
               << json_escape(wav_filename.str())
               << "\",\"pcm_sample_count\":"
               << decoded.value.samples.size()
