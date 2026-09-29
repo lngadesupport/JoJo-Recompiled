@@ -105,6 +105,17 @@ int main() {
     CHECK(parsed_cached.value.unique_tile_offsets.size() == 1u);
     CHECK(parsed_cached.value.unique_tile_offsets[0] == 3u);
 
+    // The retail marker is the exact number of visible cells/descriptors.
+    // A mask with one visible cell cannot claim two descriptors.
+    auto mismatched_cached = cached;
+    mismatched_cached.resize(36u, 0u);
+    put16(mismatched_cached, 8u, 2u);
+    put32(mismatched_cached, 32u, descriptor);
+    const auto mismatched =
+        jojo::content::parse_kpln_cached_frames_0802(
+            mismatched_cached, tile_pool);
+    CHECK(!mismatched);
+
     const auto raw_tile =
         jojo::content::decompress_kpln_tile_0801(
             std::span<const std::uint8_t>(tile_pool).subspan(3u));
