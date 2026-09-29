@@ -1,0 +1,201 @@
+#include "content/fighter_render_context.h"
+
+#include <cstdint>
+#include <cstdlib>
+#include <iostream>
+#include <vector>
+
+namespace {
+
+void check(bool condition, const char* expression, int line) {
+    if (condition) return;
+    std::cerr << "CHECK failed at line "
+              << line << ": " << expression << "\n";
+    std::exit(1);
+}
+#define CHECK(expr) check((expr), #expr, __LINE__)
+
+void put16(
+    std::vector<std::uint8_t>& bytes,
+    std::size_t offset,
+    std::uint16_t value) {
+    bytes[offset + 0u] = static_cast<std::uint8_t>(value);
+    bytes[offset + 1u] = static_cast<std::uint8_t>(value >> 8u);
+}
+
+} // namespace
+
+int main() {
+    std::vector<std::uint8_t> overlay(0x100u, 0u);
+
+    constexpr std::size_t good = 0x20u;
+    overlay[good + 0u] = 1u;
+    overlay[good + 1u] = 2u;
+    overlay[good + 0x06u] = 0xFFu; // signed clut mode -1
+    overlay[good + 0x07u] = 5u;
+    put16(overlay, good + 0x0cu, 0x01e8u);
+    put16(overlay, good + 0x0eu, 0x1003u); // frame 3 after 0x0fff mask
+    overlay[good + 0x1du] = 0u; // side 0
+    overlay[good + 0x1eu] = 1u;
+    overlay[good + 0x1fu] = 2u;
+
+    constexpr std::size_t wrong_side = 0x60u;
+    overlay[wrong_side + 0u] = 1u;
+    overlay[wrong_side + 1u] = 2u;
+    put16(overlay, wrong_side + 0x0cu, 0x01e8u);
+    put16(overlay, wrong_side + 0x0eu, 2u);
+    overlay[wrong_side + 0x1du] = 7u;
+
+    const auto side0 =
+        jojo::content::scan_compact_render_context_candidates(
+            overlay, 10u, 0u);
+    CHECK(side0.size() == 1u);
+    CHECK(side0[0].source_offset == good);
+    CHECK(side0[0].frame_index == 3u);
+    CHECK(side0[0].clut_mode == -1);
+    CHECK(side0[0].clut_base == 5u);
+    CHECK(side0[0].clut_row_base == 0x01e8u);
+    CHECK(side0[0].asset_slot == 0u);
+    CHECK(side0[0].orientation == 3u);
+    CHECK(side0[0].confidence_score >= 30u);
+
+    // side 1 accepts asset slot 1 or 3, not side-0 records.
+    const auto side1 =
+        jojo::content::scan_compact_render_context_candidates(
+            overlay, 10u, 1u);
+    CHECK(side1.empty());
+
+    // Frame bounds are enforced.
+    const auto too_small =
+        jojo::content::scan_compact_render_context_candidates(
+            overlay, 3u, 0u);
+    CHECK(too_small.empty());
+
+    std::vector<std::uint8_t> script_overlay(0x200u, 0u);
+    const auto script_address =
+        jojo::content::fighter_overlay_primary_base + 0x80u;
+    // Two different pointer fields resolve to the same script; output must
+    // deduplicate the target while retaining one source pointer location.
+    put16(script_overlay, 0x00u,
+        static_cast<std::uint16_t>(script_address));
+    put16(script_overlay, 0x02u,
+        static_cast<std::uint16_t>(script_address >> 16u));
+    put16(script_overlay, 0x10u,
+        static_cast<std::uint16_t>(script_address));
+    put16(script_overlay, 0x12u,
+        static_cast<std::uint16_t>(script_address >> 16u));
+
+    // Three valid records: length 4, 4, 6.
+    script_overlay[0x80u] = 0x04u;
+    put16(script_overlay, 0x82u, 0x1002u);
+    script_overlay[0x84u] = 0x84u;
+    put16(script_overlay, 0x86u, 0x0005u);
+    script_overlay[0x88u] = 0x06u;
+    put16(script_overlay, 0x8au, 0x2007u);
+    script_overlay[0x8eu] = 0x00u;
+
+    const auto scripts =
+        jojo::content::scan_animation_script_candidates(
+            script_overlay, 10u);
+    CHECK(scripts.size() == 1u);
+    CHECK(scripts[0].target_offset == 0x80u);
+    CHECK(scripts[0].records.size() == 3u);
+    CHECK(scripts[0].records[0].frame_index == 2u);
+    CHECK(scripts[0].records[1].frame_index == 5u);
+    CHECK(scripts[0].records[2].frame_index == 7u);
+    CHECK(scripts[0].records[2].record_length == 6u);
+    CHECK(scripts[0].confidence_score >= 23u);
+    CHECK(
+        scripts[0].classification ==
+        jojo::content::FighterAnimationCandidateClass::generic);
+
+    // A 0x46/6-byte family with changing frame indices is retained but
+    // promoted as a frame-sequence-like candidate.
+    std::vector<std::uint8_t> frame_sequence_overlay(0x100u, 0u);
+    const auto frame_sequence_address =
+        jojo::content::fighter_overlay_primary_base + 0x40u;
+    put16(
+        frame_sequence_overlay,
+        0x00u,
+        static_cast<std::uint16_t>(frame_sequence_address));
+    put16(
+        frame_sequence_overlay,
+        0x02u,
+        static_cast<std::uint16_t>(frame_sequence_address >> 16u));
+    const auto nested_sequence_address =
+        frame_sequence_address + 6u;
+    put16(
+        frame_sequence_overlay,
+        0x08u,
+        static_cast<std::uint16_t>(nested_sequence_address));
+    put16(
+        frame_sequence_overlay,
+        0x0au,
+        static_cast<std::uint16_t>(nested_sequence_address >> 16u));
+    for (std::size_t i = 0u; i < 4u; ++i) {
+        const auto offset = 0x40u + i * 6u;
+        frame_sequence_overlay[offset] = 0x46u;
+        put16(
+            frame_sequence_overlay,
+            offset + 2u,
+            static_cast<std::uint16_t>(i + 1u));
+    }
+    const auto frame_sequences =
+        jojo::content::scan_animation_script_candidates(
+            frame_sequence_overlay, 10u);
+    CHECK(frame_sequences.size() == 2u);
+    const jojo::content::FighterAnimationScriptCandidate* root = nullptr;
+    const jojo::content::FighterAnimationScriptCandidate* nested = nullptr;
+    for (const auto& candidate : frame_sequences) {
+        if (candidate.target_offset == 0x40u) root = &candidate;
+        if (candidate.target_offset == 0x46u) nested = &candidate;
+    }
+    CHECK(root != nullptr);
+    CHECK(nested != nullptr);
+    CHECK(
+        root->classification ==
+        jojo::content::FighterAnimationCandidateClass::frame_sequence_like);
+    CHECK(root->command_46_count == 4u);
+    CHECK(root->unique_frame_count == 4u);
+    CHECK(root->records[0].duration_candidate_ticks == 0u);
+    CHECK(root->confidence_score >= 40u);
+    CHECK(root->canonical_sequence_root);
+    CHECK(
+        nested->classification ==
+        jojo::content::FighterAnimationCandidateClass::frame_sequence_like);
+    CHECK(!nested->canonical_sequence_root);
+
+    // A pure 0x8A/10-byte stream matches the already-confirmed TKC leaf
+    // signature and must not be promoted as an animation sequence.
+    std::vector<std::uint8_t> tkc_like_overlay(0x100u, 0u);
+    const auto tkc_like_address =
+        jojo::content::fighter_overlay_primary_base + 0x40u;
+    put16(
+        tkc_like_overlay,
+        0x00u,
+        static_cast<std::uint16_t>(tkc_like_address));
+    put16(
+        tkc_like_overlay,
+        0x02u,
+        static_cast<std::uint16_t>(tkc_like_address >> 16u));
+    for (std::size_t i = 0u; i < 3u; ++i) {
+        const auto offset = 0x40u + i * 10u;
+        tkc_like_overlay[offset] = 0x8Au;
+        put16(
+            tkc_like_overlay,
+            offset + 2u,
+            static_cast<std::uint16_t>(i + 1u));
+    }
+    const auto tkc_like =
+        jojo::content::scan_animation_script_candidates(
+            tkc_like_overlay, 10u);
+    CHECK(tkc_like.size() == 1u);
+    CHECK(
+        tkc_like[0].classification ==
+        jojo::content::FighterAnimationCandidateClass::tkc_like);
+    CHECK(tkc_like[0].command_8a_count == 3u);
+    CHECK(tkc_like[0].confidence_score == 0u);
+
+    std::cout << "fighter render context/script candidate tests passed\n";
+    return 0;
+}

@@ -1,0 +1,84 @@
+name: Content Migration Gate
+
+on:
+  push:
+    branches:
+      - migration/godot-content-only
+  pull_request:
+    paths:
+      - "src/content/**"
+      - "src/tools/content_importer.cpp"
+      - "engine/godot/**"
+      - "docs/migration/**"
+      - "tests/test_content_migration.cpp"
+      - "tests/test_pac_archive.cpp"
+      - "CMakeLists.txt"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  content-importer:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        run: cmake -S . -B build-migration -DCMAKE_BUILD_TYPE=Release
+      - name: Build content importer and tests
+        run: >
+          cmake --build build-migration --config Release
+          --target jojo_content_importer
+          jojo_content_migration_tests
+          jojo_pac_archive_tests
+          jojo_tim_image_tests
+          jojo_hit_table_tests
+          jojo_fighter_tk_tests
+          jojo_fighter_overlay_tests
+          jojo_xa_audio_tests
+          jojo_xa_adpcm_decoder_tests
+          jojo_pcm_wav_tests
+          jojo_kpln_graphics_tests
+          jojo_fighter_native_links_tests
+          jojo_kpln_sprite_frames_tests
+          jojo_kpln_clut_tests
+          jojo_kpln_renderer_tests
+          jojo_fighter_render_context_tests
+          -j2
+      - name: Run content migration tests
+        run: |
+          ./build-migration/jojo_content_migration_tests
+          ./build-migration/jojo_pac_archive_tests
+          ./build-migration/jojo_tim_image_tests
+          ./build-migration/jojo_hit_table_tests
+          ./build-migration/jojo_fighter_tk_tests
+          ./build-migration/jojo_fighter_overlay_tests
+          ./build-migration/jojo_xa_audio_tests
+          ./build-migration/jojo_xa_adpcm_decoder_tests
+          ./build-migration/jojo_pcm_wav_tests
+          ./build-migration/jojo_kpln_graphics_tests
+          ./build-migration/jojo_fighter_native_links_tests
+          ./build-migration/jojo_kpln_sprite_frames_tests
+          ./build-migration/jojo_kpln_clut_tests
+          ./build-migration/jojo_kpln_renderer_tests
+          ./build-migration/jojo_fighter_render_context_tests
+      - name: Download Godot 4.7.2
+        run: |
+          curl --fail --location --retry 3 \
+            -o godot.zip \
+            https://github.com/godotengine/godot-builds/releases/download/4.7.2-stable/Godot_v4.7.2-stable_linux.x86_64.zip
+          unzip -q godot.zip -d godot-bin
+          chmod +x godot-bin/Godot_v4.7.2-stable_linux.x86_64
+      - name: Validate Godot 4.7.2 project
+        run: |
+          ./godot-bin/Godot_v4.7.2-stable_linux.x86_64 \
+            --headless \
+            --path engine/godot \
+            --editor \
+            --quit
+      - name: Upload content importer
+        uses: actions/upload-artifact@v4
+        with:
+          name: jojo-content-importer-linux
+          path: build-migration/jojo_content_importer
+          if-no-files-found: error
