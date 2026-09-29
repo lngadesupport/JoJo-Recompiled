@@ -65,6 +65,27 @@ int main() {
     CHECK(p0.at(0u, 501u) == 0x1111u);
     CHECK(p0.at(0u, 502u) == 0x2222u);
 
+    // KPLN15 uses the same two palette IDs with a compact 0x0803:
+    // 0x40 bytes per ID instead of the usual 0x100.
+    std::vector<std::uint8_t> compact0803(0x80u, 0u);
+    std::vector<std::uint8_t> compact0804(0x80u, 0u);
+    std::vector<std::uint8_t> compact0805(0x200u, 0u);
+    std::vector<std::uint8_t> compact0806(0x200u, 0u);
+    std::vector<std::uint8_t> compact0807(0x40u, 0u);
+    put16(compact0803, 0x000u, 0x001Fu);
+    put16(compact0803, 0x040u, 0x03E0u);
+    const auto compact =
+        jojo::content::build_kpln_clut_windows(
+            compact0803,
+            compact0804,
+            compact0805,
+            compact0806,
+            compact0807);
+    CHECK(static_cast<bool>(compact));
+    CHECK(compact.value.palette_count == 2u);
+    CHECK(compact.value.windows[0].at(0u, 0x1e8u) == 0x001Fu);
+    CHECK(compact.value.windows[1].at(0u, 0x1e8u) == 0x03E0u);
+
     // CLUT selector 0 at row base 0x1e8 addresses the first 16 colors.
     CHECK(
         jojo::content::sample_kpln_clut(
