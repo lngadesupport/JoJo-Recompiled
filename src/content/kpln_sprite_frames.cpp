@@ -427,6 +427,17 @@ parse_kpln_cached_frames_0802(
                 }
             }
 
+            // Across all 10,154 retail 0x0802 records the marker is exactly
+            // the number of MSB-first visibility bits inside columns*rows.
+            // Enforce that invariant so a corrupt/false table cannot silently
+            // desynchronize descriptors from cells.
+            if (part.visible_bit_count != header.value.marker ||
+                descriptor_index != header.value.marker) {
+                return Result<KplnCachedFrameSet>::failure(
+                    ErrorCode::invalid_installation,
+                    "KPLN 0x0802 visibility count does not match descriptor count");
+            }
+
             more = header.value.continues;
             frame.parts.push_back(std::move(part));
             ++record_index;
