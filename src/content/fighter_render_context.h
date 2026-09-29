@@ -30,6 +30,7 @@ struct FighterAnimationScriptCandidate {
     std::uint32_t unique_frame_count{};
     std::uint32_t command_46_count{};
     std::uint32_t command_8a_count{};
+    bool canonical_sequence_root{};
     std::vector<FighterAnimationScriptRecord> records;
 };
 
