@@ -9,6 +9,7 @@ enum ViewMode {
     INDEXED_SURFACE,
     CLUT_WINDOW,
     FIRST_VISUAL,
+    ANIMATION_CANDIDATE,
 }
 
 var registry
@@ -17,6 +18,9 @@ var slot_select: SpinBox
 var view_select: OptionButton
 var item_select: SpinBox
 var palette_select: SpinBox
+var step_select: SpinBox
+var play_button: Button
+var playback_timer: Timer
 var preview: TextureRect
 var stats: Label
 var _built := false
@@ -66,6 +70,8 @@ func _build() -> void:
     view_select.add_item("INDEX SURFACE", ViewMode.INDEXED_SURFACE)
     view_select.add_item("CLUT WINDOW", ViewMode.CLUT_WINDOW)
     view_select.add_item("FIRST VISUAL", ViewMode.FIRST_VISUAL)
+    view_select.add_item(
+        "ANIMATION CANDIDATE", ViewMode.ANIMATION_CANDIDATE)
     view_select.item_selected.connect(_on_view_changed)
     controls.add_child(view_select)
 
@@ -94,6 +100,31 @@ func _build() -> void:
     palette_select.custom_minimum_size = Vector2(90, 44)
     palette_select.value_changed.connect(_on_value_changed)
     controls.add_child(palette_select)
+
+    var step_label := Label.new()
+    step_label.text = "STEP"
+    step_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+    controls.add_child(step_label)
+
+    step_select = SpinBox.new()
+    step_select.min_value = 0
+    step_select.max_value = 0
+    step_select.step = 1
+    step_select.custom_minimum_size = Vector2(78, 44)
+    step_select.value_changed.connect(_on_value_changed)
+    controls.add_child(step_select)
+
+    play_button = Button.new()
+    play_button.text = "PLAY"
+    play_button.custom_minimum_size = Vector2(76, 44)
+    play_button.pressed.connect(_toggle_playback)
+    controls.add_child(play_button)
+
+    playback_timer = Timer.new()
+    playback_timer.wait_time = 0.12
+    playback_timer.one_shot = false
+    playback_timer.timeout.connect(_advance_animation_step)
+    add_child(playback_timer)
 
     preview = TextureRect.new()
     preview.position = Vector2(0, 72)
@@ -148,10 +179,16 @@ func _on_fighter_changed(_index: int) -> void:
     slot_select.value = 0
     item_select.value = 0
     palette_select.value = 0
+    step_select.value = 0
+    playback_timer.stop()
+    play_button.text = "PLAY"
     _refresh()
 
 func _on_view_changed(_index: int) -> void:
     item_select.value = 0
+    step_select.value = 0
+    playback_timer.stop()
+    play_button.text = "PLAY"
     _refresh()
 
 func _on_value_changed(_value: float) -> void:
@@ -177,10 +214,27 @@ func _update_ranges(fighter) -> void:
             count = fighter.clut_palette_count()
         ViewMode.FIRST_VISUAL:
             count = max(1, fighter.visual_paths.size())
+        ViewMode.ANIMATION_CANDIDATE:
+            count = max(1, fighter.animation_script_candidate_count())
 
     item_select.max_value = max(0, count - 1)
     if int(item_select.value) >= count and count > 0:
         item_select.value = count - 1
+
+    var step_count := 1
+    if _selected_view() == ViewMode.ANIMATION_CANDIDATE:
+        var script := fighter.animation_script_candidate(
+            int(item_select.value))
+        var records = script.get("records", [])
+        if records is Array:
+            step_count = max(1, records.size())
+    step_select.max_value = max(0, step_count - 1)
+    if int(step_select.value) >= step_count:
+        step_select.value = step_count - 1
+    step_select.editable = (
+        _selected_view() == ViewMode.ANIMATION_CANDIDATE)
+    play_button.disabled = (
+        _selected_view() != ViewMode.ANIMATION_CANDIDATE)
 
 func _preview_for(fighter) -> Texture2D:
     var index := int(item_select.value)
@@ -210,6 +264,18 @@ func _preview_for(fighter) -> Texture2D:
             return fighter.clut_window_preview(index)
         ViewMode.FIRST_VISUAL:
             return fighter.load_visual(index)
+        ViewMode.ANIMATION_CANDIDATE:
+            var frame_index := _animation_frame_index(fighter)
+            if frame_index < 0:
+                return null
+            var contextual := fighter.context_frame_preview(
+                frame_index, true, int(palette_select.value))
+            if contextual != null:
+                return contextual
+            var cached := fighter.cached_frame_preview(frame_index)
+            if cached != null:
+                return cached
+            return fighter.direct_frame_preview(frame_index)
     return null
 
 func _refresh() -> void:
@@ -258,6 +324,17 @@ func _refresh() -> void:
 
     var selected_parts := 0
     var selected_source_record := -1
+    var animation_frame := -1
+    var animation_records := 0
+    var animation_score := 0
+    if _selected_view() == ViewMode.ANIMATION_CANDIDATE:
+        var script := fighter.animation_script_candidate(
+            int(item_select.value))
+        var script_records = script.get("records", [])
+        if script_records is Array:
+            animation_records = script_records.size()
+        animation_score = int(script.get("confidence_score", 0))
+        animation_frame = _animation_frame_index(fighter)
     if not selected_meta.is_empty():
         var parts = selected_meta.get("parts", [])
         selected_parts = parts.size() if parts is Array else 0
@@ -278,7 +355,11 @@ func _refresh() -> void:
         "indexed surfaces: %d\n" +
         "CLUT palette IDs: %d\n\n" +
         "selected source record: %d\n" +
-        "selected frame parts: %d\n\n" +
+        "selected frame parts: %d\n" +
+        "animation candidates: %d\n" +
+        "animation records: %d\n" +
+        "animation score: %d\n" +
+        "animation frame: %d\n\n" +
         "TKC refs in HIT range: %d / %d\n" +
         "TKD refs in direct range: %d / %d\n" +
         "TKD refs in cached range: %d / %d"
@@ -298,6 +379,10 @@ func _refresh() -> void:
         fighter.clut_palette_count(),
         selected_source_record,
         selected_parts,
+        fighter.animation_script_candidate_count(),
+        animation_records,
+        animation_score,
+        animation_frame,
         int(links.get("tkc_hit_index_in_range_count", 0)),
         int(links.get("tkc_record_count", 0)),
         int(links.get("tkd_direct_frame_index_in_range_count", 0)),
@@ -305,3 +390,38 @@ func _refresh() -> void:
         int(links.get("tkd_cached_frame_index_in_range_count", 0)),
         int(links.get("tkd_record_count", 0)),
     ]
+
+
+func _animation_frame_index(fighter) -> int:
+    var script := fighter.animation_script_candidate(
+        int(item_select.value))
+    var records = script.get("records", [])
+    if not records is Array or records.is_empty():
+        return -1
+    var step := clampi(
+        int(step_select.value), 0, records.size() - 1)
+    var record = records[step]
+    if not record is Dictionary:
+        return -1
+    return int(record.get("frame_index", -1))
+
+func _toggle_playback() -> void:
+    if _selected_view() != ViewMode.ANIMATION_CANDIDATE:
+        return
+    if playback_timer.is_stopped():
+        playback_timer.start()
+        play_button.text = "STOP"
+    else:
+        playback_timer.stop()
+        play_button.text = "PLAY"
+
+func _advance_animation_step() -> void:
+    if _selected_view() != ViewMode.ANIMATION_CANDIDATE:
+        playback_timer.stop()
+        play_button.text = "PLAY"
+        return
+    var maximum := int(step_select.max_value)
+    if maximum <= 0:
+        return
+    step_select.value = (
+        int(step_select.value) + 1) % (maximum + 1)
