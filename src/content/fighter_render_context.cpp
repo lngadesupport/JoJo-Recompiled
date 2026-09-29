@@ -84,17 +84,38 @@ scan_animation_script_candidates(
                 break;
             }
 
+            const auto raw_frame =
+                le16(overlay.data() + cursor + 2u);
             const auto frame =
                 static_cast<std::uint16_t>(
-                    le16(overlay.data() + cursor + 2u) &
-                    0x0FFFu);
+                    raw_frame & 0x0FFFu);
             if (frame < frame_count) {
-                records.push_back({
-                    static_cast<std::uint32_t>(cursor),
-                    command,
-                    length,
-                    frame,
-                });
+                FighterAnimationScriptRecord record{};
+                record.source_offset =
+                    static_cast<std::uint32_t>(cursor);
+                record.command = command;
+                record.record_length = length;
+                if (length >= 2u) {
+                    record.operand0 = overlay[cursor + 1u];
+                    record.operand0_flags =
+                        static_cast<std::uint8_t>(
+                            record.operand0 & 0x80u);
+                    if (command == 0x46u && length == 6u) {
+                        record.duration_candidate_ticks =
+                            static_cast<std::uint8_t>(
+                                record.operand0 & 0x7Fu);
+                    }
+                }
+                record.raw_frame_word = raw_frame;
+                record.frame_index = frame;
+                record.frame_flags =
+                    static_cast<std::uint16_t>(
+                        raw_frame & 0xF000u);
+                if (length >= 6u) {
+                    record.parameter_word =
+                        le16(overlay.data() + cursor + 4u);
+                }
+                records.push_back(record);
             }
 
             cursor += length;
