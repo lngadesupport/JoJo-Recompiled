@@ -543,3 +543,31 @@ func animation_script_frames(index: int) -> PackedInt32Array:
         if record is Dictionary:
             result.append(int(record.get("frame_index", -1)))
     return result
+
+
+func frame_sequence_candidates() -> Array[Dictionary]:
+    var result: Array[Dictionary] = []
+    for script in animation_script_candidates():
+        if str(script.get("classification", "")) == "frame_sequence_like":
+            result.append(script)
+    return result
+
+func frame_sequence_candidate_count() -> int:
+    return frame_sequence_candidates().size()
+
+func frame_sequence_candidate(index: int) -> Dictionary:
+    var scripts := frame_sequence_candidates()
+    if index < 0 or index >= scripts.size():
+        return {}
+    return scripts[index]
+
+func frame_sequence_frames(index: int) -> PackedInt32Array:
+    var result := PackedInt32Array()
+    var script := frame_sequence_candidate(index)
+    var records = script.get("records", [])
+    if not records is Array:
+        return result
+    for record in records:
+        if record is Dictionary:
+            result.append(int(record.get("frame_index", -1)))
+    return result
