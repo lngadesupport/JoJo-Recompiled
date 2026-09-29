@@ -157,6 +157,7 @@ int main() {
         jojo::content::FighterAnimationCandidateClass::frame_sequence_like);
     CHECK(root->command_46_count == 4u);
     CHECK(root->unique_frame_count == 4u);
+    CHECK(root->records[0].duration_candidate_ticks == 0u);
     CHECK(root->confidence_score >= 40u);
     CHECK(root->canonical_sequence_root);
     CHECK(
