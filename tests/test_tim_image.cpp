@@ -104,6 +104,23 @@ int main() {
     CHECK(static_cast<bool>(scanned_false));
     CHECK(scanned_false.value.empty());
 
+    constexpr std::uint32_t no_clut_flags[] = {0x00u, 0x01u};
+    for (const auto flags : no_clut_flags) {
+        std::vector<std::uint8_t> no_clut_tim(52u, 0u);
+        put32(no_clut_tim, 0u, 0x10u);
+        put32(no_clut_tim, 4u, flags);
+        put32(no_clut_tim, 8u, 44u);
+        put16(no_clut_tim, 12u, 0u);
+        put16(no_clut_tim, 14u, 0u);
+        put16(no_clut_tim, 16u, 4u);
+        put16(no_clut_tim, 18u, 4u);
+
+        const auto scanned_no_clut =
+            jojo::content::decode_sector_aligned_tim_images(no_clut_tim);
+        CHECK(static_cast<bool>(scanned_no_clut));
+        CHECK(scanned_no_clut.value.empty());
+    }
+
     std::cout << "TIM decoder tests passed\n";
     return 0;
 }

@@ -28,6 +28,7 @@ bool valid_tim_flags(std::uint32_t flags) noexcept {
     if (mode > 3u) return false;
     const auto unknown = flags & ~0xBu;
     if (unknown != 0u) return false;
+    if (mode <= 1u && (flags & 0x8u) == 0u) return false;
     if ((flags & 0x8u) != 0u && mode > 1u) {
         return false;
     }
