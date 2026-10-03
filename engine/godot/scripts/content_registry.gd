@@ -1,7 +1,7 @@
-const FighterResource = preload("res://scripts/fighter_resource.gd")
-
 class_name JojoContentRegistry
 extends RefCounted
+
+const FighterResource = preload("res://scripts/fighter_resource.gd")
 
 var manifest: Dictionary = {}
 var entries: Array = []
