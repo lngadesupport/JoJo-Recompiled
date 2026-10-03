@@ -163,7 +163,7 @@ func _populate_fighters() -> void:
     for fighter in registry.fighter_resources:
         fighter_select.add_item(fighter.retail_id)
 
-func _selected_fighter():
+func _selected_fighter() -> JojoFighterResource:
     if registry == null or fighter_select.item_count == 0:
         return null
     var id := fighter_select.get_item_text(
@@ -194,7 +194,7 @@ func _on_view_changed(_index: int) -> void:
 func _on_value_changed(_value: float) -> void:
     _refresh()
 
-func _update_ranges(fighter) -> void:
+func _update_ranges(fighter: JojoFighterResource) -> void:
     slot_select.max_value = max(0, fighter.slot_count() - 1)
     palette_select.max_value = max(0, fighter.clut_palette_count() - 1)
 
@@ -236,7 +236,7 @@ func _update_ranges(fighter) -> void:
     play_button.disabled = (
         _selected_view() != ViewMode.ANIMATION_CANDIDATE)
 
-func _preview_for(fighter) -> Texture2D:
+func _preview_for(fighter: JojoFighterResource) -> Texture2D:
     var index := int(item_select.value)
     match _selected_view():
         ViewMode.CONTEXT_CACHED_FRAME:
@@ -283,7 +283,7 @@ func _refresh() -> void:
     preview.material = null
     stats.text = ""
 
-    var fighter = _selected_fighter()
+    var fighter: JojoFighterResource = _selected_fighter()
     if fighter == null:
         stats.text = "No imported fighter catalog is available."
         return
@@ -420,7 +420,7 @@ func _refresh() -> void:
     ]
 
 
-func _animation_frame_index(fighter) -> int:
+func _animation_frame_index(fighter: JojoFighterResource) -> int:
     var script := fighter.frame_sequence_candidate(
         int(item_select.value))
     var records = script.get("records", [])
