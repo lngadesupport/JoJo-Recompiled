@@ -71,11 +71,16 @@ jobs:
           chmod +x godot-bin/Godot_v4.7.2-stable_linux.x86_64
       - name: Validate Godot 4.7.2 project
         run: |
+          set -o pipefail
           ./godot-bin/Godot_v4.7.2-stable_linux.x86_64 \
             --headless \
             --path engine/godot \
             --editor \
-            --quit
+            --quit 2>&1 | tee godot-validate.log
+          if grep -qE 'SCRIPT ERROR|Failed to load script|Parse Error' godot-validate.log; then
+            echo "::error::Godot reported script errors"
+            exit 1
+          fi
       - name: Upload content importer
         uses: actions/upload-artifact@v4
         with:
